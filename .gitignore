@@ -1,0 +1,49 @@
+# Temporary files
+*.tmp
+*.log
+*.lock
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Node / JavaScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+env/
+venv/
+
+# Build / Dist
+dist/
+build/
+coverage/
+.cache/
+*.egg-info/
+
+# Editor / IDE configs
+.vscode/
+.idea/
+
+# Docs / site builds
+docs/_build/
+site/
+
+# Local test data
+*.sqlite3
+*.db
+*.csv
+*.jsonl
+
+# Misc
+.env.local
+.env.*.local
+
