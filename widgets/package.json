@@ -1,0 +1,10 @@
+{
+  "name": "@pailkit/widgets",
+  "version": "1.0.0",
+  "description": "PailKit Widgets - embeddable UI components",
+  "main": "index.js",
+  "scripts": {
+    "dev": "echo 'Widgets development server'",
+    "start": "echo 'Widgets production build'"
+  }
+}

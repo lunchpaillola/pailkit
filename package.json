@@ -1,0 +1,23 @@
+{
+  "name": "pailkit",
+  "version": "1.0.0",
+  "description": "Tools for builders. Built by Lunch Pail Labs.",
+  "private": true,
+  "workspaces": [
+    "mcp",
+    "widgets"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:mcp\" \"npm run dev:widgets\"",
+    "dev:api": "cd api && python main.py",
+    "dev:mcp": "cd mcp && npm run dev",
+    "dev:widgets": "cd widgets && npm run dev",
+    "build": "npm run build:api && npm run build:mcp && npm run build:widgets",
+    "build:api": "echo 'No build step needed for Python API'",
+    "build:mcp": "cd mcp && npm run build",
+    "build:widgets": "cd widgets && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
