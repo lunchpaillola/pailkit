@@ -1,17 +1,36 @@
 """
 Rooms Router - PailKit API
 
-Handles room creation and management for video, audio, and live collaboration.
+Handles room creation for video, audio, and live collaboration.
 """
 
+import os
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 from providers.rooms.daily import DailyRooms
 
 router = APIRouter()
 
-# Initialize providers
-daily_provider = DailyRooms(api_key="your-daily-api-key")  # TODO: Get from env
+# TODO: Unified API key handling
+# Since this is a unified API, users need to provide their own API keys
+# Need to figure out how users will provide API keys:
+# - User provisioning system?
+# - Open API key management?
+
+# For now, using environment variable for development
+daily_api_key = os.getenv("DAILY_API_KEY")
+if not daily_api_key:
+    raise ValueError("DAILY_API_KEY environment variable is required for development")
+
+daily_provider = DailyRooms(api_key=daily_api_key)
+
+
+def get_provider(provider_name: str):
+    """Get the appropriate provider instance."""
+    if provider_name == "daily":
+        return daily_provider
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider_name}")
 
 
 @router.post("/create")
@@ -27,51 +46,19 @@ async def create_room(room_data: Dict[str, Any]):
         name = room_data.get("name", "Untitled Room")
         room_type = room_data.get("room_type", "video")
         privacy = room_data.get("privacy", "public")
+        provider_name = room_data.get("provider", "daily")
         
-        # Route to appropriate provider
-        provider = room_data.get("provider", "daily")
-        if provider == "daily":
-            result = await daily_provider.create_room(name, room_type, privacy)
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+        # Get the appropriate provider
+        provider = get_provider(provider_name)
+        
+        # Create the room
+        result = await provider.create_room(name, room_type, privacy)
         
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["message"])
         
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create room: {str(e)}")
-
-
-@router.get("/{room_id}")
-async def get_room(room_id: str, provider: str = "daily"):
-    """Get room details by ID."""
-    try:
-        if provider == "daily":
-            result = await daily_provider.get_room(room_id)
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
-        
-        if not result["success"]:
-            raise HTTPException(status_code=404, detail=result["message"])
-        
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get room: {str(e)}")
-
-
-@router.delete("/{room_id}")
-async def delete_room(room_id: str, provider: str = "daily"):
-    """Delete a room by ID."""
-    try:
-        if provider == "daily":
-            result = await daily_provider.delete_room(room_id)
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
-        
-        if not result["success"]:
-            raise HTTPException(status_code=500, detail=result["message"])
-        
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete room: {str(e)}")

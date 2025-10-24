@@ -7,8 +7,12 @@ This is the main entry point for the PailKit API server.
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
 from routers.rooms import router as rooms_router
+
+# Load environment variables
+load_dotenv()
 
 # Create FastAPI application
 app = FastAPI(
