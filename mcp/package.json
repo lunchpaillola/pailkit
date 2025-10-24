@@ -1,0 +1,10 @@
+{
+  "name": "@pailkit/mcp",
+  "version": "1.0.0",
+  "description": "PailKit MCP - model context protocol interfaces for AI agents",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node index.js",
+    "start": "node index.js"
+  }
+}
