@@ -25,7 +25,7 @@ if not daily_api_key:
 daily_provider = DailyRooms(api_key=daily_api_key)
 
 
-def get_provider(provider_name: str):
+def get_provider(provider_name: str) -> DailyRooms:
     """Get the appropriate provider instance."""
     if provider_name == "daily":
         return daily_provider
@@ -34,7 +34,7 @@ def get_provider(provider_name: str):
 
 
 @router.post("/create")
-async def create_room(room_data: Dict[str, Any]):
+async def create_room(room_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Create a new room for video, audio, or live collaboration.
     

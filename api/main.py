@@ -5,6 +5,7 @@ This is the main entry point for the PailKit API server.
 """
 
 import os
+from typing import Dict
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -35,7 +36,7 @@ app.include_router(rooms_router, prefix="/api/rooms", tags=["Rooms"])
 
 
 @app.get("/")
-async def root():
+async def root() -> Dict[str, str]:
     """Root endpoint with API information."""
     return {
         "message": "PailKit API",
@@ -46,7 +47,7 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> Dict[str, str]:
     """Health check endpoint."""
     return {
         "status": "healthy",
