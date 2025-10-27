@@ -4,7 +4,7 @@ Daily Rooms Provider - PailKit API
 Handles room creation and management using Daily.co as the provider.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class DailyRooms:
