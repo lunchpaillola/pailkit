@@ -82,6 +82,7 @@ PROFILE_PODCAST: dict[str, Any] = deep_merge(BASE_CONFIG, {
 
 # Live Stream profile - Stream to external platforms
 # Use case: Stream to YouTube, Twitch, or other RTMP platforms
+# TODO: Implement this profile
 PROFILE_LIVE_STREAM: dict[str, Any] = deep_merge(BASE_CONFIG, {
     "capabilities": {
         "chat": True,              # Audience chat
@@ -99,6 +100,7 @@ PROFILE_LIVE_STREAM: dict[str, Any] = deep_merge(BASE_CONFIG, {
 
 # Workshop profile - Interactive collaborative session
 # Use case: Classes, training sessions, collaborative workshops
+# TODO: Implement this profile
 PROFILE_WORKSHOP: dict[str, Any] = deep_merge(BASE_CONFIG, {
     "capabilities": {
         "chat": True,
