@@ -11,7 +11,9 @@ from rooms.config_schema import BASE_CONFIG, deep_merge
 from rooms.profiles import PROFILES
 
 
-def build_config(profile: str = "conversation", overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_config(
+    profile: str = "conversation", overrides: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """
     Build the final room configuration by merging base, profile, and overrides.
 

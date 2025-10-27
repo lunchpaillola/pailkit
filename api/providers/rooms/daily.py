@@ -69,7 +69,7 @@ class DailyRooms:
         localization = pail_config.get("localization", {})
 
         # Build Daily's properties object
-        daily_properties = {}
+        daily_properties: dict[str, Any] = {}
 
         # Map media settings
         # Note: Daily doesn't have explicit video/audio toggles for rooms
@@ -81,7 +81,11 @@ class DailyRooms:
 
         # Map capability settings to Daily's properties
         daily_properties["enable_chat"] = capabilities.get("chat", False)
-        daily_properties["enable_screenshare"] = capabilities.get("screenshare", True) and media.get("screenshare_capable", True)
+        screenshare_enabled = (
+            capabilities.get("screenshare", True) and
+            media.get("screenshare_capable", True)
+        )
+        daily_properties["enable_screenshare"] = screenshare_enabled
 
         if capabilities.get("recording", False):
             daily_properties["enable_recording"] = "cloud"
@@ -195,7 +199,7 @@ class DailyRooms:
             try:
                 error_data = e.response.json()
                 error_detail = error_data.get("error", str(e))
-            except:
+            except Exception:
                 error_detail = str(e)
 
             return {
@@ -243,7 +247,7 @@ class DailyRooms:
             try:
                 error_data = e.response.json()
                 error_detail = error_data.get("error", str(e))
-            except:
+            except Exception:
                 error_detail = str(e)
 
             return {
@@ -288,7 +292,7 @@ class DailyRooms:
             try:
                 error_data = e.response.json()
                 error_detail = error_data.get("error", str(e))
-            except:
+            except Exception:
                 error_detail = str(e)
 
             return {

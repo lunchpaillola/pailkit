@@ -71,7 +71,8 @@ async def create_room(request: RoomCreateRequest) -> dict[str, Any]:
     """
     try:
         # Get the appropriate provider
-        provider = get_provider(request.provider)
+        provider_name = request.provider or "daily"
+        provider = get_provider(provider_name)
 
         # Create the room with profile-based API
         result = await provider.create_room(
@@ -86,7 +87,7 @@ async def create_room(request: RoomCreateRequest) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create room: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create room: {str(e)}") from e
 
 
 @router.delete("/delete/{room_name}")
@@ -105,7 +106,8 @@ async def delete_room(room_name: str, provider: str = "daily") -> dict[str, Any]
     """
     try:
         # Get the appropriate provider
-        provider_instance = get_provider(provider)
+        provider_name = provider or "daily"
+        provider_instance = get_provider(provider_name)
 
         # Delete the room
         result = await provider_instance.delete_room(room_name)
@@ -117,4 +119,4 @@ async def delete_room(room_name: str, provider: str = "daily") -> dict[str, Any]
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete room: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete room: {str(e)}") from e

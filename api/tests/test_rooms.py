@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 # Load environment variables before importing main
 load_dotenv()
 
-from main import app
+from main import app  # noqa: E402
 
 client = TestClient(app)
 
@@ -148,7 +148,7 @@ class TestRoomsRouter:
 
     @pytest.mark.skipif(not RUN_INTEGRATION_TESTS, reason="Integration tests disabled")
     def test_create_room_real_api_conversation(self) -> None:
-        """Integration test: Create a real room with conversation profile using actual Daily.co API."""
+        """Integration test: Create a real conversation room using Daily.co API."""
         room_data = {
             "profile": "conversation"
         }
