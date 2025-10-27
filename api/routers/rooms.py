@@ -5,11 +5,23 @@ Handles room creation for video, audio, and live collaboration.
 """
 
 import os
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
+from pydantic import BaseModel
+
 from providers.rooms.daily import DailyRooms
 
 router = APIRouter()
+
+
+# Pydantic models for request validation
+class RoomCreateRequest(BaseModel):
+    """Request model for creating a room."""
+    profile: str = "conversation"
+    overrides: dict[str, Any] | None = None
+    provider: str | None = "daily"
+
 
 # TODO: Unified API key handling
 # Since this is a unified API, users need to provide their own API keys
@@ -34,31 +46,75 @@ def get_provider(provider_name: str) -> DailyRooms:
 
 
 @router.post("/create")
-async def create_room(room_data: Dict[str, Any]) -> Dict[str, Any]:
+async def create_room(request: RoomCreateRequest) -> dict[str, Any]:
     """
     Create a new room for video, audio, or live collaboration.
-    
+
     This is the first building block of PailKit - a single API call
-    to spin up a new video or audio room.
+    to spin up a new video or audio room using opinionated profiles.
+
+    **Request format:**
+    ```json
+    {
+      "profile": "broadcast",
+      "overrides": {"capabilities": {"chat": false}}
+    }
+    ```
+
+    **Available profiles:**
+    - `conversation` - Standard video chat
+    - `audio_room` - Audio-only conversation
+    - `broadcast` - One-to-many presentation
+    - `podcast` - Audio recording session
+    - `live_stream` - Stream to external platforms
+    - `workshop` - Interactive collaborative session
     """
     try:
-        # Extract parameters
-        name = room_data.get("name", "Untitled Room")
-        room_type = room_data.get("room_type", "video")
-        privacy = room_data.get("privacy", "public")
-        provider_name = room_data.get("provider", "daily")
-        
         # Get the appropriate provider
-        provider = get_provider(provider_name)
-        
-        # Create the room
-        result = await provider.create_room(name, room_type, privacy)
-        
+        provider = get_provider(request.provider)
+
+        # Create the room with profile-based API
+        result = await provider.create_room(
+            profile=request.profile,
+            overrides=request.overrides
+        )
+
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["message"])
-        
+
         return result
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create room: {str(e)}")
+
+
+@router.delete("/delete/{room_name}")
+async def delete_room(room_name: str, provider: str = "daily") -> dict[str, Any]:
+    """
+    Delete a room.
+
+    This endpoint allows you to clean up rooms after use.
+
+    **Parameters:**
+    - `room_name` - The short name of the room to delete (from room_url)
+    - `provider` - The provider (default: "daily")
+
+    **Note:** Use the room_name from the URL, not the room_id UUID.
+    Example: For room_url "https://domain.daily.co/abc123", use "abc123"
+    """
+    try:
+        # Get the appropriate provider
+        provider_instance = get_provider(provider)
+
+        # Delete the room
+        result = await provider_instance.delete_room(room_name)
+
+        if not result["success"]:
+            raise HTTPException(status_code=500, detail=result["message"])
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete room: {str(e)}")
