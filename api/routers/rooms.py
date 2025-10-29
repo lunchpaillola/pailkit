@@ -27,7 +27,7 @@ router = APIRouter()
 class RoomCreateRequest(BaseModel):
     """
     Request model for creating a room.
-    
+
     Note: Provider is specified via X-Provider header, not in the request body.
     This keeps authentication and provider selection together in headers.
     """
@@ -35,23 +35,23 @@ class RoomCreateRequest(BaseModel):
     overrides: dict[str, Any] | None = None
 
 
-def get_provider(provider_name: str, api_key: str):
+def get_provider(provider_name: str, api_key: str) -> DailyRooms:
     """
     Create a provider instance with user-provided API key.
-    
+
     Args:
         provider_name: Provider identifier (e.g., "daily") - will be normalized to lowercase
         api_key: User's provider API key
-    
+
     Returns:
         Provider instance
-    
+
     Raises:
         HTTPException: If provider is unsupported
     """
     # Normalize provider name to lowercase for consistent matching
     normalized_provider = provider_name.lower().strip()
-    
+
     if normalized_provider == "daily":
         return DailyRooms(api_key=api_key)
     else:
@@ -64,8 +64,8 @@ def get_provider(provider_name: str, api_key: str):
 @router.post("/create")
 async def create_room(
     request: RoomCreateRequest,
-    x_provider_auth: str = Header(..., alias="X-Provider-Auth", description="Provider API key (Bearer token or raw key)"),
-    x_provider: str = Header("daily", alias="X-Provider", description="Provider name (default: daily)")
+    x_provider_auth: str = Header(..., description="Provider API key (Bearer token or raw key)"),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
 ) -> dict[str, Any]:
     """
     Create a new room for video, audio, or live collaboration.
@@ -111,23 +111,23 @@ async def create_room(
         # Provider comes from X-Provider header (defaults to "daily" if not provided)
         # This ensures provider selection is consistent with authentication (both in headers)
         provider_name = x_provider.lower().strip() if x_provider else "daily"
-        
+
         # Extract API key from header (handle both "Bearer <key>" and raw key formats)
         api_key = x_provider_auth.strip()
         if api_key.startswith("Bearer "):
             api_key = api_key[7:].strip()
-        
+
         if not api_key:
             raise HTTPException(
                 status_code=401,
                 detail="X-Provider-Auth header is required. Provide your provider API key."
             )
-        
+
         # Create provider instance with user's API key
         provider = get_provider(provider_name, api_key)
 
         # Create the room with profile-based API
-        result = await provider.create_room(
+        result: dict[str, Any] = await provider.create_room(
             profile=request.profile,
             overrides=request.overrides
         )
@@ -145,8 +145,8 @@ async def create_room(
 @router.delete("/delete/{room_name}")
 async def delete_room(
     room_name: str,
-    x_provider_auth: str = Header(..., alias="X-Provider-Auth", description="Provider API key (Bearer token or raw key)"),
-    x_provider: str = Header("daily", alias="X-Provider", description="Provider name (default: daily)")
+    x_provider_auth: str = Header(..., description="Provider API key (Bearer token or raw key)"),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
 ) -> dict[str, Any]:
     """
     Delete a room.
@@ -154,7 +154,8 @@ async def delete_room(
     This endpoint allows you to clean up rooms after use.
 
     **Authentication:**
-    Provide your provider API key via the `X-Provider-Auth` header (same key used to create the room).
+    Provide your provider API key via the `X-Provider-Auth` header
+    (same key used to create the room).
 
     **Parameters:**
     - `room_name` - The short name of the room to delete (from room_url)
@@ -172,23 +173,23 @@ async def delete_room(
     try:
         # Provider comes from X-Provider header (defaults to "daily" if not provided)
         provider_name = x_provider.lower().strip() if x_provider else "daily"
-        
+
         # Extract API key from header (handle both "Bearer <key>" and raw key formats)
         api_key = x_provider_auth.strip()
         if api_key.startswith("Bearer "):
             api_key = api_key[7:].strip()
-        
+
         if not api_key:
             raise HTTPException(
                 status_code=401,
                 detail="X-Provider-Auth header is required. Provide your provider API key."
             )
-        
+
         # Create provider instance with user's API key
         provider_instance = get_provider(provider_name, api_key)
 
         # Delete the room
-        result = await provider_instance.delete_room(room_name)
+        result: dict[str, Any] = await provider_instance.delete_room(room_name)
 
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["message"])
@@ -203,8 +204,8 @@ async def delete_room(
 @router.get("/get/{room_name}")
 async def get_room(
     room_name: str,
-    x_provider_auth: str = Header(..., alias="X-Provider-Auth", description="Provider API key (Bearer token or raw key)"),
-    x_provider: str = Header("daily", alias="X-Provider", description="Provider name (default: daily)")
+    x_provider_auth: str = Header(..., description="Provider API key (Bearer token or raw key)"),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
 ) -> dict[str, Any]:
     """
     Get room details.
@@ -212,7 +213,8 @@ async def get_room(
     Retrieve configuration and status information for an existing room.
 
     **Authentication:**
-    Provide your provider API key via the `X-Provider-Auth` header (same key used to create the room).
+    Provide your provider API key via the `X-Provider-Auth` header
+    (same key used to create the room).
 
     **Parameters:**
     - `room_name` - The short name of the room (from room_url)
@@ -227,23 +229,23 @@ async def get_room(
     try:
         # Provider comes from X-Provider header (defaults to "daily" if not provided)
         provider_name = x_provider.lower().strip() if x_provider else "daily"
-        
+
         # Extract API key from header (handle both "Bearer <key>" and raw key formats)
         api_key = x_provider_auth.strip()
         if api_key.startswith("Bearer "):
             api_key = api_key[7:].strip()
-        
+
         if not api_key:
             raise HTTPException(
                 status_code=401,
                 detail="X-Provider-Auth header is required. Provide your provider API key."
             )
-        
+
         # Create provider instance with user's API key
         provider_instance = get_provider(provider_name, api_key)
 
         # Get the room details
-        result = await provider_instance.get_room(room_name)
+        result: dict[str, Any] = await provider_instance.get_room(room_name)
 
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["message"])

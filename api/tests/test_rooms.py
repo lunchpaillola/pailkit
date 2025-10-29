@@ -7,7 +7,7 @@ Set RUN_INTEGRATION_TESTS=true environment variable to run real API tests.
 
 import os
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from dotenv import load_dotenv
@@ -27,10 +27,11 @@ RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "
 class TestRoomsRouter:
     """Test cases for the rooms router."""
 
-    @patch("routers.rooms.daily_provider")
-    def test_create_room_with_conversation_profile(self, mock_provider: Any) -> None:
+    @patch("routers.rooms.get_provider")
+    def test_create_room_with_conversation_profile(self, mock_get_provider: Any) -> None:
         """Test creating a room with conversation profile."""
-        # Mock the provider response
+        # Create a mock provider instance
+        mock_provider = MagicMock()
         mock_provider.create_room = AsyncMock(return_value={
             "success": True,
             "room_id": "test-conversation-123",
@@ -40,13 +41,23 @@ class TestRoomsRouter:
             "message": "Room created successfully"
         })
 
+        # Make get_provider return our mock
+        mock_get_provider.return_value = mock_provider
+
         # Test data with profile
         room_data = {
             "profile": "conversation"
         }
 
-        # Make request
-        response = client.post("/api/rooms/create", json=room_data)
+        # Make request with required headers
+        response = client.post(
+            "/api/rooms/create",
+            json=room_data,
+            headers={
+                "X-Provider-Auth": "Bearer test-api-key-123",
+                "X-Provider": "daily"
+            }
+        )
 
         # Assertions
         assert response.status_code == 200
@@ -56,10 +67,11 @@ class TestRoomsRouter:
         assert data["profile"] == "conversation"
         assert "room_url" in data
 
-    @patch("routers.rooms.daily_provider")
-    def test_create_room_with_broadcast_profile(self, mock_provider: Any) -> None:
+    @patch("routers.rooms.get_provider")
+    def test_create_room_with_broadcast_profile(self, mock_get_provider: Any) -> None:
         """Test creating a room with broadcast profile."""
-        # Mock the provider response
+        # Create a mock provider instance
+        mock_provider = MagicMock()
         mock_provider.create_room = AsyncMock(return_value={
             "success": True,
             "room_id": "test-broadcast-123",
@@ -69,13 +81,23 @@ class TestRoomsRouter:
             "message": "Room created successfully"
         })
 
+        # Make get_provider return our mock
+        mock_get_provider.return_value = mock_provider
+
         # Test data with broadcast profile
         room_data = {
             "profile": "broadcast"
         }
 
-        # Make request
-        response = client.post("/api/rooms/create", json=room_data)
+        # Make request with required headers
+        response = client.post(
+            "/api/rooms/create",
+            json=room_data,
+            headers={
+                "X-Provider-Auth": "Bearer test-api-key-123",
+                "X-Provider": "daily"
+            }
+        )
 
         # Assertions
         assert response.status_code == 200
@@ -83,10 +105,11 @@ class TestRoomsRouter:
         assert data["success"] is True
         assert data["profile"] == "broadcast"
 
-    @patch("routers.rooms.daily_provider")
-    def test_create_room_with_overrides(self, mock_provider: Any) -> None:
+    @patch("routers.rooms.get_provider")
+    def test_create_room_with_overrides(self, mock_get_provider: Any) -> None:
         """Test creating a room with profile and overrides."""
-        # Mock the provider response
+        # Create a mock provider instance
+        mock_provider = MagicMock()
         mock_provider.create_room = AsyncMock(return_value={
             "success": True,
             "room_id": "test-override-123",
@@ -95,6 +118,9 @@ class TestRoomsRouter:
             "profile": "conversation",
             "message": "Room created successfully"
         })
+
+        # Make get_provider return our mock
+        mock_get_provider.return_value = mock_provider
 
         # Test data with profile and overrides
         room_data = {
@@ -106,8 +132,15 @@ class TestRoomsRouter:
             }
         }
 
-        # Make request
-        response = client.post("/api/rooms/create", json=room_data)
+        # Make request with required headers
+        response = client.post(
+            "/api/rooms/create",
+            json=room_data,
+            headers={
+                "X-Provider-Auth": "Bearer test-api-key-123",
+                "X-Provider": "daily"
+            }
+        )
 
         # Assertions
         assert response.status_code == 200
@@ -117,30 +150,49 @@ class TestRoomsRouter:
     def test_create_room_unsupported_provider(self) -> None:
         """Test room creation with unsupported provider."""
         room_data = {
-            "profile": "conversation",
-            "provider": "unsupported"
+            "profile": "conversation"
         }
 
-        response = client.post("/api/rooms/create", json=room_data)
+        # Make request with unsupported provider in header
+        response = client.post(
+            "/api/rooms/create",
+            json=room_data,
+            headers={
+                "X-Provider-Auth": "Bearer test-api-key-123",
+                "X-Provider": "unsupported"
+            }
+        )
 
         assert response.status_code == 400
         data = response.json()
         assert "Unsupported provider" in data["detail"]
 
-    @patch("routers.rooms.daily_provider")
-    def test_create_room_provider_failure(self, mock_provider: Any) -> None:
+    @patch("routers.rooms.get_provider")
+    def test_create_room_provider_failure(self, mock_get_provider: Any) -> None:
         """Test room creation when provider fails."""
-        # Mock provider failure
+        # Create a mock provider instance
+        mock_provider = MagicMock()
         mock_provider.create_room = AsyncMock(return_value={
             "success": False,
             "message": "Daily API error: Invalid API key"
         })
 
+        # Make get_provider return our mock
+        mock_get_provider.return_value = mock_provider
+
         room_data = {
             "profile": "conversation"
         }
 
-        response = client.post("/api/rooms/create", json=room_data)
+        # Make request with required headers
+        response = client.post(
+            "/api/rooms/create",
+            json=room_data,
+            headers={
+                "X-Provider-Auth": "Bearer test-api-key-123",
+                "X-Provider": "daily"
+            }
+        )
 
         assert response.status_code == 500
         data = response.json()
@@ -153,7 +205,19 @@ class TestRoomsRouter:
             "profile": "conversation"
         }
 
-        response = client.post("/api/rooms/create", json=room_data)
+        # Get API key from environment variable
+        daily_api_key = os.getenv("DAILY_API_KEY")
+        if not daily_api_key:
+            pytest.skip("DAILY_API_KEY environment variable not set")
+
+        response = client.post(
+            "/api/rooms/create",
+            json=room_data,
+            headers={
+                "X-Provider-Auth": f"Bearer {daily_api_key}",
+                "X-Provider": "daily"
+            }
+        )
 
         # Assertions
         assert response.status_code == 200
@@ -169,7 +233,13 @@ class TestRoomsRouter:
 
         # Clean up: Delete the room
         room_name = data.get("room_name", data["room_id"])  # Use room_name if available
-        delete_response = client.delete(f"/api/rooms/delete/{room_name}")
+        delete_response = client.delete(
+            f"/api/rooms/delete/{room_name}",
+            headers={
+                "X-Provider-Auth": f"Bearer {daily_api_key}",
+                "X-Provider": "daily"
+            }
+        )
         if delete_response.status_code == 200:
             print(f"🧹 Room {room_name} cleaned up successfully")
         else:
@@ -187,7 +257,19 @@ class TestRoomsRouter:
             }
         }
 
-        response = client.post("/api/rooms/create", json=room_data)
+        # Get API key from environment variable
+        daily_api_key = os.getenv("DAILY_API_KEY")
+        if not daily_api_key:
+            pytest.skip("DAILY_API_KEY environment variable not set")
+
+        response = client.post(
+            "/api/rooms/create",
+            json=room_data,
+            headers={
+                "X-Provider-Auth": f"Bearer {daily_api_key}",
+                "X-Provider": "daily"
+            }
+        )
 
         # Assertions
         assert response.status_code == 200
@@ -202,7 +284,13 @@ class TestRoomsRouter:
 
         # Clean up: Delete the room
         room_name = data.get("room_name", data["room_id"])  # Use room_name if available
-        delete_response = client.delete(f"/api/rooms/delete/{room_name}")
+        delete_response = client.delete(
+            f"/api/rooms/delete/{room_name}",
+            headers={
+                "X-Provider-Auth": f"Bearer {daily_api_key}",
+                "X-Provider": "daily"
+            }
+        )
         if delete_response.status_code == 200:
             print(f"🧹 Room {room_name} cleaned up successfully")
         else:
