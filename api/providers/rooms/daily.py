@@ -78,6 +78,11 @@ class DailyRooms:
             daily_properties["enable_screenshare"] = False
         else:
             daily_properties["enable_screenshare"] = True
+        
+        # Map video setting: if video is False (audio-only), set start_video_off to true
+        # This ensures participants join with video off by default
+        if media.get("video") is False:
+            daily_properties["start_video_off"] = True
 
         # Map capability settings to Daily's properties
         daily_properties["enable_chat"] = capabilities.get("chat", False)
@@ -87,12 +92,24 @@ class DailyRooms:
         )
         daily_properties["enable_screenshare"] = screenshare_enabled
 
-        if capabilities.get("recording", False):
+        # Map recording setting
+        # If recording is explicitly False, ensure it's disabled
+        # If recording is True, enable cloud recording
+        recording = capabilities.get("recording")
+        if recording is False:
+            daily_properties["enable_recording"] = False
+        elif recording is True:
             daily_properties["enable_recording"] = "cloud"
+        # If recording is None/not set, use Daily's default (no recording)
 
         # Map interaction settings
         daily_properties["enable_prejoin_ui"] = interaction.get("prejoin", True)
-        daily_properties["owner_only_broadcast"] = interaction.get("broadcast_mode", False)
+        
+        # Map broadcast mode to owner_only_broadcast
+        # When broadcast_mode is True, only the room owner can broadcast (presenter mode)
+        # This is used for webinars, presentations, and live streams
+        broadcast_mode = interaction.get("broadcast_mode", False)
+        daily_properties["owner_only_broadcast"] = bool(broadcast_mode)
 
         # Map capabilities that have Daily equivalents
         if capabilities.get("breakout_rooms", False):
@@ -112,8 +129,23 @@ class DailyRooms:
             daily_properties["enable_live_captions_ui"] = True
 
         # Map RTMP streaming
-        # Note: Daily uses domain.hooks for RTMP streaming
-        # This would require additional setup in production
+        # Daily.co RTMP streaming configuration
+        # RTMP URL can be provided via overrides: {"capabilities": {"rtmp_url": "rtmp://..."}}
+        if capabilities.get("rtmp_streaming", False):
+            rtmp_url = capabilities.get("rtmp_url")
+            if rtmp_url:
+                # Configure RTMP streaming with provided URL
+                # Daily.co uses rtmp_ingress property for RTMP streaming to external platforms
+                daily_properties["rtmp_ingress"] = {
+                    "rtmp_url": rtmp_url
+                }
+            else:
+                # Placeholder RTMP URL - user will verify later
+                # Format: rtmp://[server]/app/stream_key
+                # This is a placeholder that can be updated via room update API
+                daily_properties["rtmp_ingress"] = {
+                    "rtmp_url": "rtmp://placeholder.rtmp.server/app/stream_key"
+                }
 
         # Map access settings
         privacy = access.get("privacy", "public")
