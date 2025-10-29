@@ -364,29 +364,40 @@ RUN_INTEGRATION_TESTS=true python3.12 -m pytest tests/test_rooms.py::TestRoomsRo
 
 ---
 
-### 3. Create Dockerfile
-**File to create**: `api/Dockerfile`
+### 3. Add Rate Limiting and Abuse Protection
 
-**What it should contain:**
-- [ ] Python 3.12 base image
-- [ ] Copy requirements.txt and install dependencies
-- [ ] Copy all code
-- [ ] Run uvicorn to start the server
-- [ ] **Note**: No DAILY_API_KEY environment variable needed!
+**Goal:** Prevent abuse while keeping API accessible for legitimate builders.
 
-**Example:**
-```dockerfile
-FROM python:3.12-slim
+#### Two-Tier Architecture
 
-WORKDIR /app
+- **Tier 1 (Public)**: 10 requests/minute per IP — for casual testing
+- **Tier 2 (Registered)**: 1,000 requests/minute per PailKit API key — for builders
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+#### Implementation Tasks
 
-COPY . .
+1. Add `slowapi` to `api/requirements.txt`
+2. Create rate limiting middleware that checks `Authorization: Bearer pailkit_xxx` header
+3. Update router with dynamic limits (public vs key-auth)
+4. Generate initial PailKit keys for testing
+5. Add tests for both tiers (throttle behavior and helpful error body)
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
+#### Key Design Decisions
+
+- **Auth header for PailKit keys**: `Authorization: Bearer pailkit_xxx` (standard)
+- **Keep `X-Provider-Auth`** for provider keys (no breaking changes)
+- **In-memory key store for now**, upgradeable to Redis later
+- **Rate limit exceeded** response should guide users to get a PailKit key
+
+#### Files to Modify/Create
+
+- `api/requirements.txt` — add `slowapi`
+- `api/middleware/rate_limiter.py` — new
+- `api/main.py` — add rate limiting setup
+- `api/routers/rooms.py` — add dynamic rate limit decorators
+- `scripts/generate_pailkit_key.py` — utility script
+- `api/tests/test_rooms.py` — add tests for both tiers
+
+**Priority:** Do this before Docker/Fly deployment to protect against abuse from day one.
 
 ---
 
@@ -457,131 +468,5 @@ Once all checkboxes are checked, you're live with a secure, shareable API!
 - ✅ Production-ready deployment
 - ✅ Works with your philosophy: builders bring their own tools
 
----
 
-## 🔮 Later (Not Today)
 
-### Short-term Enhancements:
-- Write more tests
-- Add better logging (don't log API keys!)
-- Fix RTMP if needed
-- Add rate limiting (protect your infrastructure)
-- Add usage analytics (optional, for insights)
-
-### Medium-term Evolution:
-- Add more providers (Zoom, Twilio, etc.)
-- Implement Phase 2: Optional PailKit API keys (user accounts)
-- Add API key rotation/management UI
-- Add webhook support for room events
-
-### Commercial Path:
-- If you want to go fully managed (Phase 3):
-  - Add user registration/auth
-  - Add provider key management
-  - Add billing/usage tracking
-  - Provision master provider accounts
-  - Handle cost allocation
-
-**But for now, the BYOK model lets you ship TODAY and share freely.** 🚀
-
----
-
-## 📝 Key Architectural Decisions
-
-**Why not environment variables for provider keys?**
-- Doesn't scale - can't have one key per user
-- Users would need their own deployments
-- Not compatible with multi-tenant SaaS model
-
-**Why not request body for provider/key?**
-- Keys would be logged in request bodies
-- Provider selection mixed with business logic (profile, overrides)
-- Not standard practice - auth should be in headers
-- Harder to audit/secure
-- Inconsistent with REST API best practices
-
-**Why headers?**
-- Standard practice (Stripe, Twilio, AWS all use headers)
-- Less likely to be logged accidentally
-- Easy to add middleware/rate limiting later
-- Works with existing API client libraries
-
-**Why BYOK instead of managed?**
-- Ships faster (no user management needed)
-- Users control their own costs
-- No billing infrastructure required
-- Perfect for open-source/sharing
-- Can evolve to managed later without breaking changes
-
----
-
-## 🛠️ Example: Using the API
-
-**Create a conversation room (with explicit provider):**
-```bash
-curl -X POST https://api.pailkit.com/api/rooms/create \
-  -H "X-Provider-Auth: Bearer daily_abc123xyz" \
-  -H "X-Provider: daily" \
-  -H "Content-Type: application/json" \
-  -d '{"profile": "conversation"}'
-```
-
-**Create a conversation room (provider defaults to "daily"):**
-```bash
-curl -X POST https://api.pailkit.com/api/rooms/create \
-  -H "X-Provider-Auth: Bearer daily_abc123xyz" \
-  -H "Content-Type: application/json" \
-  -d '{"profile": "conversation"}'
-```
-
-**Note:** Provider name is case-insensitive - "Daily", "DAILY", or "daily" all work.
-
-**Create a broadcast room with overrides:**
-```bash
-curl -X POST https://api.pailkit.com/api/rooms/create \
-  -H "X-Provider-Auth: Bearer daily_abc123xyz" \
-  -H "X-Provider: daily" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "profile": "broadcast",
-    "overrides": {
-      "capabilities": {
-        "chat": false
-      }
-    }
-  }'
-```
-
-**Get room details:**
-```bash
-curl -X GET https://api.pailkit.com/api/rooms/get/room-name-here \
-  -H "X-Provider-Auth: Bearer daily_abc123xyz" \
-  -H "X-Provider: daily"
-```
-
-**Delete a room:**
-```bash
-curl -X DELETE https://api.pailkit.com/api/rooms/delete/room-name-here \
-  -H "X-Provider-Auth: Bearer daily_abc123xyz" \
-  -H "X-Provider: daily"
-```
-
----
-
-## 🚨 Security Best Practices
-
-**For Users:**
-- Never commit API keys to git
-- Rotate keys regularly
-- Use environment variables or secret managers in production
-- Monitor usage through provider dashboards
-
-**For You (PailKit):**
-- Never log `X-Provider-Auth` headers
-- Add rate limiting to prevent abuse
-- Consider adding request signing later
-- Document security practices clearly
-
----
-
-**Ready to deploy? Let's ship it! 🚀**
