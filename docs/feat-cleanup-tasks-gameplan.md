@@ -102,6 +102,63 @@ Provider is **header-only** (not in request body) to keep authentication and pro
 
 ---
 
+### 1b. ✅ Clean Up Header Aliases (Code Simplification)
+
+**What was done:**
+- ✅ Removed unnecessary `alias` parameters from Header declarations
+- ✅ FastAPI automatically converts `x_provider_auth` → `X-Provider-Auth` header
+- ✅ FastAPI automatically converts `x_provider` → `X-Provider` header
+
+**Files updated:**
+- `api/routers/rooms.py` - Removed aliases from all three endpoints:
+  - `create_room()` - Removed `alias="X-Provider-Auth"` and `alias="X-Provider"`
+  - `delete_room()` - Removed `alias="X-Provider-Auth"` and `alias="X-Provider"`
+  - `get_room()` - Removed `alias="X-Provider-Auth"` and `alias="X-Provider"`
+
+**Before:**
+```python
+x_provider_auth: str = Header(..., alias="X-Provider-Auth", description="...")
+x_provider: str = Header("daily", alias="X-Provider", description="...")
+```
+
+**After:**
+```python
+x_provider_auth: str = Header(..., description="...")
+x_provider: str = Header("daily", description="...")
+```
+
+**Why this works:**
+FastAPI's Header automatically converts underscores to hyphens, so aliases are redundant. This makes the code cleaner and follows the "less is more" principle!
+
+**Status:** ✅ Complete - Tests pass without issues.
+
+---
+
+### 1c. ✅ Test Status
+
+**Current Status:**
+- ✅ All unit tests passing (mocked tests)
+- ✅ Integration tests working correctly
+- ✅ Integration tests properly read `DAILY_API_KEY` environment variable
+
+**Integration Test Configuration:**
+- Integration tests read `DAILY_API_KEY` from environment variables (via `os.getenv("DAILY_API_KEY")`)
+- Tests correctly pass the key in the `X-Provider-Auth` header as `Bearer {daily_api_key}`
+- Tests can be run with: `npm run test:integration` or `RUN_INTEGRATION_TESTS=true pytest`
+
+**Test Command:**
+```bash
+# Run all tests (mocked)
+npm run test
+
+# Run integration tests (requires DAILY_API_KEY in .env)
+npm run test:integration
+```
+
+**Note:** Integration tests require `DAILY_API_KEY` in your `.env` file (matching `env.example`). They skip gracefully if the key is not provided.
+
+---
+
 ### 2. Test Profiles Work (Quick Check)
 **Files to check**: `api/rooms/profiles.py`, `api/providers/rooms/daily.py`
 
