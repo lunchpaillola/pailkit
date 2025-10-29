@@ -78,8 +78,8 @@ class DailyRooms:
             daily_properties["enable_screenshare"] = False
         else:
             daily_properties["enable_screenshare"] = True
-        
-        # Map video setting: if video is False (audio-only), set start_video_off to true
+
+        # Map video setting: if video is False, set start_video_off to true
         # This ensures participants join with video off by default
         if media.get("video") is False:
             daily_properties["start_video_off"] = True
@@ -104,7 +104,7 @@ class DailyRooms:
 
         # Map interaction settings
         daily_properties["enable_prejoin_ui"] = interaction.get("prejoin", True)
-        
+
         # Map broadcast mode to owner_only_broadcast
         # When broadcast_mode is True, only the room owner can broadcast (presenter mode)
         # This is used for webinars, presentations, and live streams

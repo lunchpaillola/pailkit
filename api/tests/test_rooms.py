@@ -370,11 +370,11 @@ class TestRoomsRouter:
         # Verify room configuration matches podcast profile
         # Get room name for later cleanup
         room_name = data.get("room_name", data["room_id"])
-        
+
         # Check config from creation response first (it already includes config)
         room_config = data.get("config", {})
         props = room_config.get("properties", {})
-        
+
         # If properties not in config, try getting room details
         if not props:
             get_response = client.get(
@@ -387,7 +387,7 @@ class TestRoomsRouter:
             if get_response.status_code == 200:
                 room_config = get_response.json().get("config", {})
                 props = room_config.get("properties", {})
-        
+
         # Podcast should have: recording, transcription, no chat, no screenshare
         # Note: Some properties might not be returned in GET response if not set
         # So we check what's available and verify the expected values
@@ -396,25 +396,25 @@ class TestRoomsRouter:
             recording = props.get("enable_recording")
             if recording:
                 assert recording == "cloud", f"Recording should be 'cloud', got '{recording}'"
-            
+
             # Transcription should be enabled
             transcription = props.get("enable_transcription_storage")
             if transcription is not None:
                 assert transcription is True, "Transcription should be enabled"
-            
+
             # Chat should be disabled
             chat = props.get("enable_chat")
             if chat is not None:
                 assert chat is False, "Chat should be disabled for podcast"
-            
+
             # Screenshare should be disabled
             screenshare = props.get("enable_screenshare")
             if screenshare is not None:
                 assert screenshare is False, "Screenshare should be disabled"
-            
-            print(f"   ✅ Configuration verified from room response")
+
+            print("   ✅ Configuration verified from room response")
         else:
-            print(f"   ⚠️  Could not verify configuration (properties not in response)")
+            print("   ⚠️  Could not verify configuration (properties not in response)")
 
         # Clean up: Delete the room
         delete_response = client.delete(
@@ -431,7 +431,7 @@ class TestRoomsRouter:
 
     @pytest.mark.skipif(not RUN_INTEGRATION_TESTS, reason="Integration tests disabled")
     def test_create_room_real_api_live_stream(self) -> None:
-        """Integration test: Create a real room with live_stream profile using actual Daily.co API."""
+        """Integration test: Create a real room with live_stream profile using Daily.co API."""
         # Test with RTMP URL override (user can provide their own URL)
         # For now, using placeholder that will be verified later
         room_data = {
@@ -471,11 +471,11 @@ class TestRoomsRouter:
         # Verify room configuration matches live_stream profile
         # Get room name for later cleanup
         room_name = data.get("room_name", data["room_id"])
-        
+
         # Check config from creation response first (it already includes config)
         room_config = data.get("config", {})
         props = room_config.get("properties", {})
-        
+
         # If properties not in config, try getting room details
         if not props:
             get_response = client.get(
@@ -488,24 +488,24 @@ class TestRoomsRouter:
             if get_response.status_code == 200:
                 room_config = get_response.json().get("config", {})
                 props = room_config.get("properties", {})
-        
+
         # Live stream should have: recording, RTMP streaming, broadcast mode, chat
         if props:
             # Recording should be enabled (cloud recording)
             recording = props.get("enable_recording")
             if recording:
                 assert recording == "cloud", f"Recording should be 'cloud', got '{recording}'"
-            
+
             # Broadcast mode should be enabled
             broadcast_mode = props.get("owner_only_broadcast")
             if broadcast_mode is not None:
                 assert broadcast_mode is True, "Broadcast mode should be enabled for live_stream"
-            
+
             # Chat should be enabled (audience chat)
             chat = props.get("enable_chat")
             if chat is not None:
                 assert chat is True, "Chat should be enabled for live_stream"
-            
+
             # RTMP streaming should be configured
             # Note: Daily.co API might not return rtmp_ingress in response
             # but we verify the room was created successfully which means config was accepted
@@ -513,11 +513,14 @@ class TestRoomsRouter:
             if rtmp_ingress:
                 print(f"   ✅ RTMP streaming configured: {rtmp_ingress}")
             else:
-                print(f"   ℹ️  RTMP configuration not visible in response (may require room update API)")
-            
-            print(f"   ✅ Configuration verified from room response")
+                print(
+                    "   ℹ️  RTMP configuration not visible in response "
+                    "(may require room update API)"
+                )
+
+            print("   ✅ Configuration verified from room response")
         else:
-            print(f"   ⚠️  Could not verify configuration (properties not in response)")
+            print("   ⚠️  Could not verify configuration (properties not in response)")
 
         # Clean up: Delete the room
         delete_response = client.delete(
@@ -534,7 +537,7 @@ class TestRoomsRouter:
 
     @pytest.mark.skipif(not RUN_INTEGRATION_TESTS, reason="Integration tests disabled")
     def test_create_room_real_api_audio_room(self) -> None:
-        """Integration test: Create a real room with audio_room profile using actual Daily.co API."""
+        """Integration test: Create a real room with audio_room profile using Daily.co API."""
         room_data = {
             "profile": "audio_room"
         }
@@ -567,11 +570,11 @@ class TestRoomsRouter:
         # Verify room configuration matches audio_room profile
         # Get room name for later cleanup
         room_name = data.get("room_name", data["room_id"])
-        
+
         # Check config from creation response first (it already includes config)
         room_config = data.get("config", {})
         props = room_config.get("properties", {})
-        
+
         # If properties not in config, try getting room details
         if not props:
             get_response = client.get(
@@ -584,37 +587,38 @@ class TestRoomsRouter:
             if get_response.status_code == 200:
                 room_config = get_response.json().get("config", {})
                 props = room_config.get("properties", {})
-        
-        # Audio room should have: no video (start_video_off), chat enabled, no recording, no screenshare, no prejoin
+
+        # Audio room should have: no video (start_video_off), chat enabled,
+        # no recording, no screenshare, no prejoin
         if props:
             # Video should be off by default (audio-only)
             start_video_off = props.get("start_video_off")
             if start_video_off is not None:
                 assert start_video_off is True, "Video should be off by default for audio_room"
-            
+
             # Chat should be enabled
             chat = props.get("enable_chat")
             if chat is not None:
                 assert chat is True, "Chat should be enabled for audio_room"
-            
+
             # Recording should be disabled
             recording = props.get("enable_recording")
             if recording is not None:
                 assert recording is False, f"Recording should be disabled, got '{recording}'"
-            
+
             # Screenshare should be disabled
             screenshare = props.get("enable_screenshare")
             if screenshare is not None:
                 assert screenshare is False, "Screenshare should be disabled for audio_room"
-            
+
             # Prejoin should be disabled (fast join)
             prejoin = props.get("enable_prejoin_ui")
             if prejoin is not None:
                 assert prejoin is False, "Prejoin UI should be disabled for audio_room (fast join)"
-            
-            print(f"   ✅ Configuration verified from room response")
+
+            print("   ✅ Configuration verified from room response")
         else:
-            print(f"   ⚠️  Could not verify configuration (properties not in response)")
+            print("   ⚠️  Could not verify configuration (properties not in response)")
 
         # Clean up: Delete the room
         delete_response = client.delete(
@@ -664,11 +668,11 @@ class TestRoomsRouter:
         # Verify room configuration matches workshop profile
         # Get room name for later cleanup
         room_name = data.get("room_name", data["room_id"])
-        
+
         # Check config from creation response first (it already includes config)
         room_config = data.get("config", {})
         props = room_config.get("properties", {})
-        
+
         # If properties not in config, try getting room details
         if not props:
             get_response = client.get(
@@ -681,47 +685,48 @@ class TestRoomsRouter:
             if get_response.status_code == 200:
                 room_config = get_response.json().get("config", {})
                 props = room_config.get("properties", {})
-        
-        # Workshop should have: recording, transcription, live captions, screenshare, breakout rooms, chat, prejoin
+
+        # Workshop should have: recording, transcription, live captions,
+        # screenshare, breakout rooms, chat, prejoin
         if props:
             # Recording should be enabled (cloud recording)
             recording = props.get("enable_recording")
             if recording:
                 assert recording == "cloud", f"Recording should be 'cloud', got '{recording}'"
-            
+
             # Transcription should be enabled
             transcription = props.get("enable_transcription_storage")
             if transcription is not None:
                 assert transcription is True, "Transcription should be enabled for workshop"
-            
+
             # Live captions should be enabled
             live_captions = props.get("enable_live_captions_ui")
             if live_captions is not None:
                 assert live_captions is True, "Live captions should be enabled for workshop"
-            
+
             # Screenshare should be enabled
             screenshare = props.get("enable_screenshare")
             if screenshare is not None:
                 assert screenshare is True, "Screenshare should be enabled for workshop"
-            
+
             # Breakout rooms should be enabled
             breakout_rooms = props.get("enable_breakout_rooms")
             if breakout_rooms is not None:
                 assert breakout_rooms is True, "Breakout rooms should be enabled for workshop"
-            
+
             # Chat should be enabled
             chat = props.get("enable_chat")
             if chat is not None:
                 assert chat is True, "Chat should be enabled for workshop"
-            
+
             # Prejoin should be enabled
             prejoin = props.get("enable_prejoin_ui")
             if prejoin is not None:
                 assert prejoin is True, "Prejoin UI should be enabled for workshop"
-            
-            print(f"   ✅ Configuration verified from room response")
+
+            print("   ✅ Configuration verified from room response")
         else:
-            print(f"   ⚠️  Could not verify configuration (properties not in response)")
+            print("   ⚠️  Could not verify configuration (properties not in response)")
 
         # Clean up: Delete the room
         delete_response = client.delete(
