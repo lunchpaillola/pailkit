@@ -27,6 +27,16 @@ RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "
 class TestRoomsRouter:
     """Test cases for the rooms router."""
 
+    def test_health_requires_authorization(self) -> None:
+        # Missing Authorization should be rejected
+        unauth = client.get("/health")
+        assert unauth.status_code == 401
+        assert "Authorization header required" in unauth.json().get("detail", "")
+
+        # With Authorization it should pass
+        auth = client.get("/health", headers={"Authorization": "Bearer pailkit_test_123"})
+        assert auth.status_code == 200
+
     @patch("routers.rooms.get_provider")
     def test_create_room_with_conversation_profile(self, mock_get_provider: Any) -> None:
         """Test creating a room with conversation profile."""
@@ -55,7 +65,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -95,7 +106,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -133,7 +145,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -177,7 +190,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -198,7 +212,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
-                "X-Provider": "unsupported"
+                "X-Provider": "unsupported",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -229,7 +244,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -254,7 +270,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -267,7 +284,7 @@ class TestRoomsRouter:
         assert "room_id" in data and data["room_id"]
         assert "room_url" in data and data["room_url"]
         assert "https://" in data["room_url"]  # Should be a valid URL
-        print(f"\n✅ Real room created! Room ID: {data['room_id']}")
+        print(f"\n? Real room created! Room ID: {data['room_id']}")
         print(f"   Room URL: {data['room_url']}")
 
         # Clean up: Delete the room
@@ -276,13 +293,14 @@ class TestRoomsRouter:
             f"/api/rooms/delete/{room_name}",
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
         if delete_response.status_code == 200:
-            print(f"🧹 Room {room_name} cleaned up successfully")
+            print(f"?? Room {room_name} cleaned up successfully")
         else:
-            print(f"⚠️  Failed to clean up room {room_name}: {delete_response.json()}")
+            print(f"??  Failed to clean up room {room_name}: {delete_response.json()}")
 
     @pytest.mark.skipif(not RUN_INTEGRATION_TESTS, reason="Integration tests disabled")
     def test_create_room_real_api_broadcast(self) -> None:
@@ -306,7 +324,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -318,7 +337,7 @@ class TestRoomsRouter:
         assert data["profile"] == "broadcast"
         assert "room_id" in data and data["room_id"]
         assert "room_url" in data and data["room_url"]
-        print(f"\n✅ Real broadcast room created! Room ID: {data['room_id']}")
+        print(f"\n? Real broadcast room created! Room ID: {data['room_id']}")
         print(f"   Room URL: {data['room_url']}")
 
         # Clean up: Delete the room
@@ -327,13 +346,14 @@ class TestRoomsRouter:
             f"/api/rooms/delete/{room_name}",
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
         if delete_response.status_code == 200:
-            print(f"🧹 Room {room_name} cleaned up successfully")
+            print(f"?? Room {room_name} cleaned up successfully")
         else:
-            print(f"⚠️  Failed to clean up room {room_name}: {delete_response.json()}")
+            print(f"??  Failed to clean up room {room_name}: {delete_response.json()}")
 
     @pytest.mark.skipif(not RUN_INTEGRATION_TESTS, reason="Integration tests disabled")
     def test_create_room_real_api_podcast(self) -> None:
@@ -352,7 +372,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -364,7 +385,7 @@ class TestRoomsRouter:
         assert data["profile"] == "podcast"
         assert "room_id" in data and data["room_id"]
         assert "room_url" in data and data["room_url"]
-        print(f"\n✅ Real podcast room created! Room ID: {data['room_id']}")
+        print(f"\n? Real podcast room created! Room ID: {data['room_id']}")
         print(f"   Room URL: {data['room_url']}")
 
         # Verify room configuration matches podcast profile
@@ -381,7 +402,8 @@ class TestRoomsRouter:
                 f"/api/rooms/get/{room_name}",
                 headers={
                     "X-Provider-Auth": f"Bearer {daily_api_key}",
-                    "X-Provider": "daily"
+                    "X-Provider": "daily",
+                    "Authorization": "Bearer pailkit_test_123",
                 }
             )
             if get_response.status_code == 200:
@@ -412,22 +434,23 @@ class TestRoomsRouter:
             if screenshare is not None:
                 assert screenshare is False, "Screenshare should be disabled"
 
-            print("   ✅ Configuration verified from room response")
+            print("   ? Configuration verified from room response")
         else:
-            print("   ⚠️  Could not verify configuration (properties not in response)")
+            print("   ??  Could not verify configuration (properties not in response)")
 
         # Clean up: Delete the room
         delete_response = client.delete(
             f"/api/rooms/delete/{room_name}",
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
         if delete_response.status_code == 200:
-            print(f"🧹 Room {room_name} cleaned up successfully")
+            print(f"?? Room {room_name} cleaned up successfully")
         else:
-            print(f"⚠️  Failed to clean up room {room_name}: {delete_response.json()}")
+            print(f"??  Failed to clean up room {room_name}: {delete_response.json()}")
 
     @pytest.mark.skipif(not RUN_INTEGRATION_TESTS, reason="Integration tests disabled")
     def test_create_room_real_api_live_stream(self) -> None:
@@ -453,7 +476,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -465,7 +489,7 @@ class TestRoomsRouter:
         assert data["profile"] == "live_stream"
         assert "room_id" in data and data["room_id"]
         assert "room_url" in data and data["room_url"]
-        print(f"\n✅ Real live_stream room created! Room ID: {data['room_id']}")
+        print(f"\n? Real live_stream room created! Room ID: {data['room_id']}")
         print(f"   Room URL: {data['room_url']}")
 
         # Verify room configuration matches live_stream profile
@@ -482,7 +506,8 @@ class TestRoomsRouter:
                 f"/api/rooms/get/{room_name}",
                 headers={
                     "X-Provider-Auth": f"Bearer {daily_api_key}",
-                    "X-Provider": "daily"
+                    "X-Provider": "daily",
+                    "Authorization": "Bearer pailkit_test_123",
                 }
             )
             if get_response.status_code == 200:
@@ -511,29 +536,30 @@ class TestRoomsRouter:
             # but we verify the room was created successfully which means config was accepted
             rtmp_ingress = props.get("rtmp_ingress")
             if rtmp_ingress:
-                print(f"   ✅ RTMP streaming configured: {rtmp_ingress}")
+                print(f"   ? RTMP streaming configured: {rtmp_ingress}")
             else:
                 print(
-                    "   ℹ️  RTMP configuration not visible in response "
+                    "   ??  RTMP configuration not visible in response "
                     "(may require room update API)"
                 )
 
-            print("   ✅ Configuration verified from room response")
+            print("   ? Configuration verified from room response")
         else:
-            print("   ⚠️  Could not verify configuration (properties not in response)")
+            print("   ??  Could not verify configuration (properties not in response)")
 
         # Clean up: Delete the room
         delete_response = client.delete(
             f"/api/rooms/delete/{room_name}",
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
         if delete_response.status_code == 200:
-            print(f"🧹 Room {room_name} cleaned up successfully")
+            print(f"?? Room {room_name} cleaned up successfully")
         else:
-            print(f"⚠️  Failed to clean up room {room_name}: {delete_response.json()}")
+            print(f"??  Failed to clean up room {room_name}: {delete_response.json()}")
 
     @pytest.mark.skipif(not RUN_INTEGRATION_TESTS, reason="Integration tests disabled")
     def test_create_room_real_api_audio_room(self) -> None:
@@ -552,7 +578,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
 
@@ -564,7 +591,7 @@ class TestRoomsRouter:
         assert data["profile"] == "audio_room"
         assert "room_id" in data and data["room_id"]
         assert "room_url" in data and data["room_url"]
-        print(f"\n✅ Real audio_room created! Room ID: {data['room_id']}")
+        print(f"\n? Real audio_room created! Room ID: {data['room_id']}")
         print(f"   Room URL: {data['room_url']}")
 
         # Verify room configuration matches audio_room profile
@@ -581,7 +608,8 @@ class TestRoomsRouter:
                 f"/api/rooms/get/{room_name}",
                 headers={
                     "X-Provider-Auth": f"Bearer {daily_api_key}",
-                    "X-Provider": "daily"
+                    "X-Provider": "daily",
+                    "Authorization": "Bearer pailkit_test_123",
                 }
             )
             if get_response.status_code == 200:
@@ -616,22 +644,23 @@ class TestRoomsRouter:
             if prejoin is not None:
                 assert prejoin is False, "Prejoin UI should be disabled for audio_room (fast join)"
 
-            print("   ✅ Configuration verified from room response")
+            print("   ? Configuration verified from room response")
         else:
-            print("   ⚠️  Could not verify configuration (properties not in response)")
+            print("   ??  Could not verify configuration (properties not in response)")
 
         # Clean up: Delete the room
         delete_response = client.delete(
             f"/api/rooms/delete/{room_name}",
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": "Bearer pailkit_test_123",
             }
         )
         if delete_response.status_code == 200:
-            print(f"🧹 Room {room_name} cleaned up successfully")
+            print(f"?? Room {room_name} cleaned up successfully")
         else:
-            print(f"⚠️  Failed to clean up room {room_name}: {delete_response.json()}")
+            print(f"??  Failed to clean up room {room_name}: {delete_response.json()}")
 
     @pytest.mark.skipif(not RUN_INTEGRATION_TESTS, reason="Integration tests disabled")
     def test_create_room_real_api_workshop(self) -> None:
@@ -662,7 +691,7 @@ class TestRoomsRouter:
         assert data["profile"] == "workshop"
         assert "room_id" in data and data["room_id"]
         assert "room_url" in data and data["room_url"]
-        print(f"\n✅ Real workshop room created! Room ID: {data['room_id']}")
+        print(f"\n? Real workshop room created! Room ID: {data['room_id']}")
         print(f"   Room URL: {data['room_url']}")
 
         # Verify room configuration matches workshop profile
@@ -724,9 +753,9 @@ class TestRoomsRouter:
             if prejoin is not None:
                 assert prejoin is True, "Prejoin UI should be enabled for workshop"
 
-            print("   ✅ Configuration verified from room response")
+            print("   ? Configuration verified from room response")
         else:
-            print("   ⚠️  Could not verify configuration (properties not in response)")
+            print("   ??  Could not verify configuration (properties not in response)")
 
         # Clean up: Delete the room
         delete_response = client.delete(
@@ -737,6 +766,6 @@ class TestRoomsRouter:
             }
         )
         if delete_response.status_code == 200:
-            print(f"🧹 Room {room_name} cleaned up successfully")
+            print(f"?? Room {room_name} cleaned up successfully")
         else:
-            print(f"⚠️  Failed to clean up room {room_name}: {delete_response.json()}")
+            print(f"??  Failed to clean up room {room_name}: {delete_response.json()}")

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from middleware.unkey_auth import UnkeyAuthMiddleware
 from routers.rooms import router as rooms_router
 
 # Load environment variables
@@ -30,6 +31,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Require Unkey-style Authorization on all routes (including /health and /docs)
+app.add_middleware(UnkeyAuthMiddleware)
 
 # Include routers
 app.include_router(rooms_router, prefix="/api/rooms", tags=["Rooms"])
