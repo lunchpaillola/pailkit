@@ -20,6 +20,10 @@ from main import app  # noqa: E402
 
 client = TestClient(app)
 
+# If an Unkey test secret is provided, use it for Authorization so that
+# middleware verification against Unkey can pass during tests.
+AUTH_KEY = os.getenv("UNKEY_PAILKIT_SECRET", "pailkit_test_123")
+
 # Check if integration tests should run
 RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "true"
 
@@ -34,7 +38,7 @@ class TestRoomsRouter:
         assert "Authorization header required" in unauth.json().get("detail", "")
 
         # With Authorization it should pass
-        auth = client.get("/health", headers={"Authorization": "Bearer pailkit_test_123"})
+        auth = client.get("/health", headers={"Authorization": f"Bearer {AUTH_KEY}"})
         assert auth.status_code == 200
 
     @patch("routers.rooms.get_provider")
@@ -66,7 +70,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -107,7 +111,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -146,7 +150,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -191,7 +195,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
