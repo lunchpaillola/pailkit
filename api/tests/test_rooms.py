@@ -217,7 +217,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
                 "X-Provider": "unsupported",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -249,7 +249,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": "Bearer test-api-key-123",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -275,7 +275,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -298,7 +298,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
         if delete_response.status_code == 200:
@@ -329,7 +329,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -351,7 +351,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
         if delete_response.status_code == 200:
@@ -377,7 +377,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -407,7 +407,7 @@ class TestRoomsRouter:
                 headers={
                     "X-Provider-Auth": f"Bearer {daily_api_key}",
                     "X-Provider": "daily",
-                    "Authorization": "Bearer pailkit_test_123",
+                    "Authorization": f"Bearer {AUTH_KEY}",
                 }
             )
             if get_response.status_code == 200:
@@ -448,7 +448,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
         if delete_response.status_code == 200:
@@ -459,13 +459,16 @@ class TestRoomsRouter:
     @pytest.mark.skipif(not RUN_INTEGRATION_TESTS, reason="Integration tests disabled")
     def test_create_room_real_api_live_stream(self) -> None:
         """Integration test: Create a real room with live_stream profile using Daily.co API."""
-        # Test with RTMP URL override (user can provide their own URL)
-        # For now, using placeholder that will be verified later
+        # Require a real RTMP URL via environment to avoid provider errors
+        rtmp_url = os.getenv("DAILY_RTMP_URL")
+        if not rtmp_url:
+            pytest.skip("DAILY_RTMP_URL environment variable not set")
+
         room_data = {
             "profile": "live_stream",
             "overrides": {
                 "capabilities": {
-                    "rtmp_url": "rtmp://placeholder.rtmp.server/app/stream_key"
+                    "rtmp_url": rtmp_url
                 }
             }
         }
@@ -481,7 +484,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -511,7 +514,7 @@ class TestRoomsRouter:
                 headers={
                     "X-Provider-Auth": f"Bearer {daily_api_key}",
                     "X-Provider": "daily",
-                    "Authorization": "Bearer pailkit_test_123",
+                    "Authorization": f"Bearer {AUTH_KEY}",
                 }
             )
             if get_response.status_code == 200:
@@ -557,7 +560,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
         if delete_response.status_code == 200:
@@ -583,7 +586,7 @@ class TestRoomsRouter:
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
                 "X-Provider": "daily",
-                "Authorization": "Bearer pailkit_test_123",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 
@@ -683,7 +686,8 @@ class TestRoomsRouter:
             json=room_data,
             headers={
                 "X-Provider-Auth": f"Bearer {daily_api_key}",
-                "X-Provider": "daily"
+                "X-Provider": "daily",
+                "Authorization": f"Bearer {AUTH_KEY}",
             }
         )
 

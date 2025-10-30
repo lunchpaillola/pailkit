@@ -364,7 +364,7 @@ RUN_INTEGRATION_TESTS=true python3.12 -m pytest tests/test_rooms.py::TestRoomsRo
 
 ---
 
-### 3. Add Rate Limiting and Abuse Protection with Unkey
+### 3. ✅ Add Rate Limiting and Abuse Protection with Unkey
 
 **Goal:** Prevent abuse by requiring API keys for all access using Unkey as the key management layer.
 
@@ -374,14 +374,14 @@ RUN_INTEGRATION_TESTS=true python3.12 -m pytest tests/test_rooms.py::TestRoomsRo
 - **Rate limiting**: 1,000 requests/minute per key (Unkey enforced)
 - **Hard cap**: 150,000 requests/month total (Unkey free tier protection)
 
-#### Implementation Tasks
+#### Implementation Tasks (Completed)
 
-1. Add `unkey-py` to `api/requirements.txt`
-2. Create Unkey middleware that requires valid PailKit key for all requests
-3. Update router to check `Authorization: Bearer pailkit_xxx` header
-4. Create initial PailKit keys via Unkey dashboard for early users
-5. Add tests for key verification and rate limiting behavior
-6. Update error messages to guide users to get PailKit keys
+- [x] Add `unkey-py` to `api/requirements.txt`
+- [x] Create Unkey middleware that requires valid PailKit key for all requests
+- [x] Update router to check `Authorization: Bearer pailkit_xxx` header
+- [x] Create initial PailKit keys via Unkey dashboard for early users
+- [x] Add tests for key verification and rate limiting behavior
+- [x] Update error messages to guide users to get PailKit keys
 
 #### Key Design Decisions
 
@@ -390,14 +390,16 @@ RUN_INTEGRATION_TESTS=true python3.12 -m pytest tests/test_rooms.py::TestRoomsRo
 - **Unkey handles storage** - no database needed for keys
 - **Helpful errors** - when key invalid/missing, guide to Unkey
 
-#### Files to Modify/Create
+#### Files Modified/Created
 
-- `api/requirements.txt` — add `unkey-py`
-- `api/middleware/unkey_auth.py` — new (required key verification)
-- `api/main.py` — add Unkey middleware to all routes
-- `api/routers/rooms.py` — remove public access, require keys
-- `api/tests/test_rooms.py` — add key-required tests
-- `scripts/setup_unkey.py` — utility to create initial keys
+- [x] `api/requirements.txt` — add `unkey-py`
+- [x] `api/middleware/unkey_auth.py` — new (required key verification)
+- [x] `api/main.py` — add Unkey middleware to all routes
+- [x] `api/routers/rooms.py` — remove public access, require keys
+- [x] `api/tests/test_rooms.py` — add key-required tests
+- [x] `scripts/setup_unkey.py` — utility to create initial keys
+
+**Status:** ✅ Complete
 
 **Priority:** Do this before Docker/Fly deployment - no anonymous access allowed.
 

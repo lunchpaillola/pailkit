@@ -54,8 +54,8 @@ class UnkeyAuthMiddleware:
                 status_code=401,
                 content={
                     "detail": (
-                        "Authorization header required. Use 'Authorization: Bearer <your_api_key>'. "
-                        "Request a key and include it as a Bearer token."
+                        "Authorization header required. Use 'Authorization: Bearer <your_api_key>'."
+                        " Request a key and include it as a Bearer token."
                     )
                 },
             )
@@ -77,7 +77,7 @@ class UnkeyAuthMiddleware:
             try:
                 # Lazy import to avoid hard dependency during startup in environments
                 # that don't need verification.
-                import httpx  # type: ignore
+                import httpx
 
                 verify_url = "https://api.unkey.com/v2/keys.verifyKey"
                 payload = {"key": token}
