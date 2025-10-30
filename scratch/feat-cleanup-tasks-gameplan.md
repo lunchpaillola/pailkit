@@ -364,40 +364,42 @@ RUN_INTEGRATION_TESTS=true python3.12 -m pytest tests/test_rooms.py::TestRoomsRo
 
 ---
 
-### 3. Add Rate Limiting and Abuse Protection
+### 3. Add Rate Limiting and Abuse Protection with Unkey
 
-**Goal:** Prevent abuse while keeping API accessible for legitimate builders.
+**Goal:** Prevent abuse by requiring API keys for all access using Unkey as the key management layer.
 
-#### Two-Tier Architecture
+#### Key-Required Architecture
 
-- **Tier 1 (Public)**: 10 requests/minute per IP — for casual testing
-- **Tier 2 (Registered)**: 1,000 requests/minute per PailKit API key — for builders
+- **No public tier** - every request needs `Authorization: Bearer pailkit_xxx`
+- **Rate limiting**: 1,000 requests/minute per key (Unkey enforced)
+- **Hard cap**: 150,000 requests/month total (Unkey free tier protection)
 
 #### Implementation Tasks
 
-1. Add `slowapi` to `api/requirements.txt`
-2. Create rate limiting middleware that checks `Authorization: Bearer pailkit_xxx` header
-3. Update router with dynamic limits (public vs key-auth)
-4. Generate initial PailKit keys for testing
-5. Add tests for both tiers (throttle behavior and helpful error body)
+1. Add `unkey-py` to `api/requirements.txt`
+2. Create Unkey middleware that requires valid PailKit key for all requests
+3. Update router to check `Authorization: Bearer pailkit_xxx` header
+4. Create initial PailKit keys via Unkey dashboard for early users
+5. Add tests for key verification and rate limiting behavior
+6. Update error messages to guide users to get PailKit keys
 
 #### Key Design Decisions
 
-- **Auth header for PailKit keys**: `Authorization: Bearer pailkit_xxx` (standard)
-- **Keep `X-Provider-Auth`** for provider keys (no breaking changes)
-- **In-memory key store for now**, upgradeable to Redis later
-- **Rate limit exceeded** response should guide users to get a PailKit key
+- **No IP-based limiting** - Unkey handles all rate limiting
+- **Key required for all endpoints** - including `/health` and `/docs`
+- **Unkey handles storage** - no database needed for keys
+- **Helpful errors** - when key invalid/missing, guide to Unkey
 
 #### Files to Modify/Create
 
-- `api/requirements.txt` — add `slowapi`
-- `api/middleware/rate_limiter.py` — new
-- `api/main.py` — add rate limiting setup
-- `api/routers/rooms.py` — add dynamic rate limit decorators
-- `scripts/generate_pailkit_key.py` — utility script
-- `api/tests/test_rooms.py` — add tests for both tiers
+- `api/requirements.txt` — add `unkey-py`
+- `api/middleware/unkey_auth.py` — new (required key verification)
+- `api/main.py` — add Unkey middleware to all routes
+- `api/routers/rooms.py` — remove public access, require keys
+- `api/tests/test_rooms.py` — add key-required tests
+- `scripts/setup_unkey.py` — utility to create initial keys
 
-**Priority:** Do this before Docker/Fly deployment to protect against abuse from day one.
+**Priority:** Do this before Docker/Fly deployment - no anonymous access allowed.
 
 ---
 
