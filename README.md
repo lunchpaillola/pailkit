@@ -59,7 +59,7 @@ Follow along, contribute ideas, or request new building blocks on the [PailKit b
 
 ### 🚧 Status
 
-Work in progress. Expect experiments, iteration, and plenty of learning in public.
+Work in progress. Expect experiments, iteration, and plenty of learning in public. If you want to try it out, send a request for access (**PailKit API key**) and we’ll get you set up: [grab an API key](mailto:help@lunchpaillabs.com?subject=PailKit%20API%20Key%20Request).
 
 ---
 
