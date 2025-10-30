@@ -1,12 +1,11 @@
 """
 Unkey Authentication and Rate Limiting Middleware.
 
-Requires an `Authorization: Bearer pailkit_...` key on all requests.
+Requires an `Authorization: Bearer <key>` header on all requests.
 
-This middleware is structured to integrate with Unkey for verification and
-rate limiting when Unkey credentials are provided via environment variables.
-In local/dev without Unkey configured, it still enforces the presence and
-format of a PailKit key to avoid accidental anonymous usage.
+When Unkey credentials are provided via environment variables, the presented
+key is verified against Unkey. In local/dev without Unkey configured, the
+middleware only enforces the presence of the header.
 """
 
 from __future__ import annotations
@@ -55,8 +54,8 @@ class UnkeyAuthMiddleware:
                 status_code=401,
                 content={
                     "detail": (
-                        "Authorization header required. Use 'Authorization: Bearer pailkit_xxx'. "
-                        "Get a key from the PailKit dashboard (Unkey)."
+                        "Authorization header required. Use 'Authorization: Bearer <your_api_key>'. "
+                        "Request a key and include it as a Bearer token."
                     )
                 },
             )
@@ -65,29 +64,55 @@ class UnkeyAuthMiddleware:
 
         token = auth_header[7:].strip()
 
-        # Minimal local validation: enforce prefix to avoid accidental leakage of other tokens
-        if not token or not token.startswith("pailkit_"):
+        if not token:
             response = JSONResponse(
                 status_code=401,
-                content={
-                    "detail": (
-                        "Invalid API key format. Expected key starting with 'pailkit_'. "
-                        "Get a valid key from the PailKit dashboard (Unkey)."
-                    )
-                },
+                content={"detail": "Empty Bearer token provided."},
             )
             await response(scope, receive, send)
             return
 
-        # Optional: If Unkey SDK and credentials are available, this is where
-        # verification + rate limit check would occur. We keep it non-blocking
-        # for local/dev without credentials.
-        #
-        # Pseudocode (left disabled until credentials exist):
-        # if self._unkey_sdk and self.unkey_api_id and self.unkey_root_key:
-        #     is_valid = await verify_with_unkey(token)
-        #     if not is_valid:
-        #         return 401
-        #     # Unkey would also enforce per-key rate limits server-side.
+        # If Unkey credentials are available, verify the key via Unkey's API.
+        if self.unkey_root_key:
+            try:
+                # Lazy import to avoid hard dependency during startup in environments
+                # that don't need verification.
+                import httpx  # type: ignore
+
+                verify_url = "https://api.unkey.com/v2/keys.verifyKey"
+                payload = {"key": token}
+                headers = {
+                    "Authorization": f"Bearer {self.unkey_root_key}",
+                    "Content-Type": "application/json",
+                }
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.post(verify_url, json=payload, headers=headers)
+                if resp.status_code >= 400:
+                    response = JSONResponse(
+                        status_code=401,
+                        content={
+                            "detail": "API key verification failed with Unkey.",
+                            "upstream_status": resp.status_code,
+                        },
+                    )
+                    await response(scope, receive, send)
+                    return
+
+                data = resp.json().get("data", {})
+                if not data.get("valid"):
+                    response = JSONResponse(
+                        status_code=401,
+                        content={"detail": "Invalid API key."},
+                    )
+                    await response(scope, receive, send)
+                    return
+            except Exception:
+                # Fail closed if verification was intended but errored.
+                response = JSONResponse(
+                    status_code=401,
+                    content={"detail": "Could not verify API key at this time."},
+                )
+                await response(scope, receive, send)
+                return
 
         await self.app(scope, receive, send)
