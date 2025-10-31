@@ -9,35 +9,26 @@ rather than provider-specific implementation details.
 from typing import Any
 
 BASE_CONFIG = {
-    "media": {
-        "video": True,
-        "audio": True,
-        "screenshare_capable": True
-    },
+    "media": {"video": True, "audio": True, "screenshare_capable": True},
     "capabilities": {
         "chat": True,
         "recording": False,
         "transcription": False,
         "live_captions": False,
         "rtmp_streaming": False,  # For live streaming to external platforms
-        "breakout_rooms": False
+        "breakout_rooms": False,
     },
     "interaction": {
         "prejoin": True,
         "broadcast_mode": False,  # One person broadcasts, others watch
-        "knocking": False  # Require approval to join
+        "knocking": False,  # Require approval to join
     },
-    "access": {
-        "privacy": "public",  # "public" or "private"
-        "max_participants": None
-    },
+    "access": {"privacy": "public", "max_participants": None},  # "public" or "private"
     "lifespan": {
         "expires_in": None,  # seconds, None = doesn't expire
-        "eject_at_expiry": False  # Kick everyone out when room expires
+        "eject_at_expiry": False,  # Kick everyone out when room expires
     },
-    "localization": {
-        "lang": "en"
-    }
+    "localization": {"lang": "en"},
 }
 
 
@@ -75,4 +66,3 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
             result[key] = value
 
     return result
-

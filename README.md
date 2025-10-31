@@ -1,6 +1,6 @@
 # 🧰 PailKit
 
-Tools for builders. Built by [Lunch Pail Labs](https://www.lunchpaillabs.com).  
+Tools for builders. Built by [Lunch Pail Labs](https://www.lunchpaillabs.com).
 We’re taking [Lunch Pail add-ons](https://addons.lunchpaillabs.com), expanding them, breaking them free, and making them usable anywhere.
 
 PailKit is a growing collection of clean, composable building blocks for creating products —  APIs, widgets, and MCPs designed to work well with humans or AI.
@@ -16,7 +16,7 @@ For the people who want to be better: engineers, product thinkers, creators.
 
 We value:
 
-* Teaching what we know 
+* Teaching what we know
 * Defaults shaped by real product decisions
 * Honesty about what works and what doesn’t
 * Transparency in how things are built
@@ -59,7 +59,7 @@ Follow along, contribute ideas, or request new building blocks on the [PailKit b
 
 ### 🚧 Status
 
-Work in progress. Expect experiments, iteration, and plenty of learning in public.
+Work in progress. Expect experiments, iteration, and plenty of learning in public. If you want to try it out, send a request for access (**PailKit API key**) and we’ll get you set up: [grab an API key](mailto:help@lunchpaillabs.com?subject=PailKit%20API%20Key%20Request).
 
 ---
 
@@ -87,4 +87,3 @@ A single API and MCP interface for creating and managing rooms — for video, au
 
 * [ ] `/api/schedule/create` — create events and link to rooms
 * [ ] `/mcp/schedule/create_event` — agent-callable
-

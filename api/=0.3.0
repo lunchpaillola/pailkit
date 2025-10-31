@@ -1,7 +1,0 @@
-Collecting ruff
-  Downloading ruff-0.14.2-py3-none-macosx_11_0_arm64.whl.metadata (25 kB)
-Downloading ruff-0.14.2-py3-none-macosx_11_0_arm64.whl (11.9 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 11.9/11.9 MB 12.3 MB/s eta 0:00:00
-
-Installing collected packages: ruff
-Successfully installed ruff-0.14.2

@@ -46,4 +46,3 @@ site/
 # Misc
 .env.local
 .env.*.local
-

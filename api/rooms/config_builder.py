@@ -53,4 +53,3 @@ def build_config(
         config = deep_merge(config, overrides)
 
     return config
-
