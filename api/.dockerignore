@@ -1,0 +1,53 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Testing
+tests/
+*.pytest_cache/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Development tools and configs
+mypy.ini
+ruff.toml
+.pre-commit-config.yaml
+
+# Git
+.git/
+.gitignore
+
+# Environment files (keep env.example but ignore .env)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local cache and temporary files
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Documentation
+*.md
+README.md
+
+# Other
+scratch/
+*.bak
+*.tmp
