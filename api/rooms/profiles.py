@@ -100,7 +100,6 @@ PROFILE_LIVE_STREAM: dict[str, Any] = deep_merge(BASE_CONFIG, {
 
 # Workshop profile - Interactive collaborative session
 # Use case: Classes, training sessions, collaborative workshops
-# TODO: Implement this profile
 PROFILE_WORKSHOP: dict[str, Any] = deep_merge(BASE_CONFIG, {
     "capabilities": {
         "chat": True,
