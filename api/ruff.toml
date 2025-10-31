@@ -25,4 +25,3 @@ exclude = [
     ".mypy_cache",
     ".pytest_cache",
 ]
-

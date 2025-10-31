@@ -44,7 +44,7 @@ class DailyRooms:
         return {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "Authorization": auth_header
+            "Authorization": auth_header,
         }
 
     def to_daily_config(self, pail_config: dict[str, Any]) -> dict[str, Any]:
@@ -86,9 +86,8 @@ class DailyRooms:
 
         # Map capability settings to Daily's properties
         daily_properties["enable_chat"] = capabilities.get("chat", False)
-        screenshare_enabled = (
-            capabilities.get("screenshare", True) and
-            media.get("screenshare_capable", True)
+        screenshare_enabled = capabilities.get("screenshare", True) and media.get(
+            "screenshare_capable", True
         )
         daily_properties["enable_screenshare"] = screenshare_enabled
 
@@ -136,9 +135,7 @@ class DailyRooms:
             if rtmp_url:
                 # Configure RTMP streaming with provided URL
                 # Daily.co uses rtmp_ingress property for RTMP streaming to external platforms
-                daily_properties["rtmp_ingress"] = {
-                    "rtmp_url": rtmp_url
-                }
+                daily_properties["rtmp_ingress"] = {"rtmp_url": rtmp_url}
             else:
                 # Placeholder RTMP URL - user will verify later
                 # Format: rtmp://[server]/app/stream_key
@@ -155,16 +152,14 @@ class DailyRooms:
         if lifespan.get("expires_in") is not None:
             # expires_in is in seconds, Daily expects timestamp
             import time
+
             daily_properties["exp"] = int(time.time()) + lifespan["expires_in"]
 
         if lifespan.get("eject_at_expiry", False):
             daily_properties["eject_at_room_exp"] = True
 
         # Build the request payload, only including fields with actual values
-        result = {
-            "properties": daily_properties,
-            "privacy": privacy
-        }
+        result = {"properties": daily_properties, "privacy": privacy}
 
         # Only include max_participants if it's actually set (not None)
         if max_participants is not None:
@@ -173,9 +168,7 @@ class DailyRooms:
         return result
 
     async def create_room(
-        self,
-        profile: str = "conversation",
-        overrides: dict[str, Any] | None = None
+        self, profile: str = "conversation", overrides: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """
         Create a room using Daily.co with profile-based configuration.
@@ -200,7 +193,7 @@ class DailyRooms:
                     f"{self.base_url}/rooms",
                     headers=self._get_headers(),
                     json=daily_config,
-                    timeout=30.0
+                    timeout=30.0,
                 )
 
                 response.raise_for_status()
@@ -223,7 +216,7 @@ class DailyRooms:
                     "config": result.get("config", {}),
                     "privacy": result.get("privacy"),
                     "profile": profile,
-                    "message": "Room created successfully"
+                    "message": "Room created successfully",
                 }
 
         except httpx.HTTPStatusError as e:
@@ -238,14 +231,14 @@ class DailyRooms:
                 "success": False,
                 "room_id": "",
                 "provider": self.provider,
-                "message": f"Daily API error: {error_detail}"
+                "message": f"Daily API error: {error_detail}",
             }
         except Exception as e:
             return {
                 "success": False,
                 "room_id": "",
                 "provider": self.provider,
-                "message": f"Failed to create room: {str(e)}"
+                "message": f"Failed to create room: {str(e)}",
             }
 
     async def get_room(self, room_name: str) -> dict[str, Any]:
@@ -260,7 +253,7 @@ class DailyRooms:
                 response = await client.get(
                     f"{self.base_url}/rooms/{room_name}",
                     headers=self._get_headers(),
-                    timeout=30.0
+                    timeout=30.0,
                 )
 
                 response.raise_for_status()
@@ -272,7 +265,7 @@ class DailyRooms:
                     "provider": self.provider,
                     "room_url": result.get("url"),
                     "config": result.get("config", {}),
-                    "message": "Room details retrieved successfully"
+                    "message": "Room details retrieved successfully",
                 }
         except httpx.HTTPStatusError as e:
             error_detail = "Unknown error"
@@ -286,14 +279,14 @@ class DailyRooms:
                 "success": False,
                 "room_name": room_name,
                 "provider": self.provider,
-                "message": f"Daily API error: {error_detail}"
+                "message": f"Daily API error: {error_detail}",
             }
         except Exception as e:
             return {
                 "success": False,
                 "room_name": room_name,
                 "provider": self.provider,
-                "message": f"Failed to get room: {str(e)}"
+                "message": f"Failed to get room: {str(e)}",
             }
 
     async def delete_room(self, room_name: str) -> dict[str, Any]:
@@ -308,7 +301,7 @@ class DailyRooms:
                 response = await client.delete(
                     f"{self.base_url}/rooms/{room_name}",
                     headers=self._get_headers(),
-                    timeout=30.0
+                    timeout=30.0,
                 )
 
                 response.raise_for_status()
@@ -317,7 +310,7 @@ class DailyRooms:
                     "success": True,
                     "room_name": room_name,
                     "provider": self.provider,
-                    "message": "Room deleted successfully"
+                    "message": "Room deleted successfully",
                 }
         except httpx.HTTPStatusError as e:
             error_detail = "Unknown error"
@@ -331,12 +324,12 @@ class DailyRooms:
                 "success": False,
                 "room_name": room_name,
                 "provider": self.provider,
-                "message": f"Daily API error: {error_detail}"
+                "message": f"Daily API error: {error_detail}",
             }
         except Exception as e:
             return {
                 "success": False,
                 "room_name": room_name,
                 "provider": self.provider,
-                "message": f"Failed to delete room: {str(e)}"
+                "message": f"Failed to delete room: {str(e)}",
             }

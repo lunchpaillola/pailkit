@@ -1,0 +1,47 @@
+# Python pre-commit hooks for PailKit
+repos:
+  # Black - Python code formatter
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+        language_version: python3.12
+        files: ^api/|^mcp/
+
+  # Ruff - Fast Python linter and import sorter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.3
+    hooks:
+      - id: ruff
+        args: [--fix]  # Fix all issues including import sorting
+        files: ^api/|^mcp/
+
+  # MyPy - Type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports]
+        files: ^api/
+
+  # General file quality checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  # Run your tests (regular tests only, not integration tests)
+  # Integration tests are skipped by default (require RUN_INTEGRATION_TESTS=true)
+  - repo: local
+    hooks:
+      - id: pytest-check
+        name: pytest-check
+        entry: bash -c 'cd api && if [ -f venv/bin/pytest ]; then PYTHONPATH=. venv/bin/pytest tests/test_rooms.py -v; elif command -v python3.12 &> /dev/null; then PYTHONPATH=. python3.12 -m pytest tests/test_rooms.py -v; else PYTHONPATH=. python3 -m pytest tests/test_rooms.py -v; fi'
+        language: system
+        files: ^api/
+        pass_filenames: false
+        always_run: false

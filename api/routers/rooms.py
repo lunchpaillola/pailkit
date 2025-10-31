@@ -31,6 +31,7 @@ class RoomCreateRequest(BaseModel):
     Note: Provider is specified via X-Provider header, not in the request body.
     This keeps authentication and provider selection together in headers.
     """
+
     profile: str = "conversation"
     overrides: dict[str, Any] | None = None
 
@@ -57,14 +58,16 @@ def get_provider(provider_name: str, api_key: str) -> DailyRooms:
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported provider: {provider_name}. Supported: daily"
+            detail=f"Unsupported provider: {provider_name}. Supported: daily",
         )
 
 
 @router.post("/create")
 async def create_room(
     request: RoomCreateRequest,
-    x_provider_auth: str = Header(..., description="Provider API key (Bearer token or raw key)"),
+    x_provider_auth: str = Header(
+        ..., description="Provider API key (Bearer token or raw key)"
+    ),
     x_provider: str = Header("daily", description="Provider name (default: daily)"),
 ) -> dict[str, Any]:
     """
@@ -120,7 +123,7 @@ async def create_room(
         if not api_key:
             raise HTTPException(
                 status_code=401,
-                detail="X-Provider-Auth header is required. Provide your provider API key."
+                detail="X-Provider-Auth header is required. Provide your provider API key.",
             )
 
         # Create provider instance with user's API key
@@ -128,8 +131,7 @@ async def create_room(
 
         # Create the room with profile-based API
         result: dict[str, Any] = await provider.create_room(
-            profile=request.profile,
-            overrides=request.overrides
+            profile=request.profile, overrides=request.overrides
         )
 
         if not result["success"]:
@@ -139,13 +141,17 @@ async def create_room(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create room: {str(e)}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create room: {str(e)}"
+        ) from e
 
 
 @router.delete("/delete/{room_name}")
 async def delete_room(
     room_name: str,
-    x_provider_auth: str = Header(..., description="Provider API key (Bearer token or raw key)"),
+    x_provider_auth: str = Header(
+        ..., description="Provider API key (Bearer token or raw key)"
+    ),
     x_provider: str = Header("daily", description="Provider name (default: daily)"),
 ) -> dict[str, Any]:
     """
@@ -182,7 +188,7 @@ async def delete_room(
         if not api_key:
             raise HTTPException(
                 status_code=401,
-                detail="X-Provider-Auth header is required. Provide your provider API key."
+                detail="X-Provider-Auth header is required. Provide your provider API key.",
             )
 
         # Create provider instance with user's API key
@@ -198,13 +204,17 @@ async def delete_room(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete room: {str(e)}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete room: {str(e)}"
+        ) from e
 
 
 @router.get("/get/{room_name}")
 async def get_room(
     room_name: str,
-    x_provider_auth: str = Header(..., description="Provider API key (Bearer token or raw key)"),
+    x_provider_auth: str = Header(
+        ..., description="Provider API key (Bearer token or raw key)"
+    ),
     x_provider: str = Header("daily", description="Provider name (default: daily)"),
 ) -> dict[str, Any]:
     """
@@ -238,7 +248,7 @@ async def get_room(
         if not api_key:
             raise HTTPException(
                 status_code=401,
-                detail="X-Provider-Auth header is required. Provide your provider API key."
+                detail="X-Provider-Auth header is required. Provide your provider API key.",
             )
 
         # Create provider instance with user's API key
@@ -254,4 +264,6 @@ async def get_room(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get room: {str(e)}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get room: {str(e)}"
+        ) from e
