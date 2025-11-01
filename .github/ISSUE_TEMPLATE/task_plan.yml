@@ -1,0 +1,60 @@
+name: "? Task Plan"
+description: "Create a phased execution task using the standard plan format"
+title: "[Task]: "
+labels: ["task", "planning"]
+assignees: []
+body:
+  - type: textarea
+    id: plan
+    attributes:
+      label: "Task Plan"
+      description: "Fill out the sections below. Keep it crisp; make steps literal and shippable."
+      value: |
+        # ? Template
+
+        ### **Goal**
+
+        *(What outcome are we driving toward?)*
+
+        Rewrite from {{ raw notes }} in 1?3 sentences.
+
+        State what the task is, why it matters, and the intended outcome.
+
+        ---
+
+        ### **Phases**
+
+        *(Logical milestones or chunks to reach the goal)*
+
+        1. [Phase 1 Name]
+        2. [Phase 2 Name]
+        3. [Phase 3 Name]
+        4. [Add/remove as needed]
+
+        ---
+
+        ### **Do**
+
+        *(Executable actions grouped by phase ? each item should be a literal, shippable step.)*
+
+        ### **Phase 1 ? [Phase 1 Name]**
+
+        - [ ] step 1
+        - [ ] step 2
+
+        ### **Phase 2 ? [Phase 2 Name]**
+
+        - [ ] step 1
+        - [ ] step 2
+
+        ### **Phase 3 ? [Phase 3 Name]**
+
+        - [ ] step 1
+        - [ ] step 2
+
+        ### **Phase 4 ? [Phase 4 Name]**
+
+        - [ ] step 1
+        - [ ] step 2
+    validations:
+      required: true
