@@ -18,7 +18,7 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from providers.rooms.daily import DailyRooms
+from rooms.providers.daily import DailyRooms
 
 router = APIRouter()
 
