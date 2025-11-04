@@ -3,7 +3,7 @@
 Tools for builders. Built by [Lunch Pail Labs](https://www.lunchpaillabs.com).
 We’re taking [Lunch Pail add-ons](https://addons.lunchpaillabs.com), expanding them, breaking them free, and making them usable anywhere.
 
-PailKit is a growing collection of clean, composable building blocks for creating products —  APIs, widgets, and MCPs designed to work well with humans or AI.
+PailKit is a growing collection of clean, composable building blocks for creating products. APIs, widgets, and MCPs designed to work well with humans or AI.
 
 
 ---
