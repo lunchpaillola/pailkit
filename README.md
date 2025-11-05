@@ -69,18 +69,12 @@ Work in progress. Expect experiments, iteration, and plenty of learning in publi
 The first building block of PailKit.
 A single API and MCP interface for creating and managing rooms — for video, audio, or live collaboration.
 
-* [ ] `POST /api/rooms/create` — create a room in one call
+* [x] `POST /api/rooms/create` — create a room in one call
+* [x] `/api/transcribe` — upload or stream audio/video and get a transcript
+
+
+**v0.2 — MCPs
+
 * [ ] `/mcp/rooms/create_room` — agent-callable version
-
-
-**v0.2 — Transcription**
-
-* [ ] `/api/transcribe` — upload or stream audio/video and get a transcript
 * [ ] `/mcp/transcribe` — agent-callable capability
 
-
-
-**v0.3 — Scheduling**
-
-* [ ] `/api/schedule/create` — create events and link to rooms
-* [ ] `/mcp/schedule/create_event` — agent-callable
