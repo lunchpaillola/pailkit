@@ -7,8 +7,9 @@ This is the single source of truth for config composition across all adapters.
 
 from typing import Any
 
-from rooms.config_schema import BASE_CONFIG, deep_merge
+from rooms.config_schema import BASE_CONFIG
 from rooms.profiles import PROFILES
+from utils import deep_merge
 
 
 def build_config(
@@ -40,13 +41,13 @@ def build_config(
     # Step 1: Start with base configuration
     config = BASE_CONFIG.copy()
 
-    # Step 2: Apply profile overrides if the profile exists
-    if profile in PROFILES:
-        profile_config = PROFILES[profile]
-        config = deep_merge(config, profile_config)
-    else:
-        # If invalid profile, fall back to base (could also raise an error)
-        pass
+    # Step 2: Apply profile overrides
+    if profile not in PROFILES:
+        raise ValueError(
+            f"Invalid profile: {profile}. Valid profiles are: {sorted(PROFILES.keys())}"
+        )
+    profile_config = PROFILES[profile]
+    config = deep_merge(config, profile_config)
 
     # Step 3: Apply user-provided overrides if any
     if overrides:

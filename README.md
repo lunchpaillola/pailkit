@@ -73,9 +73,6 @@ A single API and MCP interface for creating and managing rooms — for video, au
 * [ ] `/mcp/rooms/create_room` — agent-callable version
 
 
-🔗 [Share feedback or request features →](https://lunchpaillabs.canny.io/feature-requests?selectedCategory=pailkit)
-
-
 **v0.2 — Transcription**
 
 * [ ] `/api/transcribe` — upload or stream audio/video and get a transcript
