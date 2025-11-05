@@ -84,12 +84,12 @@ def get_provider(provider_name: str, api_key: str) -> TranscriptionProvider:
     Create a transcription provider instance with user-provided API key.
 
     **Simple Explanation:**
-    This function creates a transcription service connection (like Deepgram)
+    This function creates a transcription service connection (like Deepgram or Daily.co)
     using the user's API key. Think of it like connecting to a service
     using your account credentials.
 
     Args:
-        provider_name: Provider identifier (e.g., "deepgram", "assemblyai")
+        provider_name: Provider identifier (e.g., "deepgram", "assemblyai", "daily")
         api_key: User's provider API key
 
     Returns:
@@ -97,23 +97,24 @@ def get_provider(provider_name: str, api_key: str) -> TranscriptionProvider:
 
     Raises:
         HTTPException: If provider is unsupported or not yet implemented
-
-    Note:
-        Currently no providers are implemented. This will raise an error
-        until a provider is added (e.g., Deepgram, AssemblyAI).
     """
-    # TODO: Add provider implementations as they are created
-    # Normalize provider name to lowercase for consistent matching when providers are added
+    # Normalize provider name to lowercase for consistent matching
     _normalized_provider = provider_name.lower().strip()
+
+    if _normalized_provider == "daily":
+        from transcribe.providers.daily import DailyTranscription
+
+        return DailyTranscription(api_key=api_key)
+    # TODO: Add other provider implementations as they are created
     # Example:
-    # if normalized_provider == "deepgram":
+    # elif _normalized_provider == "deepgram":
     #     from transcribe.providers.deepgram import DeepgramProvider
     #     return DeepgramProvider(api_key=api_key)
 
     raise HTTPException(
         status_code=400,
         detail=f"Transcription provider not yet implemented: {provider_name}. "
-        "Supported providers will be added in future updates.",
+        "Supported providers: daily. More providers will be added in future updates.",
     )
 
 

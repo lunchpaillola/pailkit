@@ -62,4 +62,8 @@ def build_config(
         if redact_value is not None:
             validate_redact(redact_value)
 
+    # Step 5: Add profile name to config for provider-specific model mapping
+    # This allows providers to map profiles to their own model names
+    config["profile"] = profile
+
     return config
