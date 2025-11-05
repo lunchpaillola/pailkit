@@ -8,59 +8,50 @@ rather than provider-specific implementation details.
 
 from typing import Any
 
-BASE_TRANSCRIPTION_CONFIG = {
-    "language": "en",  # Language code (ISO 639-1)
-    "model": "nova-2",  # Transcription model to use
-    "features": {
-        "punctuation": True,  # Add punctuation to transcript
-        "profanity_filter": False,  # Filter out profanity
-        "speaker_diarization": False,  # Identify different speakers
-        "sentiment_analysis": False,  # Analyze sentiment of speech
-        "keyword_detection": False,  # Detect specific keywords
-    },
-    "output": {
-        "format": "text",  # Output format: "text", "json", "srt", "vtt"
-        "include_timestamps": False,  # Include timestamps in output
-        "include_speaker_labels": False,  # Include speaker labels (requires diarization)
-    },
-    "targeting": {
-        "scope": "all",  # What to transcribe: "all", "speakers", "audio_only"
-        "speaker_ids": None,  # Specific speaker IDs to transcribe (if scope is "speakers")
-    },
+CORE_LANGUAGES: dict[str, str] = {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "pt": "Portuguese",
+    "it": "Italian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "zh": "Chinese",
+    "hi": "Hindi",
+    "ru": "Russian",
+    "nl": "Dutch",
+    "id": "Indonesian",
+    "tr": "Turkish",
+    "sv": "Swedish",
+    "uk": "Ukrainian",
+    "auto": "Auto-detect",
 }
 
+VALID_REDACTION_TYPES: set[str] = {"pci", "phi", "pii"}
 
-def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    """
-    Recursively merge two dictionaries.
 
-    This function merges nested dictionaries at every level, not just the top level.
-    This is critical for the profile system because it allows profiles to override
-    only specific nested keys without losing other values.
+def validate_redact(redact: list[str] | None) -> None:
+    """Validate redact values to ensure only valid redaction types are used."""
+    if redact is None:
+        return
+    invalid_types = set(redact) - VALID_REDACTION_TYPES
+    if invalid_types:
+        raise ValueError(
+            f"Invalid redaction types: {invalid_types}. "
+            f"Valid types are: {sorted(VALID_REDACTION_TYPES)}"
+        )
 
-    Example:
-        base = {"features": {"punctuation": True, "diarization": True}}
-        override = {"features": {"punctuation": False}}
-        result = {"features": {"punctuation": False, "diarization": True}}  # Diarization preserved!
 
-    Args:
-        base: The base dictionary to start with
-        override: Dictionary containing values to override
-
-    Returns:
-        A new dictionary with merged values
-    """
-    # Start with a copy of the base dictionary
-    result = base.copy()
-
-    # Iterate through each key-value pair in the override dictionary
-    for key, value in override.items():
-        # Check if this key exists in the base AND both values are dictionaries
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            # Both are dictionaries, so merge them recursively
-            result[key] = deep_merge(result[key], value)
-        else:
-            # One or both are not dictionaries, so just replace the value
-            result[key] = value
-
-    return result
+BASE_TRANSCRIPTION_CONFIG: dict[str, Any] = {
+    "language": "auto",
+    "features": {
+        "punctuate": True,
+        "diarization": False,
+        "smart_format": False,
+        "filler_words": False,
+        "profanity_filter": False,
+        "redact": None,
+        "numerals": False,
+    },
+}

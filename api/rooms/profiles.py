@@ -7,7 +7,8 @@ Each profile represents a complete room experience with sensible defaults.
 
 from typing import Any
 
-from rooms.config_schema import BASE_CONFIG, deep_merge
+from rooms.config_schema import BASE_CONFIG
+from utils import deep_merge
 
 # Conversation profile - Standard video chat
 # Use case: Quick 1-on-1 or small group video calls
