@@ -39,7 +39,7 @@ repos:
     hooks:
       - id: pytest-check
         name: pytest-check
-        entry: bash -c 'cd api && if [ -f venv/bin/pytest ]; then PYTHONPATH=. venv/bin/pytest tests/test_rooms.py -v; elif command -v python3.12 &> /dev/null; then PYTHONPATH=. python3.12 -m pytest tests/test_rooms.py -v; else PYTHONPATH=. python3 -m pytest tests/test_rooms.py -v; fi'
+        entry: bash scripts/run_tests.sh
         language: system
         files: ^api/
         pass_filenames: false

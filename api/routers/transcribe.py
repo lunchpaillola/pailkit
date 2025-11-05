@@ -84,12 +84,12 @@ def get_provider(provider_name: str, api_key: str) -> TranscriptionProvider:
     Create a transcription provider instance with user-provided API key.
 
     **Simple Explanation:**
-    This function creates a transcription service connection (like Deepgram or Daily.co)
+    This function creates a transcription service connection (like Daily.co)
     using the user's API key. Think of it like connecting to a service
     using your account credentials.
 
     Args:
-        provider_name: Provider identifier (e.g., "deepgram", "assemblyai", "daily")
+        provider_name: Provider identifier (currently supports "daily")
         api_key: User's provider API key
 
     Returns:
@@ -105,11 +105,6 @@ def get_provider(provider_name: str, api_key: str) -> TranscriptionProvider:
         from transcribe.providers.daily import DailyTranscription
 
         return DailyTranscription(api_key=api_key)
-    # TODO: Add other provider implementations as they are created
-    # Example:
-    # elif _normalized_provider == "deepgram":
-    #     from transcribe.providers.deepgram import DeepgramProvider
-    #     return DeepgramProvider(api_key=api_key)
 
     raise HTTPException(
         status_code=400,
@@ -124,9 +119,7 @@ async def start_transcription(
     x_provider_auth: str = Header(
         ..., description="Provider API key (Bearer token or raw key)"
     ),
-    x_provider: str = Header(
-        "deepgram", description="Provider name (default: deepgram)"
-    ),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
 ) -> dict[str, Any]:
     """
     Start a real-time or streaming transcription.
@@ -138,7 +131,7 @@ async def start_transcription(
     Each provider maps profiles to their own model names internally.
     """
     try:
-        provider_name = x_provider.lower().strip() if x_provider else "deepgram"
+        provider_name = x_provider.lower().strip() if x_provider else "daily"
         api_key = extract_provider_api_key(x_provider_auth)
         provider = get_provider(provider_name, api_key)
 
@@ -176,9 +169,7 @@ async def stop_transcription(
     x_provider_auth: str = Header(
         ..., description="Provider API key (Bearer token or raw key)"
     ),
-    x_provider: str = Header(
-        "deepgram", description="Provider name (default: deepgram)"
-    ),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
 ) -> dict[str, Any]:
     """
     Stop an active transcription session.
@@ -190,7 +181,7 @@ async def stop_transcription(
         if not request.transcription_id:
             raise HTTPException(status_code=400, detail="transcription_id is required")
 
-        provider_name = x_provider.lower().strip() if x_provider else "deepgram"
+        provider_name = x_provider.lower().strip() if x_provider else "daily"
         api_key = extract_provider_api_key(x_provider_auth)
         provider = get_provider(provider_name, api_key)
 
