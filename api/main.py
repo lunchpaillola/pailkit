@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from middleware.unkey_auth import UnkeyAuthMiddleware
 from routers.rooms import router as rooms_router
+from routers.transcribe import router as transcribe_router
 
 # Load environment variables
 load_dotenv()
@@ -37,6 +38,7 @@ app.add_middleware(UnkeyAuthMiddleware)
 
 # Include routers
 app.include_router(rooms_router, prefix="/api/rooms", tags=["Rooms"])
+app.include_router(transcribe_router, prefix="/api/transcribe", tags=["Transcription"])
 
 
 @app.get("/")

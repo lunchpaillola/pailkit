@@ -12,7 +12,7 @@ from transcribe.config_schema import (
     validate_redact,
 )
 from transcribe.profiles import PROFILES
-from utils import deep_merge
+from utils.deep_merge import deep_merge
 
 
 def build_config(
