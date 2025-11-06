@@ -1,0 +1,21 @@
+---
+title: "Get recording link"
+description: "Use this action to get the link to a Daily room's recording. Learn more about this action in [Daily's API reference](https://docs.daily.co/reference/rest-api/recordings/get-recording-link)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+### Fields
+
+| **Field**        | **Type** | **Description**                                                                                                                                                                                                 |
+| ---------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Recording ID** | Text     | Enter the recording ID for which you would like a download link. Use the [Daily - Get Recordings](/bubble/daily/plugin-reference/actions/get-recordings) action first if you need to retrieve the recording ID. |
+
+### Returned Values
+
+| **Value**         | **Type** | **Description**                                                                                         |
+| ----------------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| **Download Link** | Text     | A cryptographically signed, time-limited direct link to a .mp4 file stored on Amazon S3.                |
+| **Expires**       | Number   | The expiration time of the link as a Unix timestamp, after which the download link will no longer work. |
+
+<dailyBubbleFooter />

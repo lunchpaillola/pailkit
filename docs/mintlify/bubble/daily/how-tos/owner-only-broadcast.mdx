@@ -1,0 +1,45 @@
+---
+title: "Set up broadcasts"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+This guide will walk you through how to configure an owner-only broadcast in your Bubble app. This setup ensures that only the owner can broadcast audio and video, while others can only view the stream.
+
+---
+
+## Difference Between a Broadcast and a Live Stream
+
+A **broadcast** allows only the owner to share their audio and video, while other participants can view the content without interaction. This is a closed environment where the stream is accessible to participants who are part of the room.
+
+A **live stream**, on the other hand, transmits video content to an external platform like YouTube or Twitch. Anyone with access to the stream link can view the content in real time, regardless of whether they are part of the room. Live streaming is typically used to reach a larger audience, while broadcasts are more controlled and limited to specific participants.
+
+If you want to create a livestream, check out our guide on [how to set up a livestream](/bubble/daily/how-tos/set-up-livestream).
+
+---
+
+## Steps
+
+### 1. Create a new room and set "Owner Only Broadcast" to `yes`
+
+[Create a new room](/bubble/daily/plugin-reference/actions/create-room) or [update an existing room](/bubble/daily/plugin-reference/actions/update-room), make sure to set the `owner only broadcast` field to `yes`. This restricts broadcasting to the room owner only.
+
+![Owner Only Broadcast Setting](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726157184/Screenshot_2023-01-19_at_5.59.18_PM_f4plwd.png)
+
+### Create a meeting token where the`is owner` field to `yes`
+
+Next, you will need to [create a meeting token](/bubble/daily/plugin-reference/actions/create-meeting-token) for the room that you set in step 1. ensure that the `is owner` field is also set to `yes`. This step identifies the user as the room owner, enabling broadcasting privileges.
+
+![Owner Meeting Token](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726157185/Screenshot_2023-01-19_at_6.02.31_PM_lyuqoh.png)
+
+### Join the room and add the meeting owner token
+
+When you join the room, pass the same token in the `meeting token` field. This confirms the user as the owner, enabling them to broadcast their audio and video.
+
+![Meeting Owner Parameter](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726157184/Screenshot_2023-01-19_at_6.02.54_PM_n8j2eq.png)
+
+Any users with the meeting owner token will be able to join the room and share their audio and video. Other users who join the room will only be able to view the broadcast.
+
+You can check out a [demo editor](https://bubble.io/page?type=page&name=owner_only_broadcast&id=nocodedemos&tab=tabs-2) or see a live [demo](https://nocodedemos.bubbleapps.io/version-test/owner_only_broadcast) illustrating this feature.
+
+<dailyBubbleFooter />

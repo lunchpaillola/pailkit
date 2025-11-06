@@ -1,0 +1,37 @@
+---
+title: "List phone numbers"
+description: "Use this action to view available phone numbers. Learn more in [Daily's documentation](https://docs.daily.co/reference/rest-api/phone-numbers/list-available-numbers). Phone numbers are pay-as-you-go, so be sure to [add your credit card](https://dashboard.daily.co/billing) to your Daily account to enable this feature."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field**      | **Type** | **Description**                                                                                                                                                  |
+| -------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **area code**  | Text     | An areacode to search within.                                                                                                                                    |
+| **region**     | Text     | A region or state to search within. Must be an ISO 3166-2 alpha-2 code, i.e. CA for California. Cannot be used in combination with areacode.                     |
+| **city**       | Text     | A specific City to search within. Example, New York. Must be used in combination with region. Cannot be used with areacode, starts_with, contains, or ends_with. |
+| **contains**   | Text     | A string of 3 to 7 digits that should appear somewhere in the number.                                                                                            |
+| **start with** | Text     | A string of 3 to 7 digits that should be used as the start of a number. Cannot be used in combination with contains or ends_with.                                |
+| **ends with**  | Text     | A string of 3 to 7 digits that should be used as the end of a number. Cannot be used in combination with starts_with or contains.                                |
+
+⚠️ Important Notes:
+
+- Enter either an area code or a region—using both will result in an error.
+- To use the city field, you must also enter a region.
+- Pick one field: contains, starts with, or ends with—using more than one will cause an error.
+
+### Returned Values
+
+| **Field**         | **Type**    | **Description**                                        |
+| ----------------- | ----------- | ------------------------------------------------------ |
+| **phone numbers** | Text (list) | List of available phone numbers matching the criteria. |
+| **error**         | Boolean     | Indicates if an error occurred during the request.     |
+| **error message** | Text        | Description of any error that occurred.                |
+| **error status**  | Number      | Numeric error status code.                             |
+
+<dailyBubbleFooter />

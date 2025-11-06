@@ -1,0 +1,25 @@
+---
+title: "Get presence"
+description: "This action provides participant presence data. It should be called no more frequently than once every 15 seconds."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**     | **Type** | **Description**                                                 |
+| ------------- | -------- | --------------------------------------------------------------- |
+| **Room Name** | Text     | The name of the room to retrieve participant count information. |
+
+### Returned Values
+
+The following values are returned by the action:
+
+| **Value**             | **Type**    | **Description**                         |
+| --------------------- | ----------- | --------------------------------------- |
+| **Participant Count** | Number      | The number of participants in the room. |
+| **User IDs**          | Text (List) | A list of user IDs present in the room. |
+
+<dailyBubbleFooter />

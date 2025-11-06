@@ -1,0 +1,68 @@
+---
+title: "Join Daily Room (Full Screen, Private)"
+description: "A workflow that creates and joins a full-screen private video call room with knocking enabled."
+---
+
+<Warning>
+  This workflow requires the [Daily Video Conferencing
+  Plugin](https://bubble.io/plugin/daily-video-chat-1622494385281x917140771709124600).
+  Install it before proceeding.
+</Warning>
+
+## **What This Workflow Does**
+
+This workflow **creates and joins a private Daily video call room in full-screen mode** with **knocking enabled**.
+
+In a live app, you’d likely save the room details in your database—but this workflow provides the **core structure** to create and join a private room where **only authorized users can enter immediately, while others must knock to request access.**
+
+### **How It Works**
+
+This workflow has three key actions:
+
+1️⃣ **Create a Private Room** → The room is created with **knocking enabled**, meaning users without a token must knock to request access.
+![Create Private Room](https://res.cloudinary.com/dpfmaccxx/image/upload/v1740405471/CleanShot_2025-02-24_at_08.47.08_2x_nqgxke.png)
+
+2️⃣ **Generate a Meeting Token** → The workflow generates an **owner token**, giving the host full control, including letting others in.
+![Create Meeting Token](https://res.cloudinary.com/dpfmaccxx/image/upload/v1740405473/CleanShot_2025-02-24_at_08.50.23_2x_hthoyg.png)
+
+3️⃣ **Join Room in Full-Screen Mode** → The host joins the call in full-screen.
+![Join Room](https://res.cloudinary.com/dpfmaccxx/image/upload/v1740405474/CleanShot_2025-02-24_at_08.55.44_2x_pyujem.png)
+
+## **Key Features**
+
+| Feature                   | Description                                            |
+| ------------------------- | ------------------------------------------------------ |
+| ✅ **Full-Screen Mode**   | Joins the call in a full-screen overlay                |
+| ✅ **Private Room**       | Only users with a token can enter immediately          |
+| ✅ **Knocking Enabled**   | Users without a token must request access              |
+| ✅ **Owner Token Access** | The host can let others in and manage room permissions |
+
+## **How to Install**
+
+**🔍 Preview how to add a workflow to your editor.**
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://res.cloudinary.com/dpfmaccxx/video/upload/v1740400034/Join_a_Daily_Room_Full-Screen_No_Expiration_cue72z.mp4"
+></video>{" "}
+
+<Steps>
+  <Step title="Find the workflow">
+    Open the **PailPal extension**, go to **All** and search for **"Join Daily
+    Room (Full-Screen, Private)"**.
+  </Step>
+  <Step title="Copy the workflow">
+    Click **"Copy"** on the workflow card to copy both the button and workflow.
+  </Step>
+  <Step title="Select destination">
+    In **Bubble**, navigate to where you want to add the button.
+  </Step>
+  <Step title="Paste the workflow">
+    Press **CMD+V (Mac) or CTRL+V (Windows)** to paste the workflow into your
+    app.
+  </Step>
+  <Step title="Customize (Optional)">
+    Modify the button's styling to match your app's design.
+  </Step>
+</Steps>

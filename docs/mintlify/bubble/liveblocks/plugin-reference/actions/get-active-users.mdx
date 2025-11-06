@@ -1,0 +1,29 @@
+---
+title: "Get active users"
+description: "Use this action to retrieve a list of users currently present in the specified room."
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**   | **Type** | **Description**                                   |
+| ----------- | -------- | ------------------------------------------------- |
+| **Room ID** | Text     | The ID of the room to retrieve active users from. |
+
+### Returned Values
+
+The following values are returned by the action:
+
+| **Value**        | **Type**    | **Description**                                      |
+| ---------------- | ----------- | ---------------------------------------------------- |
+| **Active Users** | Text (list) | A list of user IDs for all active users in the room. |
+| **Error**        | Yes/No      | Indicates if there was an error during the action.   |
+| **Message**      | Text        | Displays the error message if an error occurred.     |
+| **Status**       | Number      | The error code if the action failed.                 |
+
+---
+
+<liveblocksFooter />

@@ -1,0 +1,22 @@
+---
+title: "Get purchased phone numbers"
+description: "Use this action to list all phone numbers purchased for your Daily domain. Learn more in [Daily's documentation](https://docs.daily.co/reference/rest-api/phone-numbers/purchased-phone-numbers). Phone numbers are pay-as-you-go, so be sure to [add your credit card](https://dashboard.daily.co/billing) to your Daily account to enable this feature."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Returned Values
+
+| **Field**         | **Type**    | **Description**                                        |
+| ----------------- | ----------- | ------------------------------------------------------ |
+| **total count**   | Number      | Total number of phone numbers purchased.               |
+| **ids**           | Text (list) | List of unique identifiers for purchased numbers.      |
+| **phone numbers** | Text (list) | List of all purchased phone numbers.                   |
+| **error**         | Boolean     | Indicates if an error occurred during the request.     |
+| **error message** | Text        | Description of any error that occurred.                |
+| **error status**  | Number      | Numeric error status code.                            |
+
+<dailyBubbleFooter />

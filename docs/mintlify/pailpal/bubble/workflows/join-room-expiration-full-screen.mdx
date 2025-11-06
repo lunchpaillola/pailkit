@@ -1,0 +1,58 @@
+---
+title: "Join Daily Room (Full Screen, Expiring)"
+description: "A workflow that creates and joins a full-screen video call room that expires after 15 minutes."
+---
+
+<Warning>
+  This workflow requires the [Daily Video Conferencing
+  Plugin](https://bubble.io/plugin/daily-video-chat-1622494385281x917140771709124600).
+  Install it before proceeding.
+</Warning>
+
+## **What This Workflow Does**
+
+This button **creates and joins a Daily video call room in full-screen mode** with a **15-minute expiration.**
+
+In a live app, you’d likely save the room details in your database—but this workflow provides the **core structure** to create and join a room with an automatic expiration that **ejects participants when the time is up.**
+
+The expiration is set using the **`exp` parameter,** which you can modify to adjust the expiration time. By default, this workflow **automatically ejects** all participants when the room expires. You can change this behavior by setting **`eject at room exp`** to **false.**
+
+![PailPal Extension](https://res.cloudinary.com/dpfmaccxx/image/upload/v1740402342/CleanShot_2025-02-24_at_08.02.50_2x_frmlw2.png)
+
+## **Key Features**
+
+| Feature                 | Description                                             |
+| ----------------------- | ------------------------------------------------------- |
+| ✅ **Full-Screen Mode** | Joins the call in a full-screen overlay                 |
+| ✅ **Expiring Room**    | Room automatically expires after 15 minutes             |
+| ✅ **Auto-Eject Users** | Participants are removed when time is up (configurable) |
+
+## **How to Install**
+
+**🔍 Preview how to add a workflow to your editor.**
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://res.cloudinary.com/dpfmaccxx/video/upload/v1740400034/Join_a_Daily_Room_Full-Screen_No_Expiration_cue72z.mp4"
+></video>
+
+<Steps>
+  <Step title="Find the workflow">
+    Open the **PailPal extension**, go to **All** and search for **"Join Daily
+    Room (Full-Screen, Expiring)"**.
+  </Step>
+  <Step title="Copy the workflow">
+    Click **"Copy"** on the workflow card to copy both the button and workflow.
+  </Step>
+  <Step title="Select destination">
+    In **Bubble**, navigate to where you want to add the button.
+  </Step>
+  <Step title="Paste the workflow">
+    Press **CMD+V (Mac) or CTRL+V (Windows)** to paste the workflow into your
+    app.
+  </Step>
+  <Step title="Customize (Optional)">
+    Modify the button's styling to match your app's design.
+  </Step>
+</Steps>

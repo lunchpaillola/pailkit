@@ -1,0 +1,48 @@
+---
+title: "Create a conversation"
+description: "Use this action to create a conversation. The replica will immediately join the call and billing will start. [Learn more in Tavus's documentation](https://docs.tavus.io/api-reference/conversations/create-conversation)"
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+<Note>
+  Please be aware that usage of this action as soon as the conversation is
+  created will incur costs. To safeguard against API usage, consider setting
+  values for `max call duration`, `participant leave timeout`, and `participant
+  absent timeout`.
+</Note>
+
+### Fields
+
+| **Field**                      | **Type** | **Description**                                                                                                                                   |
+| ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **replica id**                 | String   | The unique identifier for the replica that will join the conversation.                                                                            |
+| **persona id**                 | String   | The unique identifier for the persona that the replica will use in the conversation.                                                              |
+| **callback url**               | String   | A URL that will receive webhooks with updates regarding the conversation state.                                                                   |
+| **conversation name**          | String   | A name for the conversation.                                                                                                                      |
+| **conversational context**     | String   | Optional context that will be appended to any context provided in the persona, if one is provided.                                                |
+| **custom greeting**            | String   | An optional custom greeting that the replica will give once a participant joins the conversation.                                                 |
+| **max call duration**          | Number   | The maximum duration of the conversation in seconds. Default is 3600 seconds (1 hour).                                                            |
+| **participant leave timeout**  | Number   | The duration in seconds after which the call will automatically end once the last participant leaves.                                             |
+| **participant absent timeout** | Number   | The duration in seconds after which the call will automatically end if no participant joins. Default is 300 seconds (5 minutes).                  |
+| **enable recording**           | Boolean  | If true, enables the user to record the conversation. See instructions on recording for more details.                                             |
+| **enable transcription**       | Boolean  | If true, enables the user to transcribe the conversation.                                                                                         |
+| **apply greenscreen**          | Boolean  | If true, replaces the background with a greenscreen (RGB: [0, 255, 155]). Can be adjusted using WebGL.                                            |
+| **language**                   | String   | The language of the conversation. Use the FULL language name (e.g., "English"). Refer to supported languages for Cartesia, ElevenLabs, or PlayHT. |
+| **recording s3 bucket name**   | String   | The name of the S3 bucket where the recording will be stored.                                                                                     |
+| **recording s3 bucket region** | String   | The region of the S3 bucket where the recording will be stored.                                                                                   |
+| **aws assume role arn**        | String   | The ARN of the role that will be assumed to access the S3 bucket.                                                                                 |
+
+### Returned Values
+
+| **Field**             | **Type** | **Description**                                                                      |
+| --------------------- | -------- | ------------------------------------------------------------------------------------ |
+| **conversation id**   | Text     | A unique identifier for the conversation.                                            |
+| **conversation name** | Text     | The name of the conversation.                                                        |
+| **status**            | Text     | The status of the conversation. Possible values: `active`, `ended`.                  |
+| **conversation url**  | Text     | A direct link to join the conversation. This link can also be embedded in a website. |
+| **replica id**        | Text     | A unique identifier for the replica used to create the conversation.                 |
+| **persona id**        | Text     | A unique identifier for the persona used to create the conversation.                 |
+| **created at**        | Date     | The date and time the conversation was created.                                      |
+
+<videoAudioLiveStreamBundleFooter />

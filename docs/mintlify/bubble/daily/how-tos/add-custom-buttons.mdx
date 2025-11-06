@@ -1,0 +1,64 @@
+---
+title: "Add custom buttons"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+Sometimes, you want to add a custom button in Daily Prebuilt to trigger actions in your Bubble app, such as opening a new page, updating a database, or starting a custom workflow or transcription.
+
+<img
+  width="560"
+  height="315"
+  src="https://res.cloudinary.com/dpfmaccxx/image/upload/v1727971153/customTrayButtons_pgy3ox.gif"
+/>
+
+## Video tutorial
+
+If you prefer a video walkthrough, check out our step-by-step tutorial below. Otherwise, keep reading for the written guide:
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/D0GaduYaD-o"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; fullscreen; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+## Steps
+
+### 1. Add the Bundle Daily Events element
+
+Place the [**Bundle Daily Events**](/bubble/daily/plugin-reference/elements/daily-events) element on your page. A common practice is to place it inside a hidden popup, keeping it offscreen while it listens for events.
+
+![Daily Events Element](https://res.cloudinary.com/dpfmaccxx/image/upload/v1731966959/daily_events_eddeeq.png)
+
+### 2. Start listening for events
+
+After joining the room, add the `begin listening` action. This ensures Bubble can capture and process events, such as the `custom-button-click` event, triggering the desired action when a user clicks the button.
+
+![Begin Listening Action](https://res.cloudinary.com/dpfmaccxx/image/upload/v1731966486/bundle_daily_events_p6fhrc.png)
+
+### 3. Add the `Joined-Meeting` Event and Set Custom Button
+
+Next, add the `joined-meeting` event and use the action to [update a custom button](/bubble/daily/plugin-reference/actions/update-custom-tray-buttons).
+
+![Set Custom Button](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727970932/3._update_custom_rpnwp7.png)
+
+### 4. Listen for the `custom-button-click`
+
+Add the `custom-button-click` event and include the logic to take action in your app whenever the button is clicked.
+
+![Custom Button Click](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727970932/4._custom_button_click_qi3vtb.png)
+
+## How to set multiple buttons
+
+You can use the [update custom buttons](/bubble/daily/plugin-reference/actions/update-custom-tray-buttons) action multiple times to set multiple buttons. Just set the `clear existing` field to `no`.
+
+![Multiple Custom Button Click](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727970932/5._update-custom-multiple_smuglz.png)
+
+<dailyBubbleFooter />

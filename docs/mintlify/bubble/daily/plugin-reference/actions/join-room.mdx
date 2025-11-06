@@ -1,0 +1,32 @@
+---
+title: "Join room"
+description: "Use this action to join a Daily video or audio room and overlay Daily prebuilt in your app. Learn more about Daily prebuilt [here](https://www.daily.co/prebuilt)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+### Fields
+
+| **Field**                       | **Type** | **Description**                                                                                                                                                                                                                      |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **URL**                         | Text     | Enter the full Daily URL for the room the user should join. If you don't have a URL yet, you can add one with the Daily - Create room action. The URL should be in the format: https://your-daily-domain.daily.co/room-name          |
+| **Room Style**                  | Dropdown | Choose the room style. Options: fullscreen, bottom right, top right, custom position, audio only. Fullscreen will occupy the entire screen. Custom position allows the call to display in a specific group. Default is bottom right. |
+| **Meeting Token**               | Text     | Optionally enter a meeting token to configure the video session on a per-user basis. To create a meeting token, use the Daily - Create meeting token action. Optional.                                                               |
+| **Active Speaker Mode**         | Boolean  | Specifies whether to start the Daily Prebuilt call in active speaker mode. Defaults to yes but can be set to no to start the call in grid mode instead.                                                                              |
+| **Leave Button**                | Boolean  | Determines whether the leave button is visible. Default is true.                                                                                                                                                                     |
+| **Full Screen Button**          | Boolean  | Determines whether the full-screen button is visible. Default is true.                                                                                                                                                               |
+| **Minimum Tiles**               | Number   | Specifies the minimum video tiles in grid mode when the browser is resized. Default is 1.                                                                                                                                            |
+| **Maximum Tiles**               | Number   | Specifies the maximum video tiles in grid mode when the browser is resized. Default is 25, maximum allowed is 49.                                                                                                                    |
+| **Element ID**                  | Text     | For a video call in a custom position, enter the ID attribute of the group you want the call to render in and choose "custom position" as the room style. Optional.                                                                  |
+| **Accent**                      | Color    | Main theme color used for primary actions and keyboard focus. Default is rgba(27, 235, 185, 1).                                                                                                                                      |
+| **Accent Text**                 | Color    | Text color rendered on accent. Default is rgba(18, 26, 36, 1).                                                                                                                                                                       |
+| **Background**                  | Color    | Background color. Default is rgba(18, 26, 36, 1).                                                                                                                                                                                    |
+| **Background Accent**           | Color    | Background color for highlighted elements. Default is rgba(31, 45, 61, 1).                                                                                                                                                           |
+| **Base Text**                   | Color    | Default text and icon color, rendered on the background or background accent. Default is rgba(255, 255, 255, 1).                                                                                                                     |
+| **Border**                      | Color    | Default border color for bordered elements. Default is rgba(43, 63, 86, 1).                                                                                                                                                          |
+| **Main Area Background**        | Color    | Background color for the main call area. Default is rgba(18, 26, 36, 1).                                                                                                                                                             |
+| **Main Area Background Accent** | Color    | Background color for video tiles. Default is rgba(43, 63, 86, 1).                                                                                                                                                                    |
+| **Main Area Text**              | Color    | Text color for text rendered inside the main call area (e.g., names). Default is rgba(255, 255, 255, 1).                                                                                                                             |
+| **Supportive Text**             | Color    | Text color for less emphasized, supportive text. Default is rgba(200, 209, 220, 1).                                                                                                                                                  |
+
+<dailyBubbleFooter />

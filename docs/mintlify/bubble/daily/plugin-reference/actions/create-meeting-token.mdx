@@ -1,0 +1,57 @@
+---
+title: "Create meeting token"
+description: "Use this action to create 'Meeting tokens' through Daily's API. Meeting tokens control room access and session configuration on a per-user basis. A participant can join a non-public room with a valid meeting token. Learn more about this API call at [Daily's API reference](https://docs.daily.co/reference#create-meeting-token)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+# Fields
+
+### General
+
+| **Field**     | **Type** | **Description**                                                                                                                                                               |
+| ------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Room Name** | Text     | The room for which this token is valid.                                                                                                                                       |
+| **Username**  | Text     | The user's name in the meeting. Displays in the UI when the user is muted or has the camera off, and in the chat window. Optional.                                            |
+| **Is Owner**  | Boolean  | Determines if the user has meeting owner privileges. If the room is configured for owner-only broadcast, this user can send video, audio, and screen share. Default is false. |
+| **User ID**   | Text     | The user's ID for this meeting session. Can be used to map between your user database and meeting events. Optional, max length is 36 characters.                              |
+| **Language**  | Text     | The default language for this user. Supported options: en (English), es (Spanish), fr (French), and more. Optional.                                                           |
+
+### Recording
+
+⚠️ **Credit Card Required**: To unlock these parameters, you'll need to add a credit card to your account. Visit [Daily's billing page](https://dashboard.daily.co/billing) to learn more about pricing and add your credit card details.
+
+| **Field**                 | **Type** | **Description**                                                                                                                                           |
+| ------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Start Cloud Recording** | Boolean  | Determines whether to automatically start cloud recording when the user with this token joins the room. Default is false.                                 |
+| **Enable Recording**      | Text     | Determines whether recording is enabled for this token. Options: cloud, local, rtp-tracks, output-byte-stream. For Daily Scale Plan users only. Optional. |
+| **Enable Recording UI**   | Boolean  | Controls visibility of the Recording button in Daily Prebuilt's UI tray. If false, the button will not be shown. Default is true.                         |
+
+### Advanced Settings
+
+| **Field**                       | **Type** | **Description**                                                                                                                                                  |
+| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Start Video Off**             | Boolean  | When a participant first joins the meeting, keep their camera off. Default is false.                                                                             |
+| **Start Audio Off**             | Boolean  | When a participant first joins the meeting, keep their microphone muted. Default is false.                                                                       |
+| **Eject at Token Expiry**       | Boolean  | Kicks the user out of the meeting when the meeting token expires. If this or eject_after_elapsed is set, the room's eject properties are overridden. Optional.   |
+| **Eject After Elapsed**         | Number   | Kicks the user out of the meeting this many seconds after they join. If this or eject_at_token_exp is set, the room's eject properties are overridden. Optional. |
+| **Not Before (Unix Timestamp)** | Number   | Users cannot join the room before this time. A Unix timestamp (seconds since epoch). To convert from Bubble date, extract unix timestamp and divide by 1000.     |
+| **Expires (Unix Timestamp)**    | Number   | Users cannot join the room after this time. A Unix timestamp (seconds since epoch). To convert from Bubble date, extract unix timestamp and divide by 1000.      |
+
+### Transcription
+
+<dailyPlusFlag feature="feature" />
+
+| **Field**            | **Type** | **Description**                                                                                                                                                                                                                                       |
+| -------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Auto start**       | Boolean  | Start transcription when an owner joins the room. This property can be used to always transcribe meetings once an owner joins.                                                                                                                        |
+| **Live captions UI** | Boolean  | Sets whether the participant sees a closed captions button in their Daily Prebuilt call tray. When the closed caption button is clicked, closed captions are displayed locally. When set to `yes`, a closed captions button appears in the call tray. |
+
+# Returned Values
+
+| **Value** | **Type** | **Description**     |
+| --------- | -------- | ------------------- |
+| **Token** | Text     | The generated token |
+
+<dailyBubbleFooter />

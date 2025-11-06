@@ -1,0 +1,34 @@
+---
+title: "Room details"
+description: "Use this action to retrieve the configuration details of a specific room on your Daily domain. Learn more about this API call at [Daily's API Reference](https://docs.daily.co/reference#get-room-configuration)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**     | **Type** | **Description**                                      |
+| ------------- | -------- | ---------------------------------------------------- |
+| **Room Name** | Text     | The name of the room to retrieve configuration from. |
+
+### Returned Values
+
+The following values are returned by the action:
+
+| **Value**                | **Type** | **Description**                                                                       |
+| ------------------------ | -------- | ------------------------------------------------------------------------------------- |
+| **ID**                   | Text     | The unique ID of the room.                                                            |
+| **Name**                 | Text     | The name of the room.                                                                 |
+| **API Created**          | Boolean  | Indicates whether the room was created via the API.                                   |
+| **Privacy**              | Text     | The privacy setting of the room (e.g., public or private).                            |
+| **URL**                  | Text     | The URL of the room.                                                                  |
+| **Created At**           | DateTime | The timestamp of when the room was created.                                           |
+| **Config**               | Object   | Configuration options for the room, such as enable_chat, enable_knocking, and more.   |
+| **error.status_code**    | Number   | The HTTP status code returned by the API (e.g., `200` for success).                   |
+| **error.status_message** | Text     | The HTTP status message returned by the API (e.g., `"OK"`).                           |
+| **error.body**           | Text     | The raw error body message as a string.                                               |
+| **returned_an_error**    | Boolean  | A flag indicating whether the API returned an error. `false` means no error occurred. |
+
+<dailyBubbleFooter />

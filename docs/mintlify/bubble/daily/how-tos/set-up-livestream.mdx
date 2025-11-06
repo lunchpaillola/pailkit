@@ -1,0 +1,43 @@
+---
+title: "Set up live streams"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+<Note>
+  Live streams are pay-as-you-go. You'll need to add your [credit card details
+  to your Daily account](https://dashboard.daily.co/billing) to enable it.
+</Note>
+
+This guide will walk you through the steps to set up live streaming in your Bubble app using the Daily plugin. Live streaming allows real-time video transmission to a large audience through platforms like YouTube, Twitch, and Facebook Live.
+
+---
+
+## Difference Between a Broadcast and a Live Stream
+
+A **broadcast** allows only the owner to share their audio and video, while other participants can view the content without interaction. This is a closed environment where the stream is accessible to participants who are part of the room.
+
+A **live stream**, on the other hand, transmits video content to an external platform like YouTube or Twitch. Anyone with access to the stream link can view the content in real time, regardless of whether they are part of the room. Live streaming is typically used to reach a larger audience, while broadcasts are more controlled and limited to specific participants.
+
+If you want to create a broadcast, check out our guide on [how to set up an owner only broadcast](/bubble/daily/how-tos/owner-only-broadcast).
+
+---
+
+## Steps
+
+### 1. Obtain an RTMP URL and Stream Key
+
+To start a live stream, you'll need an RTMP URL and stream key, which are provided by the streaming service you're using (e.g., YouTube, Twitch, Facebook Live). This URL and key enable the stream to be transmitted to the platform.
+
+For example, if you're using YouTube, you can follow [this guide](https://support.google.com/youtube/topic/9257891?hl=en&ref_topic=9257610) to get set up with live streaming on YouTube.
+
+### 2. Start the Live Stream
+
+You can start a live stream using the [**start livestream**](/bubble/daily/plugin-reference/actions/start-live-stream) action in the plugin. This action will initiate a full-screen live stream for the selected user. To enable this, ensure that:
+
+- You have created a **meeting owner token** for the person who is live streaming. This can be done using the [**create meeting token**](/bubble/daily/plugin-reference/actions/create-meeting-token) action.
+- You have the **RTMP URL** and **stream key** from your chosen streaming service.
+
+Other users who are not live streaming can join the room and view the stream using the [**join room**](/bubble/daily/plugin-reference/actions/join-room) action.
+
+<dailyBubbleFooter />

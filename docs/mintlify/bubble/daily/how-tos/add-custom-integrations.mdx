@@ -1,0 +1,189 @@
+---
+title: "Embed third-party apps"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+Embed third-party apps into your Daily Prebuilt calls to enhance collaboration. If it supports iframes, you can integrate it—whether it’s Miro, Google Docs, YouTube, or more.
+
+<img
+  width="560"
+  height="315"
+  src="https://res.cloudinary.com/dpfmaccxx/image/upload/v1729731808/embed-third-party-apps_qreytb.gif"
+/>
+
+## Video tutorial
+
+If you prefer a video walkthrough, check out our step-by-step tutorial below. Otherwise, keep reading for the written guide:
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/XUife1mLfSk?si=E9lV_6z6QbX8KAmb"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; fullscreen; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+## Steps
+
+## How to set multiple integrations
+
+There are two ways to set multiple integrations:
+
+1. **Set Custom Integration**: If you only need to add one or two integrations, you can use the [set custom integration](/bubble/daily/plugin-reference/actions/set-custom-integration).
+
+![Set Custom Integrations](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727727275/custom-integration-2_cfbvde.png)
+
+2. **Batch Set Custom Integration**: For adding multiple integrations, you can use the [batch set custom integration](/bubble/daily/plugin-reference/actions/batch-set-custom-integrations). This action takes a correctly formatted JSON object to set several integrations at once.
+
+![Set Custom Integrations](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727727275/custom-integration-3_yng5xu.png)
+
+Here’s an example of how to correctly format a JSON object for multiple custom integrations. In this case, we've embedded a YouTube video and a Figma design. You can adapt the src, label, and other fields to match the services you want to integrate.
+
+```json
+{
+  "youtubeEmbed": {
+    "controlledBy": "*",
+    "iconURL": "https://cdn.brandfetch.io/idVfYwcuQz/theme/dark/symbol.svg?k=bfHSJFAPEG",
+    "label": "Youtube",
+    "location": "main",
+    "name": "youtube",
+    "shared": true,
+    "loading": "lazy",
+    "src": "https://www.youtube.com/watch?v=GRo6TmFu87o"
+  },
+  "figmaEmbed": {
+    "controlledBy": "*",
+    "iconURL": "https://cdn.brandfetch.io/idZHcZ_i7F/theme/dark/symbol.svg?k=bfHSJFAPEG",
+    "label": "Figma",
+    "location": "main",
+    "name": "figma",
+    "shared": true,
+    "loading": "lazy",
+    "src": "https://embed.figma.com/design/0j79qGWGq9DN5dvhHuPuUJ/Material-3-Design-Kit-(Community)?node-id=11-1833&embed-host=share"
+  }
+}
+```
+
+# Common Embed Examples
+
+Here are some common examples of third-party embeds you can use:
+
+### YouTube
+
+```json
+{
+  "youtubeEmbed": {
+    "controlledBy": "*",
+    "iconURL": "https://cdn.brandfetch.io/idVfYwcuQz/theme/dark/symbol.svg?k=bfHSJFAPEG",
+    "label": "YouTube",
+    "location": "main",
+    "shared": true,
+    "loading": "lazy",
+    "src": "https://www.youtube.com/watch?v=YOUR_VIDEO_ID"
+  }
+}
+```
+
+### Figma
+
+```json
+{
+  "figmaEmbed": {
+    "controlledBy": "*",
+    "iconURL": "https://cdn.brandfetch.io/idZHcZ_i7F/theme/dark/symbol.svg?k=bfHSJFAPEG",
+    "label": "Figma",
+    "location": "main",
+    "shared": true,
+    "loading": "lazy",
+    "src": "https://embed.figma.com/design/YOUR_PROJECT_URL"
+  }
+}
+```
+
+### Miro
+
+```json
+{
+  "miroEmbed": {
+    "controlledBy": "*",
+    "iconURL": "https://files.readme.io/17d4a23-miro-logo-color-square.png",
+    "label": "Miro",
+    "location": "main",
+    "shared": true,
+    "loading": "lazy",
+    "src": "https://miro.com/app/live-embed/YOUR_BOARD_ID/"
+  }
+}
+```
+
+### Google Docs
+
+```json
+{
+  "googleDocEmbed": {
+    "controlledBy": "*",
+    "iconURL": "https://cdn-icons-png.flaticon.com/512/5968/5968517.png",
+    "label": "Google Docs",
+    "location": "main",
+    "shared": true,
+    "loading": "lazy",
+    "src": "https://docs.google.com/document/d/YOUR_DOCUMENT_ID/edit?usp=sharing"
+  }
+}
+```
+
+### Google Slides
+
+```json
+{
+  "googleSlidesEmbed": {
+    "controlledBy": "*",
+    "iconURL": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/16/Google_Slides_2020_Logo.svg/440px-Google_Slides_2020_Logo.svg.png",
+    "label": "Google Slides",
+    "location": "main",
+    "shared": true,
+    "loading": "lazy",
+    "src": "https://docs.google.com/presentation/d/YOUR_PRESENTATION_ID/edit?usp=sharing"
+  }
+}
+```
+
+### Spotify
+
+```json
+{
+  "spotifyPlaylistEmbed": {
+    "controlledBy": "*",
+    "iconURL": "https://upload.wikimedia.org/wikipedia/commons/1/16/Spotify_logo_with_text.svg",
+    "label": "Spotify",
+    "location": "main",
+    "shared": true,
+    "loading": "lazy",
+    "src": "https://open.spotify.com/embed/playlist/YOUR_PLAYLIST_ID"
+  }
+}
+```
+
+### Replit
+
+```json
+{
+  "replitEmbed": {
+    "controlledBy": "*",
+    "iconURL": "https://upload.wikimedia.org/wikipedia/commons/b/b2/Repl.it_logo.svg",
+    "label": "Replit",
+    "location": "main",
+    "shared": true,
+    "loading": "lazy",
+    "src": "https://replit.com/@YOUR_USER/YOUR_PROJECT?embed=true"
+  }
+}
+```
+
+<dailyBubbleFooter />

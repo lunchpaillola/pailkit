@@ -1,0 +1,147 @@
+---
+title: "Create assistant"
+description: "Use this action to create an assistant using VAPI."
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+## Fields
+
+<ParamField path="provider" type="dropdown" default="openai" required>
+  The provider of the assistant's LLM. Options: openai, anthropic, google,
+  deep-seek, perplexity-ai, vapi, anyscale, together-ai, inflection-ai, groq,
+  xai, deepinfra
+</ParamField>
+
+<ParamField path="model" type="text" default="gpt-4o-mini" required>
+  The model name (e.g., gpt-4o-mini, deepseek-chat, gemini-1.5-flash,
+  claude-3-haiku-20240307) must match the provider and allowed values in [Vapi's
+  API](https://docs.vapi.ai/api-reference/assistants/create#request.body.model.anthropic.model).
+</ParamField>
+
+<ParamField path="role" type="dropdown" default="assistant" required>
+  The role of the assistant. Options: assistant, function, user, system, tool
+</ParamField>
+
+<ParamField
+  path="content"
+  type="text"
+  default="You are a helpful, knowledgeable, and friendly AI assistant. Answer questions clearly and concisely while adapting your tone to the user's needs. Provide thoughtful insights, step-by-step guidance when necessary, and ask clarifying questions if needed. Prioritize accuracy and relevance, and cite sources when applicable. Avoid making assumptions or offering incorrect information."
+>
+  The prompt for the assistant
+</ParamField>
+
+<ParamField path="name" type="text">
+  The name of the assistant
+</ParamField>
+
+<ParamField path="silence timeout seconds" type="number" default="30">
+  How many seconds of silence to wait before ending the call. Must be between 10
+  and 3600 seconds
+</ParamField>
+
+<ParamField path="max duration seconds" type="number" default="600">
+  Maximum number of seconds that the call will last. Must be between 10 and
+  43200 seconds
+</ParamField>
+
+<ParamField path="recording enabled" type="boolean" default="false">
+  Enable recording for the call
+</ParamField>
+
+<ParamField path="transcript enabled" type="boolean" default="false">
+  Determines whether the transcript is stored
+</ParamField>
+
+<ParamField path="assistant name" type="text" default="AI">
+  The name of the assistant in the transcript
+</ParamField>
+
+<ParamField path="transcript user name" type="text" default="user">
+  The name of the user in the transcript
+</ParamField>
+
+<ParamField path="background denoising enabled" type="boolean" default="false">
+  Enables filtering of noise and background speech while the user is talking
+</ParamField>
+
+<ParamField path="background sound" type="dropdown" default="off">
+  Background sound in the call. Options: off, office
+</ParamField>
+
+<ParamField path="voicemail detection" type="boolean" default="false">
+  Settings to configure or disable voicemail detection
+</ParamField>
+
+<ParamField path="voicemail message" type="text">
+  Message that the assistant will say if the call is forwarded to voicemail. If
+  unspecified, it will hang up
+</ParamField>
+
+<ParamField path="end call message" type="text">
+  Message that the assistant will say if it ends the call (max 1000 characters).
+  If unspecified, it will hang up without saying anything
+</ParamField>
+
+<ParamField path="end call phrases" type="text">
+  List of phrases that, if spoken by the assistant, will trigger the call to be
+  hung up. Case insensitive
+</ParamField>
+
+<ParamField
+  path="first message mode"
+  type="dropdown"
+  default="assistant-speaks-first"
+>
+  Options: assistant-speaks-first,
+  assistant-speaks-first-with-model-generated-message, assistant-waits-for-user
+</ParamField>
+
+<ParamField path="first message" type="text">
+  First message that the assistant will say. If unspecified, assistant will wait
+  for user to speak and use the model to respond
+</ParamField>
+
+<ParamField path="enable summary plan" type="boolean" default="false">
+  Enable the plan to customize the plan for the summary
+</ParamField>
+
+<ParamField
+  path="summary plan message"
+  type="text"
+  default="You are an expert note-taker. You will be given a transcript of a call. Summarize the call in 2-3 sentences. DO NOT return anything except the summary."
+>
+  The messages used to generate the summary
+</ParamField>
+
+## Return Values
+
+<ResponseField name="id" type="text">
+  Unique identifier for the assistant
+</ResponseField>
+
+<ResponseField name="org id" type="text">
+  Organization identifier
+</ResponseField>
+
+<ResponseField name="created at" type="date">
+  When the assistant was created
+</ResponseField>
+
+<ResponseField name="updated at" type="date">
+  When the assistant was last updated
+</ResponseField>
+
+<ResponseField name="error" type="boolean">
+  Whether an error occurred
+</ResponseField>
+
+<ResponseField name="error message" type="text">
+  Error message if an error occurred
+</ResponseField>
+
+<ResponseField name="error status" type="number">
+  Error status code if an error occurred
+</ResponseField>
+
+<videoAudioLiveStreamBundleFooter />{" "}

@@ -1,0 +1,26 @@
+---
+title: "Update custom tray buttons"
+description: "Sets custom tray buttons in a Daily Prebuilt call. [Learn more](https://docs.daily.co/reference/daily-js/instance-methods/update-custom-tray-buttons#main)"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field**            | **Type** | **Description**                                                                                                                    |
+| -------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **Clear existing**   | Text     | Set to `no` to clear existing buttons. Set to `yes` to keep existing buttons and add new ones. Useful for adding multiple buttons. |
+| **Button ID**        | Text     | The ID of the button. Use Daily events to trigger actions when the button is clicked.                                              |
+| **Icon**             | Text     | The URL path of the button's icon.                                                                                                 |
+| **Icon (dark mode)** | Text     | The URL path of the button's icon for dark mode.                                                                                   |
+| **Label**            | Text     | The label displayed on the button.                                                                                                 |
+| **Tooltip**          | Text     | The tooltip text that appears when hovering over the button.                                                                       |
+
+### Returned Values
+
+This action does not return any values.
+
+<dailyBubbleFooter />

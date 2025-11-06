@@ -1,0 +1,79 @@
+---
+description: "Reference for all actions, states, and events available in the Liveblocks Plugin."
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+
+### Plugin Elements
+
+#### **Liveblocks Presence**
+
+The **Liveblocks Presence** plugin element enables real-time presence tracking in your Bubble app. This section covers the exposed states, events, and actions for this element.
+
+---
+
+### Exposed States
+
+These states allow users to access real-time data from the Liveblocks Presence element in the Bubble Editor. They help track users in a room, manage errors, and more.
+
+| **State**          | **Type**    | **Description**                                                      |
+| ------------------ | ----------- | -------------------------------------------------------------------- |
+| **others**         | Text (list) | Other users currently in the room.                                   |
+| **roomId**         | Text        | The ID of the room the element is currently monitoring.              |
+| **everyone**       | Text (list) | All users in the room, including the local user.                     |
+| **userId**         | Text        | The Liveblocks user ID for the current user.                         |
+| **lostConnection** | Text        | Triggers when a connected client loses connection.                   |
+| **error**          | Yes/No      | Indicates whether the room is experiencing an error.                 |
+| **errorMessage**   | Text        | Displays the error message if an error occurs in the room.           |
+| **errorCode**      | Number      | Displays the error status code if the room is experiencing an error. |
+
+---
+
+### Events
+
+The following events are triggered by changes in connection status, room updates, or errors in the Liveblocks Presence element. These events can initiate workflows in your app.
+
+| **Event**          | **Description**                                      |
+| ------------------ | ---------------------------------------------------- |
+| **lostConnection** | Triggers when a lost connection event occurs.        |
+| **error**          | Triggers when an error occurs in the element.        |
+| **newRoomId**      | Triggers when the room ID changes while in the room. |
+
+---
+
+### Actions
+
+Here are the actions available for the **Liveblocks Presence** plugin element. These actions allow you to control user presence, manage cursors, and handle room operations within your Bubble app.
+
+#### **Enter Room**
+
+**Description:** Use this action to join a Liveblocks room. Ensure you’ve created a client with the **Create Client** action before proceeding.
+
+| **Parameter** | **Type** | **Description**                                   |
+| ------------- | -------- | ------------------------------------------------- |
+| **roomId**    | Text     | The ID of the room to be joined.                  |
+| **userId**    | Text     | The unique ID of the local user joining the room. |
+
+#### **Create Custom Cursors**
+
+**Description:** Create custom cursors by placing a repeating group on the page. Add an HTML ID prefix so the plugin knows which elements to animate.
+
+| **Parameter** | **Type** | **Description**                            |
+| ------------- | -------- | ------------------------------------------ |
+| **prefix**    | Text     | The HTML ID prefix for the custom cursors. |
+
+#### **Hide Default Cursor**
+
+**Description:** Enable this option to hide the default browser cursor, allowing custom cursors to be displayed exclusively.
+
+| **Parameter**         | **Type** | **Description**                                |
+| --------------------- | -------- | ---------------------------------------------- |
+| **hideDefaultCursor** | Yes/No   | Enable this option to hide the default cursor. |
+
+#### **Log Out**
+
+**Description:** Clears any authentication tokens from the client’s memory. Forces reauthorization of connected rooms. Use this action if you need to log out and reauthenticate the user.
+
+---
+
+<liveblocksFooter />

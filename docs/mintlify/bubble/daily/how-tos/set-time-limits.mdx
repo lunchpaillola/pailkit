@@ -1,0 +1,47 @@
+---
+title: "Set time limits for calls"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+This guide will walk you through how to set time limits for your Daily video calls in your Bubble app. You'll learn two different approaches: setting specific start/end times and setting duration limits for individual participants.
+
+## Two Approaches to Time Limits
+
+There are two main ways to control the duration of your Daily video calls:
+
+1. **Fixed Start and End Times**: Set specific times when the room becomes available and when it expires. This is useful for scheduled meetings or events with defined time slots.
+
+2. **Elapsed Time Limit**: Set a maximum duration for how long each participant can stay in the call, counting from when they join. This is helpful for scenarios like consultation sessions or time-limited meetings.
+
+## Setting Fixed Start and End Times
+
+### 1. Calculate Your Timestamps
+
+First, you'll need to convert your desired start and end times to UNIX timestamps. In Bubble, you can do this using:
+`Date/Time: Extract UNIX timestamp/1000`
+
+### 2. Create or Update the Room
+
+When [creating a room](/bubble/daily/plugin-reference/actions/create-room) or [updating an existing room](/bubble/daily/plugin-reference/actions/update-room), set these parameters:
+
+- Set `not before` to your start time timestamp
+- Set `expires` to your end time timestamp
+- Set `eject at exp` to `yes` to automatically remove participants when the room expires
+
+![Fixed Time Settings](https://res.cloudinary.com/dpfmaccxx/image/upload/v1733350531/CleanShot_2024-12-04_at_16.29.18_2x_bqq8kp.png)
+
+## Setting an Elapsed Time Limit
+
+### 1. Create or Update the Room
+
+When [creating](/bubble/daily/plugin-reference/actions/create-room) or [updating](/bubble/daily/plugin-reference/actions/update-room) your room:
+
+- Set `eject after elapsed time` to the number of seconds you want participants to be able to stay in the call
+- For example, for a 30-minute limit, set it to `1800` (30 minutes × 60 seconds)
+
+![Elapsed Time Settings](https://res.cloudinary.com/dpfmaccxx/image/upload/v1733350531/CleanShot_2024-12-04_at_16.37.49_2x_gnkony.png)
+
+When the time limit is reached, participants will be automatically removed from the call.
+
+<dailyBubbleFooter />

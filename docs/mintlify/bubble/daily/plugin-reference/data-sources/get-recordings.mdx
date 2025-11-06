@@ -1,0 +1,36 @@
+---
+title: "Get recordings"
+description: "Use this action to retrieve a list of cloud recordings for a specific room on your domain."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**     | **Type** | **Description**                                                        |
+| ------------- | -------- | ---------------------------------------------------------------------- |
+| **Room Name** | Text     | Enter the name of the room that you would like to get recordings from. |
+
+### Returned Values
+
+The following values are returned by the action:
+
+| **Value**                   | **Type** | **Description**                                                                       |
+| --------------------------- | -------- | ------------------------------------------------------------------------------------- |
+| **Total Count**             | Number   | The total number of recordings for the room.                                          |
+| **Data**                    | List     | A list of recordings. Each item contains the following fields:                        |
+| **Data → ID**               | Text     | The unique ID of the recording.                                                       |
+| **Data → Room Name**        | Text     | The name of the room where the recording was made.                                    |
+| **Data → Start Timestamp**  | Number   | The Unix timestamp of when the recording started.                                     |
+| **Data → Status**           | Text     | The status of the recording (e.g., "finished").                                       |
+| **Data → Duration**         | Number   | The duration of the recording in seconds.                                             |
+| **Data → Share Token**      | Text     | A token to access the shareable link for the recording.                               |
+| **Data → Max Participants** | Number   | The maximum number of participants present during the recording.                      |
+| **error.status_code**       | Number   | The HTTP status code returned by the API (e.g., `200` for success).                   |
+| **error.status_message**    | Text     | The HTTP status message returned by the API (e.g., `"OK"`).                           |
+| **error.body**              | Text     | The raw error body message as a string.                                               |
+| **returned_an_error**       | Boolean  | A flag indicating whether the API returned an error. `false` means no error occurred. |
+
+<dailyBubbleFooter />

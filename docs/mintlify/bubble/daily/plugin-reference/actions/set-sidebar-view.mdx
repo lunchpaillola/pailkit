@@ -1,0 +1,23 @@
+---
+title: "Set sidebar view"
+description: "Use this action to set the sidebar view. This feature works exclusively with Daily Prebuilt. Learn more about this action in [Daily's documentation](https://docs.daily.co/reference/daily-js/instance-methods/set-sidebar-view)"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### General Fields
+
+| **Field**          | **Type** | **Description**                                                                                                                                                                               |
+| ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sidebar View**   | dropdown | Options: `null`, `people`, `chat`, `network`, `breakout`, `custom`. To use a custom view, select **custom** and input the **integration ID**. To close the sidebar, set this field to `null`. |
+| **Integration ID** | text     | Required if you select **custom** for the sidebar view. Enter the ID of the integration you want to display.                                                                                  |
+
+### Returned Values
+
+This action does not return any values.
+
+<dailyBubbleFooter />

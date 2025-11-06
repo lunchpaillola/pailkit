@@ -1,0 +1,21 @@
+---
+title: "Events"
+description: "Use this element to enable events in your app. Tavus leverages Daily's app messages to send events. The [Daily Events Element](/bubble/daily/plugin-reference/elements/daily-events) in the bundle includes the following Tavus-related events. Learn how to use this element in the [How-To Guide](/bubble/daily/how-tos/use-daily-events)."
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+## Exposed States
+
+The following states are available:
+
+| **State**                 | **Type** | **Description**                                                                                                                  |
+| ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Tavus message type**    | Text     | Indicates the product associated with the event. For this use case, the message type is `conversation`.                          |
+| **Tavus event type**      | Text     | Specifies the type of event being sent. This field is present in all events and helps distinguish between different event types. |
+| **Tavus conversation id** | Text     | The unique identifier for the conversation.                                                                                      |
+| **Tavus speech**          | Text     | Contains the content of the utterance.                                                                                           |
+| **Tavus role**            | Text     | Identifies who spoke the utterance. Possible values: `user`, `replica`.                                                          |
+| **Tavus visual context**  | Text     | If VQA (Visual Question Answering) is enabled, this field contains the description of the user frame.                            |
+
+<videoAudioLiveStreamBundleFooter />

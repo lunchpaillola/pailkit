@@ -1,0 +1,34 @@
+---
+title: "Delete comment"
+description: "Use this action to delete a comment."
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+import liveblocksPlus from "/snippets/liveblocksPlus.mdx";
+
+<liveblocksPlus feature="action" />
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**      | **Type** | **Description** |
+| -------------- | -------- | --------------- |
+| **Room ID**    | Text     | The room ID.    |
+| **Thread ID**  | Text     | The thread ID.  |
+| **Comment ID** | Text     | The comment ID. |
+
+### Returned Values
+
+The following values are returned by the action: `[]` indicates an array of objects.
+
+| **Key**                  | **Type** | **Description**                                                                       |
+| ------------------------ | -------- | ------------------------------------------------------------------------------------- |
+| **error.status_code**    | Number   | The HTTP status code returned by the API (e.g., `200` for success).                   |
+| **error.status_message** | Text     | The HTTP status message returned by the API (e.g., `"OK"`).                           |
+| **error.body**           | Text     | The raw error body message as a string.                                               |
+| **returned_an_error**    | Boolean  | A flag indicating whether the API returned an error. `false` means no error occurred. |
+
+---
+
+<liveblocksFooter />

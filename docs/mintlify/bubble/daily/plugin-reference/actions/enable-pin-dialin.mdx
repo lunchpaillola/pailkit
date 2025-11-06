@@ -1,0 +1,95 @@
+---
+title: "Enable PIN dial-in"
+description: "Use this action to enable PIN-based dial-in for an existing room. Phone numbers are pay-as-you-go, so be sure to [add your credit card](https://dashboard.daily.co/billing) to your Daily account to enable this feature."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+## Fields
+
+<ParamField path="room name" type="text" required>
+  The name of the room where dial-in settings will be applied.
+</ParamField>
+
+<ParamField path="display name" type="text" required>
+  Set the display name for PSTN participants when they join the room.
+</ParamField>
+
+<ParamField path="wait for meeting start" type="boolean">
+  If a PSTN participant joins before the room starts, choose whether they wait
+  in the conference with hold music or get disconnected.
+</ParamField>
+
+<ParamField path="room number" type="text">
+  Assign a purchased phone number to PIN dial-in. If no number is specified, the
+  default (earliest purchased) number is used.
+</ParamField>
+
+<ParamField path="exp" type="number">
+  Set a custom exp otherwise the number will expire in 364 days, an exp is
+  mandatory.
+</ParamField>
+
+⚠️ Important Notes:
+
+- Must have an expiration. If no exp is set, the room will automatically expire in 364 days
+- Expiration must be a UNIX timestamp
+- If using an owner token, consider enabling eject_at_exp for better session control
+
+## Return Values
+
+<ResponseField name="id" type="text">
+  Unique identifier for the room
+</ResponseField>
+
+<ResponseField name="name" type="text">
+  Name of the room
+</ResponseField>
+
+<ResponseField name="privacy" type="text">
+  Privacy setting of the room
+</ResponseField>
+
+<ResponseField name="url" type="text">
+  URL of the room
+</ResponseField>
+
+<ResponseField name="created at" type="date">
+  When the room was created
+</ResponseField>
+
+<ResponseField name="dial-in code" type="number">
+  PIN code for dial-in access
+</ResponseField>
+
+<ResponseField name="phone number" type="text">
+  Phone number assigned for dial-in if specified when making the request
+</ResponseField>
+
+<ResponseField name="dial-in number" type="text">
+  Dial-in number. Empty if phone number is specified, otherwise returns the
+  earliest purchased number on the domain
+</ResponseField>
+
+<ResponseField name="dial-in with pin" type="text">
+  Formatted dial-in number with number and PIN code. If no dial-in number or
+  phone number is present, will use [Daily global
+  numbers](https://docs.daily.co/guides/products/dial-in-dial-out#global-dial-in-phone-numbers)
+</ResponseField>
+
+<ResponseField name="error" type="boolean">
+  Whether an error occurred
+</ResponseField>
+
+<ResponseField name="error message" type="text">
+  Error message if an error occurred
+</ResponseField>
+
+<ResponseField name="error status" type="number">
+  Error status code if an error occurred
+</ResponseField>
+
+<dailyBubbleFooter />{" "}

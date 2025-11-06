@@ -1,0 +1,29 @@
+---
+title: "Release phone number"
+description: "Use this action to release a purchased phone number. Learn more in [Daily's documentation](https://docs.daily.co/reference/rest-api/phone-numbers/release-phone-number). Note that numbers cannot be released within 14 days of purchase."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field** | **Type** | **Description**                                    |
+| --------- | -------- | -------------------------------------------------- |
+| **id**    | Text     | The ID of the phone number you want to release.    |
+
+⚠️ Important Note:
+- Phone numbers cannot be released within 14 days of purchase
+- Attempting to release a number before this period expires will result in an error
+
+### Returned Values
+
+| **Field**         | **Type** | **Description**                                    |
+| ----------------- | -------- | -------------------------------------------------- |
+| **error**         | Boolean  | Indicates if an error occurred during the request. |
+| **error message** | Text     | Description of any error that occurred.            |
+| **error status**  | Number   | Numeric error status code.                         |
+
+<dailyBubbleFooter />

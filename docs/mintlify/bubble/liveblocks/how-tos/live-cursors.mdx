@@ -1,0 +1,76 @@
+---
+title: "Add live cursors"
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+
+After setting up a [presence tracker](/bubble/liveblocks/how-tos/presence) with the Liveblocks plugin, you might want to take things further and show where users are on the page in real time. That’s where live cursors come in.
+
+With live cursors, you can:
+
+- **Track user movement**: See where each user’s cursor is as they navigate the page.
+- **Show collaborative editing positions**: Visualize where users are making edits in real-time.
+- **Enhance collaborative experiences**: Provide real-time visual feedback for multiple users working on the same document.
+
+If you prefer a video walkthrough, check out our step-by-step tutorial below. Otherwise, keep reading for the written guide:
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/SnChHasU6Hg"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+## What We'll Build
+
+This tutorial covers how we set up live cursors in the demo app. You can check out the full setup in the [tutorial demo editor](https://bubble.io/page?id=lpl-liveblocks&tab=tabs-1&name=live-cursor-tutorial&type=page), or try it yourself in the [live demo](https://lpl-liveblocks.bubbleapps.io/version-test/live-cursors).
+
+![Live demo of live cursors](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726690940/livecursor_demo_hjlnhf.gif)
+
+## 1. Set up Your App and Plugin for Presence
+
+First, you’ll need to complete the [presence tracker tutorial](/bubble/liveblocks/how-tos/presence) to set up the Liveblocks plugin and database.
+
+Once that’s done, copy the page and prepare it for adding live cursors.
+
+![Page setup screenshot](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726690940/add_a_new_page_gq4wja.gif)
+
+## 2. Expose HTML Elements in Bubble
+
+To track cursor positions, we need to expose HTML elements in Bubble. Go to the **Settings** tab, under the **General** section, and check the option to `Expose the option to add an ID attribute to HTML elements`.
+
+![Settings tab screenshot](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726690940/livecursors_1_ruj2es.png)
+
+## 3. Add an ID to `Group User`
+
+In the designer, go to the `Group User` element and add an ID attribute. Choose any prefix (e.g., `cursor`), and append it with `Current cell's text`. This will allow the plugin to track each user’s cursor uniquely. We’ll use this prefix later in the `Liveblocks - enter room` action.
+
+![Add ID to Group User screenshot](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726690940/livecursors_2_w6qq12.png)
+
+## 4. Modify the Workflow to Track Cursors
+
+Now, head to the **Workflows** tab. In the `Liveblocks - enter room` action, update the following settings:
+
+- Set `Enable position` to `yes`.
+- Set `HTML ID prefix` to the prefix you chose in [step 3](#3-add-an-id-to-group-user) (e.g., `cursor`).
+
+You can leave `Hide default cursors` as is.
+
+![Modify workflow screenshot](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726690940/livecursors_3_ludxtj.png)
+
+## 5. Test It Out
+
+Preview the page and open it in multiple tabs. You’ll notice that as users move their cursors around the page, their avatars will follow the cursor movements.
+
+![Cursor movement screenshot](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726690940/livecursor_demo_hjlnhf.gif)
+
+---
+
+## Next Steps
+
+Now that live cursors are up and running, explore the [plugin reference](/bubble/liveblocks/plugin-reference/elements/liveblocks-presence) to discover additional customization options.
+
+<liveblocksFooter />

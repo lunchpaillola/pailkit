@@ -1,0 +1,103 @@
+---
+title: "Extend the plugin"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+This guide is intended for advanced users who want to extend the functionality of the [Daily plugin for Bubble](https://bubble.io/plugin/daily-video-chat-1622494385281x917140771709124600) by adding custom API calls. In this example, we'll show how to include meeting session information, but the same approach can be used for any API call available in [Daily's documentation](https://docs.daily.co/) that isn't already included in the plugin. If you're new to the plugin, we recommend starting with this [beginner tutorial](https://www.daily.co/blog/integrate-daily-video-chat-in-your-bubble-app-in-less-than-30-minutes/).
+
+For a video guide, you can watch the Youtube tutorial.
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/wUdRRU9muu8"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+Otherwise, continue reading for detailed instructions.
+
+## 1. Access the Plugins Tab
+
+To get started, navigate to the Plugins tab in your Bubble app. This is where you will manage and install plugins, including the API Connector for extending the Daily plugin.
+
+![Plugins Tab](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159416/extendscreenshot1_c1aoty.png)
+
+## 2. Install the API Connector Plugin
+
+If you haven't already installed the API Connector plugin, follow these steps:
+
+1. Click 'Add Plugins' in the plugin management interface.
+2. Search for 'API Connector'.
+3. Click 'Install' to add it to your app.
+
+![Installing API Connector](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159416/extendscreenshot2_axbpzw.png)
+
+## 3. Configure a New API
+
+Once the API Connector is installed, you'll need to configure a new API call. Click 'Add another API' to begin the setup process.
+
+![Add New API](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159417/extendscreenshot3_npddsu.png)
+
+## 4. Fill Out API Header Details
+
+Configure the API call header to authenticate your Daily API requests:
+
+1. **API Name**: Choose a memorable name for this API integration.
+2. **Authentication**: Set this to 'Private key in header'.
+3. **Key**: Use 'Authorization' for the key.
+4. **Key Value**: Enter 'Bearer [Your API Key]'. You can find your API key on your [Daily developer dashboard](https://dashboard.daily.co/developers).
+5. Click 'Expand' to configure the API call details.
+
+![Configure API Header](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159417/extendscreenshot4_n1ibfa.png)
+
+## 5. Set Up the API Call
+
+Now, you'll set up the actual API call:
+
+1. **Name**: Give the API call a clear name, such as 'Get Meeting Info'.
+2. **Use as**: Select 'Action' if you'll use this in a workflow, or 'Data' to use it as a data source.
+3. **Method and Endpoint**: For fetching [meeting information](https://docs.daily.co/reference/rest-api/meetings), use a GET method and the endpoint `https://api.daily.co/v1/meetings`.
+4. Click 'Initialize call' to make the API available within your app.
+
+![Set Up API Call](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159417/extendscreenshot5_c7kzpx.png)
+
+## 6. Format API Types
+
+Ensure that any date fields, such as meeting start and join times, are formatted as Unix timestamps. This will make it easier to display them as readable dates within your Bubble app.
+
+![Format API Types](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159417/extendscreenshot6_jk9oqa.png)
+
+## 7. Using the Custom API Call
+
+Now that your API call is set up, you can use it within your Bubble app as either an action in workflows or as a data source.
+
+### Use as Action Example
+
+1. In your workflow, add an action that triggers the API call by selecting the name you assigned during setup.
+2. Use the resulting data from the API call as needed within your workflow logic.
+
+![API Call as Action](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159418/extendscreenshot7_e3vcfa.png)
+
+### Use as Data Example
+
+1. Add a group to your page that requires a data source. The data type should match the name of the API call you set up.
+2. Set the data source to 'Get external data from API' and select the custom API call.
+3. Populate the elements inside the group (e.g., text elements) with the data returned from the API.
+
+![Use as Data Example](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159418/extendscreenshot8_o4yiqv.png)
+
+In the case where the API returns multiple objects, you can set the data source to a list and display each object in a repeating group.
+
+![Repeating Group Example](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159419/extendscreenshot9_v6qqph.png)
+
+Inside the repeating group, add elements such as text fields to display specific information, like the meeting start time.
+
+![Display Start Time](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726159419/extendscreenshot10_i7aaru.png)
+
+---
+
+<dailyBubbleFooter />

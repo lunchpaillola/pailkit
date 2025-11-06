@@ -1,0 +1,131 @@
+---
+description: "Track updates and changes made to the Video, Audio & Live Bundle."
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+<Update label="v1.21" description="May 30, 2025">
+  Added nova-3-general to transcript model options
+<Update label="v1.20" description="March 17, 2025">
+  Added real-time transcription event "transcription-message" that provide live
+  speech-to-text output during calls. Each event includes the speaker's
+  participant ID, transcribed text, and timestamp.
+</Update>
+<Update label="v1.19" description="February 5, 2025">
+  Added support for selecting LLM providers in the [VAPI create
+  assistant](/bubble/vapi/plugin-reference/create-assistant) action
+</Update>
+<Update label="v1.18" description="February 5, 2025">
+  Added support for outbound calls using VAPI. You can now use an [AI
+  assistant](/bubble/vapi/plugin-reference/create-assistant) to dial existing
+  numbers with the [create
+  call](/bubble/vapi/plugin-reference/actions/create-call) action.
+</Update>
+<Update label="v1.17" description="February 4, 2025">
+  Added VAPI plugin for creating AI voice assistants. Includes the [create
+  assistant](/bubble/vapi/plugin-reference/create-assistant) action to set up
+  customizable voice assistants with features like call management,
+  transcription, and voicemail handling.
+</Update>
+<Update label="v1.16" description="February 2, 2025">
+  Added a new action to [enable PIN
+  dial-in](/bubble/daily/plugin-reference/actions/enable-pin-dialin) for setting
+  up phone-based access to Daily rooms with PIN codes.
+</Update>
+<Update label="v1.15" description="January 30, 2025">
+  Added a new action to [get output from
+  jobs](/bubble/daily/plugin-reference/actions/get-output-from-job) for
+  retrieving transcripts, SOAP notes, and summaries from Daily's batch
+  processor.
+</Update>
+<Update label="v1.14" description="January 30, 2025">
+  Added a new action to [submit
+  jobs](/bubble/daily/plugin-reference/actions/submit-job) for generating
+  transcripts, SOAP notes, and summaries using Daily's batch processor.
+</Update>
+<Update label="v1.13" description="January 29, 2025">
+  Added a new action to [release phone
+  numbers](/bubble/daily/plugin-reference/actions/release-phone-number) to
+  remove purchased phone numbers from your account after the required holding
+  period.
+</Update>
+<Update label="v1.12" description="January 28, 2025">
+  Added a new action to [get purchased phone
+  numbers](/bubble/daily/plugin-reference/actions/get-purchased-phone-numbers)
+  to view your purchased phone numbers.
+</Update>
+<Update label="v1.11" description="January 27, 2025">
+  Added a new action to [buy phone
+  numbers](/bubble/daily/plugin-reference/actions/buy-phone-number) to purchase
+  available phone numbers, with an option to specify a number or get a random
+  California number.
+</Update>
+<Update label="v1.10" description="January 27, 2025">
+  Added a new action to [list available phone
+  numbers](/bubble/daily/plugin-reference/actions/list-phone-numbers) for
+  searching and filtering phone numbers by area code, region, or custom
+  patterns.
+</Update>
+<Update label="v1.9" description="January 10, 2025">
+  Added a new action to [create a new direct
+  upload](/bubble/mux/plugin-reference/actions/create-a-new-direct-upload).
+</Update>
+<Update label="v1.8" description="November 23, 2024">
+  Added a new action to [retrieve a live
+  stream](/bubble/mux/plugin-reference/actions/retrieve-a-live-stream).
+</Update>
+<Update label="v1.7" description="November 20, 2024">
+  Initial release of the [Tavus](/bubble/tavus/getting-started) plugin in the
+  bundle.
+</Update>
+<Update label="v1.6" description="November 18, 2024">
+  Introduced a new action to [send app messages with
+  Daily](/bubble/daily/plugin-reference/actions/send-app-message) and added
+  support for [receiving app message
+  events](/bubble/daily/plugin-reference/elements/daily-events).
+</Update>
+<Update label="v1.5" description="November 15, 2024">
+  Initial release of the bundle which adds a [Mux
+  plugin](/bubble/mux/getting-started) for HLS live streaming, and a
+  [customizable video player
+  plugin](/bubble/player-style-video/getting-started). Also added live streaming
+  events to the version of the [Daily plugin](/bubble/daily/getting-started)
+  included in this bundle.
+</Update>
+<Update label="v1.4" description="October 17, 2024">
+  Added the ability to customize live streams in the Daily - Start Live Stream
+  action, and introduced new states for Daily events—Recording Instance ID and
+  Recording ID Published—to enhance tracking and management of recording
+  sessions.
+</Update>
+<Update label="v1.3" description="October 10, 2024">
+  Removed duplicate **create webhooks** action and created a new action to [set
+  sidebar view](/bubble/daily/plugin-reference/actions/set-sidebar-view)
+</Update>
+<Update label="v1.2" description="October 04, 2024">
+  Added support for
+  [webhooks](/bubble/daily/plugin-reference/actions/create-webhook) and fixed
+  the [start](/bubble/daily/plugin-reference/actions/set-custom-integration) and
+  [stop](/bubble/daily/plugin-reference/actions/stop-custom-integrations) custom
+  integration actions to allow starting and stopping multiple integrations
+</Update>
+<Update label="v1.1" description="October 03, 2024">
+  Added support for [custom tray
+  buttons](/bubble/daily/plugin-reference/actions/update-custom-tray-buttons).
+  You can now customize buttons in the video call interface. Check out the
+  [guide](/bubble/daily/how-tos/add-custom-buttons) to learn how to enable this
+  feature. A new field was also introduced to the [set custom
+  integration](/bubble/daily/plugin-reference/actions/set-custom-integration)
+  action, allowing you to clear existing integrations before adding new ones.
+</Update>
+<Update label="v1.0" description="October 01, 2024">
+  The initial release of the [Bundle
+  version](https://bubble.io/plugin/video-audio--live-bundle-1727441795463x240182085842370560)
+  introduced advanced features such as [custom
+  integrations](/bubble/daily/how-tos/add-custom-integrations) for Miro, Google
+  Docs, and Spotify, [meeting
+  transcriptions](/bubble/daily/how-tos/transcribe-a-meeting), and real-time
+  captions.
+</Update>
+
+<videoAudioLiveStreamBundleFooter />

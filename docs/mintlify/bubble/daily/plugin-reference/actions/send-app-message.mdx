@@ -1,0 +1,23 @@
+---
+title: "Send app message"
+description: "Use this action to send an app message. Learn more in [Daily's documentation](https://docs.daily.co/reference/daily-js/instance-methods/send-app-message)"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field**     | **Type** | **Description**                                                                                                      |
+| ------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| **message**   | Text     | The message to send to participants.                                                                                 |
+| **recipient** | Text     | Specifies who should receive the message. The default is \*, which sends to all participants except the broadcaster. |
+| **user id**   | Text     | Set this field to send the message to a specific participant by their User ID.                                       |
+
+### Returned Values
+
+This action returns no values.
+
+<dailyBubbleFooter />

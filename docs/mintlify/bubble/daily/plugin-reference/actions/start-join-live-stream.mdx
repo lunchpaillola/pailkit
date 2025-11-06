@@ -1,0 +1,25 @@
+---
+title: "Join and start a live stream"
+description: " Use this action to join a call and start a live stream simultaneously in full-screen mode. A credit card is required to unlock this feature. You can add your credit card [here](https://dashboard.daily.co/billing)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+<Note>
+  Live streams are pay-as-you-go. You'll need to add your [credit card details
+  to your Daily account](https://dashboard.daily.co/billing) to enable it.
+</Note>
+
+### Fields
+
+| **Field**         | **Type** | **Description**                                                                                                                                                      |
+| ----------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Room URL**      | Text     | Enter the full Daily room url for the room a user would like to stream. This should be in the format https://your-daily-domain.daily.co/room-name                    |
+| **RTMP URL**      | Dropdown | Retrieve this from your streaming provider (ie youtube, twitch etc) This should be in the format rtmp://RTMP_ENDPOINT/STREAM_KEY or rtmps://RTMP_ENDPOINT/STREAM_KEY |
+| **Meeting Token** | Text     | Enter a meeting owner token to livestream. You can use the Daily - create a meeting token action to create a meeting owner token.                                    |
+
+### Returned Values
+
+## This action does not return any values.
+
+<dailyBubbleFooter />

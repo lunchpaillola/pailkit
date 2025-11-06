@@ -1,0 +1,33 @@
+---
+title: "Get transcript link"
+description: "Use this action to create and return a transcript link. Learn more in [Daily's documentation](https://docs.daily.co/reference/rest-api/transcript/get-transcript-link)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field**        | **Type** | **Description**                                     |
+| ---------------- | -------- | --------------------------------------------------- |
+| **transcriptId** | Text     | The ID of the transcript you would like to retrieve |
+
+### Returned Values
+
+| **Field**                | **Type** | **Description**                                                                       |
+| ------------------------ | -------- | ------------------------------------------------------------------------------------- |
+| **transcriptId**         | Text     | The unique ID of the transcription session.                                           |
+| **link**                 | Text     | The direct link to the transcript file in VTT format.                                 |
+| **outParams**            | Object   | Contains additional parameters related to the transcription storage.                  |
+| **outParams → key**      | Text     | The storage key for the transcript file.                                              |
+| **outParams → bucket**   | Text     | The S3 bucket where the transcript is stored.                                         |
+| **outParams → region**   | Text     | The region where the transcript file is stored (e.g., `us-west-2`).                   |
+| **error.status_code**    | Number   | The HTTP status code returned by the API (e.g., `200` for success).                   |
+| **error.status_message** | Text     | The HTTP status message returned by the API (e.g., `"OK"`).                           |
+| **error.body**           | Text     | The raw error body message as a string.                                               |
+| **returned_an_error**    | Boolean  | A flag indicating whether the API returned an error. `false` means no error occurred. |
+
+<dailyBubbleFooter />

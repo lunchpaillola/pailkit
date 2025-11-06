@@ -1,0 +1,29 @@
+---
+title: "Start transcription"
+description: "Use this action to [start transcribing](https://docs.daily.co/reference/daily-js/instance-methods/start-transcription#main) all participants in the room. This feature is pay-as-you-go. Add your [credit card details
+to your Daily account](https://dashboard.daily.co/billing) to enable it."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field**            | **Type** | **Description**                                                                                                                                                                                         |
+| -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Language**         | Text     | See available languages in [Deepgram's documentation](https://developers.deepgram.com/docs/models-languages-overview).                                                                                  |
+| **Model**            | Dropdown | The model for transcription. View available models in [Deepgram's documentation](https://developers.deepgram.com/docs/model).                                                                           |
+| **Profanity Filter** | Boolean  | Identifies recognized profanity and replaces it with the nearest non-profane word or removes it entirely from the transcript. Learn more [here](https://developers.deepgram.com/docs/profanity-filter). |
+| **Punctuate**        | Boolean  | Adds punctuation and capitalization to the transcript. Learn more [here](https://developers.deepgram.com/docs/punctuation).                                                                             |
+| **Endpointing**      | Number   | Returns transcripts when pauses in speech are detected. The default is 10 milliseconds. Specify the duration in milliseconds. Learn more [here](https://developers.deepgram.com/docs/endpointing).      |
+| **Redact**           | Text     | Removes sensitive information from your transcripts. Provide a comma-separated list of entities you want to redact. Learn more [here](https://developers.deepgram.com/docs/redaction).                  |
+| **Raw Response**     | Boolean  | Includes Deepgram's raw response in the transcription.                                                                                                                                                  |
+
+### Returned Values
+
+This action does not return any values.
+
+<dailyBubbleFooter />

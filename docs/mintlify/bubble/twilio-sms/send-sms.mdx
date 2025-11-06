@@ -1,0 +1,31 @@
+---
+title: "Send SMS"
+description: "Use this action to send SMS messages."
+---
+
+import twilioFooter from "/snippets/twilioFooter.mdx";
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**               | **Type** | **Description**                                                             |
+| ----------------------- | -------- | --------------------------------------------------------------------------- |
+| **From**                | Text     | The phone number you're sending the message from (must be a Twilio number). |
+| **To**                  | Text     | The phone number you're sending the message to.                             |
+| **Body**                | Text     | The content of the SMS message you're sending.                              |
+| **Message Service Sid** | Text     | (Optional) The Twilio Messaging Service SID if using a Messaging Service.   |
+
+### Returned Values
+
+The following values are returned by the action:
+
+| **Key**           | **Type** | **Description**                                        |
+| ----------------- | -------- | ------------------------------------------------------ |
+| **Error**         | Boolean  | `true` if there was an error, `false` if successful.   |
+| **Error Code**    | Number   | The Twilio error code (if any) for the failed message. |
+| **Error Message** | Text     | The error message returned by Twilio (if any).         |
+
+---
+
+<twilioFooter />

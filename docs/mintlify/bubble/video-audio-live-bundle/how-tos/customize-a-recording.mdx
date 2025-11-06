@@ -1,0 +1,41 @@
+---
+title: "Customize a recording"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+<Note>
+  Recordings are pay-as-you-go. You'll need to add your [credit card details to
+  your Daily account](https://dashboard.daily.co/billing) to enable it.
+  Customizations only apply to rooms with `cloud` recordings enabled.
+</Note>
+
+To customize the settings of a Daily recording you can use the [start recording](/bubble/daily/plugin-reference/actions/start-recording) or [update recording](/bubble/daily/plugin-reference/actions/update-recording) actions to do so. This guide walks you through how to update recording settings using recording events.
+
+## 1. Add the daily events element
+
+Place the **Daily Events** element on your page. A common practice is to place it inside a hidden popup that stays offscreen, allowing it to listen for events without being visible.
+
+![Daily Events Element](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726156453/CleanShot_2024-09-12_at_11.51.51_2x_bvxvxx.png)
+
+## 2. Enable cloud recording for your room
+
+When creating or updating a room, set the recording type to **cloud**. Customization options are only available for cloud recordings.
+
+![Enable Cloud Recording](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727386146/create-recording_h21xjt.png)
+
+## 3. Join the room and start listening for events
+
+After joining the room, make sure to add the **"begin listening"** action. This step is crucial to ensure Bubble can capture and process the recording events. We’ll listen for the **recording-started** event, which will trigger the update of your recording layout.
+
+![Begin Listening Action](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726156452/CleanShot_2024-09-12_at_11.47.13_2x_s3tue7.png)
+
+## 4. Add the recording-started event and the update recording action
+
+Next, add the **recording-started** event and include the action to update the recording settings, such as layout, bitrate, or resolution.
+
+![Update Recording](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727386163/CleanShot_2024-09-26_at_17.08.16_2x_e1knzg.png)
+
+---
+
+<dailyBubbleFooter />

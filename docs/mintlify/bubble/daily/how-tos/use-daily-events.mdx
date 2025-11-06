@@ -1,0 +1,62 @@
+---
+title: "Use daily events"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+This guide will walk you through how to use the Daily events element in your Bubble app. Daily events allow you to customize the user experience when specific actions occur during a call.If you prefer a video walkthrough, check out our step-by-step tutorial below. Otherwise, keep reading for the written guide:
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/Nmh36hHqMho"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; fullscreen; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+## Steps
+
+### 1. Add the Daily Events Element
+
+Place the Daily events element somewhere on the page. A common approach is to place it inside a hidden popup that never triggers, keeping it out of view while it listens for events.
+
+![Daily Events Element](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726156453/CleanShot_2024-09-12_at_11.51.51_2x_bvxvxx.png)
+
+### 2. Understand Key Events
+
+The plugin includes several key events that trigger actions when users interact with the call:
+
+- [Joined - meeting](https://docs.daily.co/reference/daily-js/events/meeting-events#joined-meeting): Fires when the local participant has joined the call, marking the connection.
+- [Left - meeting](https://docs.daily.co/reference/daily-js/events/meeting-events#left-meeting): Fires when the local participant has left the call, marking disconnection.
+- [Participant - joined](https://docs.daily.co/reference/daily-js/events/participant-events#participant-joined): Fires when a new remote participant joins the call.
+- [Participant - left](https://docs.daily.co/reference/daily-js/events/participant-events#participant-left): Fires when a remote participant leaves the call.
+- [Recording started](https://docs.daily.co/reference/daily-js/events/recording-events#recording-started): Fires when a recording starts.
+- [Recording stopped](https://docs.daily.co/reference/daily-js/events/recording-events#recording-stopped): Fires when a recording stops.
+- [Recording error](https://docs.daily.co/reference/daily-js/events/recording-events#recording-error): Fires when a recording has an error.
+- [Active speaker change](https://docs.daily.co/reference/daily-js/events/meeting-events#active-speaker-change): Fires when the active speaker changes, useful for updating the UI during audio-only calls.
+- [Transcription - started](/bubble/daily/plugin-reference/elements/daily-events#plus-events): Fires for all participants when transcription starts.
+- [Transcription - stopped](bubble/daily/plugin-reference/elements/daily-events#plus-events): Fires for all participants when transcription stops.
+- [Transcription - error](bubble/daily/plugin-reference/elements/daily-events#plus-events): Emitted for all participants when there has been a transcription error.
+
+### 3. Start Listening to Events
+
+Make sure to add the "begin listening" action after you join a room. This is essential for Bubble to start capturing and processing the events.
+
+![Begin Listening Action](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726156452/CleanShot_2024-09-12_at_11.47.13_2x_s3tue7.png)
+
+### 4. Trigger Actions Based on Events
+
+Use the events to trigger specific actions in your app.
+
+![Events](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726156453/CleanShot_2024-09-12_at_11.50.46_2x_ktxqpf.png)
+
+For example, you could:
+
+- Redirect users to a different page once they leave the call.
+- Execute actions only after the user has joined the call.
+
+You can check out a [demo editor](https://bubble.io/page?type=page&name=left_meeting_bdk&id=nocodevideodemos&tab=tabs-2) that showcases how these events function within a Bubble app.
+
+<dailyBubbleFooter />

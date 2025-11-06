@@ -1,0 +1,33 @@
+---
+title: "Start live stream"
+description: "Use this action to start a livestream. This action requires a credit card to unlock. You can add a credit card [here](https://dashboard.daily.co/billing)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+<Note>
+  Live streams are pay-as-you-go. You'll need to add your [credit card details
+  to your Daily account](https://dashboard.daily.co/billing) to enable it.
+</Note>
+
+### Fields
+
+| **Field**             | **Type** | **Description**                                                                                                                                                           |
+| --------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **RTMP URL**          | Dropdown | Retrieve this from your streaming provider (ie youtube, twitch etc) This should be in the format rtmp://RTMP_ENDPOINT/STREAM_KEY or rtmps://RTMP_ENDPOINT/STREAM_KEY      |
+| **Layout**            | Dropdown | Specifies the layout for participants’ videos in the live stream. Options: default, single-participant, active-participant, portrait. Default is **default**.             |
+| **User ID**           | Text     | If using the single-participant layout, specify the user ID of the participant to focus on. You can set a user ID with the Daily - Create Meeting Token action. Optional. |
+| **Max Streams**       | Number   | Specify the number of maximum streams in the recording (from 1-9). The default value is 9.                                                                                |
+| **Variant**           | Dropdown | If using the portrait layout, specify the variant. Options: vertical (default), inset.                                                                                    |
+| **Width**             | Number   | Controls the width (resolution) of the live stream. Must be an even number.                                                                                               |
+| **Background Color**  | Color    | Specifies the background color of the live stream.                                                                                                                        |
+| **Video Bitrate**     | Number   | Specifies the video bitrate in kilobits per second (kbps) to use for video output. Range: 10 to 10000.                                                                    |
+| **Audio Bitrate**     | Number   | Specifies the audio bitrate in kilobits per second (kbps) to use for audio output. Range: 10 to 320.                                                                      |
+| **Min Idle Time Out** | Number   | Specifies the amount of idle time (in seconds) before ending the live stream when the room is idle (e.g., all users have muted video/audio).                              |
+| **Max Duration**      | Number   | Maximum duration (in seconds) after which the live stream is forcefully stopped. Defaults to 86400 seconds (24 hours) for live streams.                                   |
+
+### Returned Values
+
+## This action does not return any values.
+
+<dailyBubbleFooter />

@@ -1,0 +1,87 @@
+---
+title: "Create call"
+description: "Use this action to create a call with VAPI. This allows you to initiate calls using a previously created assistant."
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+## Fields
+
+<ParamField path="assistant ID" type="text" required>
+  This is the assistant that will be used for the call. You can create an
+  assistant with Bundle VAPI - create assistant
+</ParamField>
+
+<ParamField path="phone number ID" type="text">
+  This is the phone number ID that will be used for the call. Configure or
+  purchase phone numbers through VAPI's dashboard.
+</ParamField>
+
+<ParamField path="name" type="text">
+  The name of the assistant
+</ParamField>
+
+<ParamField path="number" type="text" required>
+  The number of the customer. Should be more than 3 characters and less than 40
+  characters
+</ParamField>
+
+<ParamField path="extension" type="text">
+  This is the extension that will be dialed after the call is answered
+</ParamField>
+
+<ParamField path="customer name" type="text">
+  This is the name of the customer. This is just for your own reference
+</ParamField>
+
+## Return Values
+
+<ResponseField name="id" type="text">
+  Unique identifier for the call
+</ResponseField>
+
+<ResponseField name="org id" type="text">
+  Organization identifier
+</ResponseField>
+
+<ResponseField name="type" type="text">
+  Type of the call
+</ResponseField>
+
+<ResponseField name="created at" type="date">
+  When the call was created
+</ResponseField>
+
+<ResponseField name="updated at" type="date">
+  When the call was last updated
+</ResponseField>
+
+<ResponseField name="summary" type="text">
+  Summary of the call
+</ResponseField>
+
+<ResponseField name="recording URL" type="text">
+  URL to access the call recording
+</ResponseField>
+
+<ResponseField name="video recording URL" type="text">
+  URL to access the video recording
+</ResponseField>
+
+<ResponseField name="transcript" type="text">
+  Transcript of the call
+</ResponseField>
+
+<ResponseField name="error" type="boolean">
+  Whether an error occurred
+</ResponseField>
+
+<ResponseField name="error message" type="text">
+  Error message if an error occurred
+</ResponseField>
+
+<ResponseField name="error status" type="number">
+  Error status code if an error occurred
+</ResponseField>
+
+<videoAudioLiveStreamBundleFooter />{" "}
