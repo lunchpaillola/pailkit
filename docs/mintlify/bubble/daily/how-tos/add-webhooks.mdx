@@ -1,0 +1,118 @@
+---
+title: Add webhooks
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+This guide explains how to add webhooks to notify your Bubble app about various events
+in Daily. Note: Backend workflows are required, which are only available on [Bubble's
+paid plans](https://bubble.io/pricing).
+
+## Steps
+
+### 1. Enable Backend Workflows
+
+To receive webhooks in your app, go to the API tab in your app's settings and check **Enable Workflow API and backend workflows**.
+
+![Enable backend workflows](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732061582/CleanShot_2024-11-19_at_19.10.48_2x_chdddt.png)
+
+You should now see a new Backend Workflows section in your app.
+
+![backend workflows](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732061207/webhooks_backend_workflows_gfelkt.png)
+
+### 2. Create a New API Workflow
+
+In Bubble, go to **Backend Workflows** and click **"Click here to add a new backend workflow"**. Select **New API Workflow**.
+
+![New API Workflow](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732061197/new-api-workflow_bqzfvv.png)
+
+Give the workflow a name, check **"This workflow can be run without authentication"**, and set the parameter definition to **Detect Request Data**.
+
+![Name the Workflow](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732062489/CleanShot_2024-11-19_at_19.26.47_2x_qpi0ze.png)
+
+### 4. Detect Data
+
+In **Backend Workflows**, select **Detect Data**. Open another tab with your Bubbles editor to create a workflow that initializes the webhook.
+![detect the data](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732061197/detect_request_data_puiykh.png)
+
+### 5. Create a Webhook
+
+Use the [Create Webhook](/bubble/daily/plugin-reference/actions/create-webhook) action to set up a webhook. In this example, the webhook is initialized on page load, but you can trigger it from any workflow in your app. Note: Only one webhook is allowed per Daily domain.
+
+Add the initialized URL from the previous step, leave basic authentication blank, and set the retry type to **Circuit Breaker**. For event types, refer to [Daily's documentation](https://docs.daily.co/reference/rest-api/webhooks/events) and specify the events you want.
+
+To include multiple events, separate them with commas and wrap each in quotes. Example:
+`"meeting.started", "recording.ready-to-download"`
+
+![Create webhook](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732063296/CleanShot_2024-11-19_at_19.39.27_2x_jcixjc.png)
+
+### 6. Update the Webhook
+
+After initializing the webhook, update it with the actual domain using the [Update Webhook](/bubble/daily/plugin-reference/actions/update-webhook) action.
+
+The UUID will be the webhook created in the previous step. The other fields will remain the same as in the previous step, but the URL should be updated to remove the `/initialize` at the end.
+
+![update webhook](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732063740/CleanShot_2024-11-19_at_19.45.22_2x_tjmc3u.png)
+
+### 7. Update the Response Format
+
+In **Backend Workflows**, select **Modify Types** for the backend workflow you created in Step 2.
+
+![Modify Types](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732061162/CleanShot_2024-11-19_at_12.56.37_2x_oktbxq.png)
+
+Next, select **Edit Raw Data**.
+
+![Edit Raw Data](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732061162/CleanShot_2024-11-19_at_12.57.22_2x_fwopix.png)
+
+For each webhook event you want to handle, update the response to match the required payload format. You can find the payload format for specific event types in [Daily's documentation](https://docs.daily.co/reference/rest-api/webhooks/events).
+
+![Payload Format](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732061163/CleanShot_2024-11-19_at_13.15.12_2x_ikixwq.png)
+
+Example: **Meeting Started Payload**
+
+```json
+{
+  "version": "1.0.0",
+  "type": "meeting.started",
+  "id": "met-sta-f2aa1ade-ff80-464c-b46e-50ffa577d48d-1708526032",
+  "payload": {
+    "start_ts": 1708526032.672,
+    "meeting_id": "f2aa1ade-ff80-464c-b46e-50ffa577d48d",
+    "room": "TrPmUX1DzjSwDaAFDfNj"
+  },
+  "event_ts": 1708526033.049
+}
+```
+
+For multiple events (e.g., **Recording Ready to Download** and **Meeting Started**), the payload would look like this:
+
+```json
+{
+  "version": "1.0.0",
+  "type": "meeting.started",
+  "id": "met-sta-f2aa1ade-ff80-464c-b46e-50ffa577d48d-1708526032",
+  "payload": {
+    "start_ts": 1692124183,
+    "meeting_id": "f2aa1ade-ff80-464c-b46e-50ffa577d48d",
+    "room": "TrPmUX1DzjSwDaAFDfNj",
+    "recording_id": "08fa0b24-9220-44c5-846c-3f116cf8e738",
+    "room_name": "Xcm97xRZ08b2dePKb78g",
+    "status": "finished",
+    "max_participants": 1,
+    "duration": 9,
+    "share_token": "ntDCL5k98Ulq",
+    "s3_key": "api-test-1j8fizhzd30c/Xcm97xRZ08b2dePKb78g/1692124183028"
+  },
+  "event_ts": 1708526033.049
+}
+```
+
+### 8. Finalize the Workflow
+
+Your webhook is now successfully set up, and you can handle events in your app. For example, you could trigger an email notification or perform any other action when an event occurs.
+![finalize workflow](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732061163/CleanShot_2024-11-19_at_13.16.29_2x_zw2gfd.png)
+
+<dailyBubbleFooter />

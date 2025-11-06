@@ -1,0 +1,39 @@
+---
+title: "Get all inbox notifications"
+description: "Use this action to retrieve all inbox notifications."
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+import liveblocksPlus from "/snippets/liveblocksPlus.mdx";
+
+<liveblocksPlus feature="action" />
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**   | **Type** | **Description**                                                  |
+| ----------- | -------- | ---------------------------------------------------------------- |
+| **User ID** | Text     | The unique identifier of the user to retrieve notifications for. |
+
+### Returned Values
+
+The following values are returned by the action: `[]` indicates an array of objects.
+
+| **Key**                    | **Type**  | **Description**                                                                               |
+| -------------------------- | --------- | --------------------------------------------------------------------------------------------- |
+| **body.data[]**            | Array     | An array of notification objects related to the threads.                                      |
+| **body.data[].kind**       | Text      | The kind of notification, typically `"thread"`.                                               |
+| **body.data[].id**         | Text      | The unique identifier of the notification.                                                    |
+| **body.data[].threadId**   | Text      | The unique identifier of the thread related to the notification.                              |
+| **body.data[].roomId**     | Text      | The unique identifier of the room where the thread exists.                                    |
+| **body.data[].notifiedAt** | Date/Time | The timestamp when the notification was generated.                                            |
+| **body.data[].readAt**     | Date/Time | The timestamp when the notification was read. This will be `null` if it hasn't been read yet. |
+| **error.status_code**      | Number    | The HTTP status code returned by the API (e.g., `200` for success).                           |
+| **error.status_message**   | Text      | The HTTP status message returned by the API (e.g., `"OK"`).                                   |
+| **error.body**             | Text      | The raw error body message as a string.                                                       |
+| **returned_an_error**      | Boolean   | A flag indicating whether the API returned an error. `false` means no error occurred.         |
+
+---
+
+<liveblocksFooter />

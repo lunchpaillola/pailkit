@@ -1,0 +1,32 @@
+---
+title: "Buy phone number"
+description: "Use this action to purchase a phone number. Learn more in [Daily's documentation](https://docs.daily.co/reference/rest-api/phone-numbers/buy-phonr-number). Phone numbers are pay-as-you-go, so be sure to [add your credit card](https://dashboard.daily.co/billing) to your Daily account to enable this feature."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field**        | **Type** | **Description**                                                                                    |
+| ---------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| **phone number** | Text     | The phone number to purchase. If not specified, a random California (CA) number will be purchased. |
+
+⚠️ Important Note:
+
+- If a specific number is requested but unavailable, the action will fail.
+- When no number is specified, the action will automatically purchase an available California (CA) number.
+
+### Returned Values
+
+| **Field**         | **Type** | **Description**                                    |
+| ----------------- | -------- | -------------------------------------------------- |
+| **id**            | Text     | Unique identifier for the purchased phone number.  |
+| **number**        | Text     | The purchased phone number.                        |
+| **error**         | Boolean  | Indicates if an error occurred during the request. |
+| **error message** | Text     | Description of any error that occurred.            |
+| **error status**  | Number   | Numeric error status code.                         |
+
+<dailyBubbleFooter />{" "}

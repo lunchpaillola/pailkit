@@ -1,0 +1,40 @@
+---
+title: "Send an app message"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+Sometimes, you want to send an app message to trigger an event in your Bubble app. This guide walks through how.
+
+## Steps
+
+### 1. Add the Bundle Daily Events element
+
+Place the [**Bundle Daily Events**](/bubble/daily/plugin-reference/elements/daily-events) element on your page. A common practice is to place it inside a hidden popup, keeping it offscreen while it listens for events.
+
+![Daily Events Element](https://res.cloudinary.com/dpfmaccxx/image/upload/v1731966959/daily_events_eddeeq.png)
+
+### 2. Start listening for events
+
+After joining the room, add the Begin Listening action. This ensures that Bubble can detect and process incoming events, such as app-message.
+
+![Begin Listening Action](https://res.cloudinary.com/dpfmaccxx/image/upload/v1731966486/bundle_daily_events_p6fhrc.png)
+
+### 3. Send app message
+
+Use the [send app message](/bubble/daily/plugin-reference/actions/send-app-message) action anywhere in your workflow to transmit a message.
+
+![Send app message](https://res.cloudinary.com/dpfmaccxx/image/upload/v1731966488/bundle_send_app_message_zxpnmg.png)
+
+### 4. Handle the app message event
+
+When an app message event is triggered, take action in your app. This could be displaying a popup, showing a notification, or any other custom action you define.
+
+Note: App messages do not trigger for the sender (broadcaster). In this example, we send a notification with the value of the message, but the possibilities are endless.
+
+![app message event](https://res.cloudinary.com/dpfmaccxx/image/upload/v1731966484/bundle_app_message_n9gz3c.png)
+
+<dailyBubbleFooter />

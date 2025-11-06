@@ -1,0 +1,80 @@
+---
+title: "Get output from job"
+description: "Use this action to retrieve outputs from a job submitted via [submit job](/bubble/daily/plugin-reference/actions/submit-job)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+## Fields
+
+<ParamField path="id" type="text" required>
+  ID of the job to retrieve the access link.
+</ParamField>
+
+## Return Values
+
+<ResponseField name="id" type="text">
+  The ID of the job
+</ResponseField>
+
+<ResponseField name="preset" type="text">
+  The preset given when submitting the job
+</ResponseField>
+
+<ResponseField name="status" type="text">
+  The status of the job. One of: ["submitted", "processing", "finished",
+  "error"]
+</ResponseField>
+
+<ResponseField name="transcription link -VTT" type="text">
+  Access link to download the transcript in VTT format
+</ResponseField>
+
+<ResponseField name="transcription link -text" type="text">
+  Access link to download the transcript in text format
+</ResponseField>
+
+<ResponseField name="transcription link -SRT" type="text">
+  Access link to download the transcript in SRT format
+</ResponseField>
+
+<ResponseField name="transcription link -JSON" type="text">
+  Access link to download the transcript in JSON format
+</ResponseField>
+
+<ResponseField name="transcript raw text" type="text">
+  Raw text content of the transcript
+</ResponseField>
+
+<ResponseField name="soap link - JSON" type="text">
+  Access link to download the SOAP note in JSON format
+</ResponseField>
+
+<ResponseField name="soap raw text" type="text">
+  Raw text content of the SOAP note
+</ResponseField>
+
+<ResponseField name="summary link - text" type="text">
+  Access link to download the summary in text format
+</ResponseField>
+
+<ResponseField name="summary raw text" type="text">
+  Raw text content of the summary
+</ResponseField>
+
+<ResponseField name="error" type="text">
+  Whether an error occurred
+</ResponseField>
+
+<ResponseField name="error message" type="text">
+  Error message if an error occurred
+</ResponseField>
+
+<ResponseField name="error status" type="text">
+  Error status code if an error occurred
+</ResponseField>
+
+<dailyBubbleFooter />

@@ -1,0 +1,109 @@
+---
+title: "Generate post-call summaries"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="feature" />
+
+Learn how to automatically generate summaries and transcripts of your Daily video calls. This guide covers both automatic and manual methods for processing call recordings. This is a pay as you go feature add your credit card details to your [Daily account](https://dashboard.daily.co/billing) to enable it.
+
+## Steps
+
+### 1. Enable Recording in Your Daily Room
+
+First, make sure your room is set up for recording:
+
+1. Use the [create room](/bubble/daily/plugin-reference/actions/create-room) or [update room](/bubble/daily/plugin-reference/actions/update-room) action
+2. Enable cloud recording in your room settings
+
+You can start recording either:
+
+- Automatically when an owner joins (set `start cloud recording` in the [meeting token](/bubble/daily/plugin-reference/actions/create-meeting-token)).
+- Manually using the [start recording](/bubble/daily/plugin-reference/actions/start-recording) action
+
+### 2. Submit the Recording for Processing
+
+Once you have a recording ID (from the recording event or recording action), submit it for processing:
+
+1. Use the [submit job](/bubble/daily/plugin-reference/actions/submit-job) action
+2. Set the `preset` to "summarize" for summaries + transcripts or just "transcript" for transcripts
+3. Set the `source type` to "recordingId"
+4. Input your `recording ID`
+
+### 3. Retrieve the Output
+
+Since processing takes time, you have two options to get your results:
+
+#### Option A: Manual Retrieval
+
+Use the [get output from job](/bubble/daily/plugin-reference/actions/get-output-from-job) action to fetch the results (note: that processing may take time).
+
+#### Option B: Webhook Automation (Recommended)
+
+Set up [webhooks](/bubble/daily/how-tos/add-webhooks) to automatically process results:
+
+Update your [webhook](/bubble/daily/plugin-reference/actions/create-webhook) to listen for these events:
+
+- `recording.ready-to-download` - Triggers when recording is ready
+- `batch-processor.job-finished` - Triggers when processing completes
+
+Update your raw data in bubble to look for this response
+
+```json
+{
+  "version": "1.0.0",
+  "type": "recording.ready-to-download",
+  "id": "rec-rtd-c3df927c-f738-4471-a2b7-066fa7e95a6b-1692124192",
+  "payload": {
+    "recording_id": "08fa0b24-9220-44c5-846c-3f116cf8e738",
+    "id": "1dae15c5-6a85-4d65-ab00-4b19bb054b84",
+    "room_name": "Xcm97xRZ08b2dePKb78g",
+    "start_ts": 1692124183,
+    "status": "finished",
+    "max_participants": 1,
+    "duration": 9,
+    "share_token": "ntDCL5k98Ulq",
+    "s3_key": "api-test-1j8fizhzd30c/Xcm97xRZ08b2dePKb78g/1692124183028"
+  },
+  "event_ts": 1692124192
+}
+```
+
+## Example Workflow
+
+Here's a complete workflow for automatic summaries:
+
+1. **Start Recording:**
+
+   - Trigger: When owner joins room
+   - Action: Start Recording (or use automatic start)
+
+2. **Submit for Processing:**
+
+   - Trigger: When recording.ready-to-download event fires
+   - Action: Submit Job with "summarize" preset
+
+3. **Save Results:**
+   - Trigger: When batch-processor.job-finished event fires
+   - Action: Get Output from Job
+   - Action: Save summary to your database
+
+## Best Practices
+
+1. **Recording Setup**
+
+   - Always use cloud recording for summaries
+   - Consider automatic recording start for consistency
+   - Store recording IDs for reference
+
+2. **Processing**
+
+   - Use webhooks for automated workflows
+   - Consider storing both summaries and transcripts
+
+3. **Storage**
+   - Save summaries in your database for easy access
+
+<dailyBubbleFooter />

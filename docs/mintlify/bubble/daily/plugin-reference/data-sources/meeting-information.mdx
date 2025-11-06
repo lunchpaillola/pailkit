@@ -1,0 +1,41 @@
+---
+title: "Get Meeting Information"
+description: "Use this action to retrieve information about meetings, including room details, participants, and meeting duration. Learn more about this API call at [Daily's API Reference](https://docs.daily.co/reference#get-meetings-information)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**   | **Type** | **Description**                                                                                                                                     |
+| ----------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Refresh** | DateTime | Optional. Fetch new data based on the current date/time. Can be used in combination with the 'Do every x seconds' workflow to display updated data. |
+| **Room**    | Text     | Optional. Specify the room name to fetch meeting information for the specified room.                                                                |
+
+### Returned Values
+
+The following values are returned by the action:
+
+| **Value**                         | **Type**    | **Description**                                                                        |
+| --------------------------------- | ----------- | -------------------------------------------------------------------------------------- |
+| **Total Count**                   | Number      | The total number of meetings.                                                          |
+| **Data**                          | List        | A list of meeting information. Each item contains the following fields:                |
+| **Data → ID**                     | Text        | The unique ID of the meeting.                                                          |
+| **Data → Room**                   | Text        | The name of the room in which the meeting took place.                                  |
+| **Data → Start Time**             | Number      | The Unix timestamp representing when the meeting started.                              |
+| **Data → Duration**               | Number      | The duration of the meeting in seconds.                                                |
+| **Data → Ongoing**                | Boolean     | Indicates whether the meeting is still ongoing.                                        |
+| **Data → Participants**           | List        | A list of participants in the meeting. Each participant contains the following fields: |
+| **Participants → User ID**        | Text (Null) | The user ID of the participant, if available.                                          |
+| **Participants → Participant ID** | Text        | The unique ID of the participant.                                                      |
+| **Participants → User Name**      | Text        | The name of the participant.                                                           |
+| **Participants → Join Time**      | Number      | The Unix timestamp representing when the participant joined the meeting.               |
+| **Participants → Duration**       | Number      | The total time the participant spent in the meeting (in seconds).                      |
+| **error.status_code**             | Number      | The HTTP status code returned by the API (e.g., `200` for success).                    |
+| **error.status_message**          | Text        | The HTTP status message returned by the API (e.g., `"OK"`).                            |
+| **error.body**                    | Text        | The raw error body message as a string.                                                |
+| **returned_an_error**             | Boolean     | A flag indicating whether the API returned an error. `false` means no error occurred.  |
+
+<dailyBubbleFooter />

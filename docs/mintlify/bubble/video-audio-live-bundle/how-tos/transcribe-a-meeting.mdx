@@ -1,0 +1,62 @@
+---
+title: "Transcribe a meeting"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+Learn how to transcribe your meetings with this guide. This guide covers the auto-transcribe method, but you can also manually start transcription with the [**start transcription**](/bubble/daily/plugin-reference/actions/start-transcription) action while in a call.
+
+<img
+  width="560"
+  height="315"
+  src="https://res.cloudinary.com/dpfmaccxx/image/upload/v1728589114/livetranscriptiongif_ilunty.gif"
+/>
+
+If you prefer a video walkthrough, check out our step-by-step tutorial below. Otherwise, keep reading for the written guide:
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/ncEGeVex1Ww"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; fullscreen; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+## Steps
+
+### 1. Add the Daily Events Element (Optional)
+
+Place the [**events element**](/bubble/daily/plugin-reference/elements/daily-events) element on your page. It’s common to put it inside a hidden popup so it stays offscreen but can still listen for events like `transcription-started`, `transcription-stopped`, or `transcription-error`.
+
+![Daily Events Element](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727970931/1._daily_plus_events_zusmqt.png)
+
+### 2. Enable Transcription in Your Room
+
+Next, [create](/bubble/daily/plugin-reference/actions/create-room) or [update](/bubble/daily/plugin-reference/actions/update-room) a room and enable transcription. Be sure to set the `auto transcription` field to `yes`. For a full list of transcription fields, check the [documentation](/bubble/daily/plugin-reference/actions/create-room#transcription).
+
+![Enable Transcription](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727793159/transcript_screenshot_1_yllqxw.png)
+
+### 3. Create a Meeting Token for the Transcription Owner
+
+Create a [meeting token](/bubble/daily/plugin-reference/actions/create-meeting-token) with the `is owner` field set to `yes` and `auto-start transcription` set to `yes`. If you want live captions, make sure to enable them too. Only meeting owners can start transcriptions in this plugin.
+
+![Meeting Token Setup](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727793159/transcript_screenshot_2_e8n6rq.png)
+
+### 4. Join the Meeting
+
+[**Join**](/bubble/daily/plugin-reference/actions/join-room) a room . Make sure to input the room URL from [Step 2](/bubble/daily/how-tos/transcribe-a-meeting#2-enable-transcription-in-your-room) and the meeting token from [Step 3](/bubble/daily/how-tos/transcribe-a-meeting#3-create-a-meeting-token-for-the-transcription-owner).
+
+![Join Meeting](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727793159/transcript_screnshot_3_q5blwx.png)
+
+### 5. Begin Listening for Events (Optional)
+
+If you want to listen to transcription events, add the [**begin event listening action**](/bubble/daily/plugin-reference/elements/daily-events#element-actions) after joining the room.
+
+![Begin Event Listening](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727793159/transcript_screenshot_4_rrctf5.png)
+
+<dailyBubbleFooter />

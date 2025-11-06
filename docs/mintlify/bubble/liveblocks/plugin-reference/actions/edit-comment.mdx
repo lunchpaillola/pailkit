@@ -1,0 +1,48 @@
+---
+title: "Edit comment"
+description: "Use this action to edit a comment in a thread."
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+import liveblocksPlus from "/snippets/liveblocksPlus.mdx";
+
+<liveblocksPlus feature="action" />
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**      | **Type** | **Description**             |
+| -------------- | -------- | --------------------------- |
+| **Room ID**    | Text     | The room ID.                |
+| **Thread ID**  | Text     | The thread ID.              |
+| **Comment ID** | Text     | The comment ID.             |
+| **Text**       | Text     | The content of the comment. |
+
+### Returned Values
+
+The following values are returned by the action: `[]` indicates an array of objects.
+
+| **Key**                                 | **Type**  | **Description**                                                                                             |
+| --------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------- |
+| **body.type**                           | Text      | The type of the created object, typically `"comment"`.                                                      |
+| **body.threadId**                       | Text      | The unique identifier for the thread to which the comment belongs.                                          |
+| **body.roomId**                         | Text      | The unique identifier for the room where the comment was created.                                           |
+| **body.id**                             | Text      | The unique identifier for the created comment.                                                              |
+| **body.userId**                         | Text      | The user ID of the person who created the comment.                                                          |
+| **body.createdAt**                      | Date/Time | The timestamp of when the comment was created.                                                              |
+| **body.editedAt**                       | Date/Time | The timestamp of when the comment was edited.                                                               |
+| **body.body**                           | Object    | The content body of the comment. This is an object that includes `version` and `content`.                   |
+| **body.body.version**                   | Number    | The version number of the comment content.                                                                  |
+| **body.body.content**                   | Array     | An array of content blocks in the comment. Each block contains further nested data, such as paragraph text. |
+| **body.body.content[].type**            | Text      | The type of the content block (e.g., `"paragraph"`).                                                        |
+| **body.body.content[].children**        | Array     | An array containing the children of the content block. Typically contains text objects for each paragraph.  |
+| **body.body.content[].children[].text** | Text      | The actual text content of the comment, such as `"hi"`.                                                     |
+| **error.status_code**                   | Number    | The HTTP status code returned by the API (e.g., `200` for success).                                         |
+| **error.status_message**                | Text      | The HTTP status message returned by the API (e.g., `"OK"`).                                                 |
+| **error.body**                          | Text      | The raw error body message as a string.                                                                     |
+| **returned_an_error**                   | Boolean   | A flag indicating whether the API returned an error. `false` means no error occurred.                       |
+
+---
+
+<liveblocksFooter />

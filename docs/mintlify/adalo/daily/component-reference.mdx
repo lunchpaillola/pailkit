@@ -1,0 +1,102 @@
+---
+title: Reference
+description: "Component reference for the Daily Kit for Adalo."
+---
+
+<Warning>
+  This component is currently unavailable for new downloads due to recent
+  platform updates. We appreciate your understanding and are exploring options
+  for future availability.
+</Warning>
+
+### **Video Chat by Daily**
+
+This component is for the video call element; it’s the element you’ll use to join calls. You can configure the following fields:
+
+| **Parameter**     | **Description**                                                                                                                                                              | **Required** |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **Room Url**      | Add the URL for the room you would like to join; you can choose static or dynamic data.                                                                                      | Yes          |
+| **Meeting Token** | Enter a meeting token for the video session. Tokens configure the video session on a per-user basis. You can create a meeting token with the create meeting token component. | No           |
+
+### **Create Room Button**
+
+This component configures and styles a button to create a new video room. You can configure the following fields:
+
+| **Parameter**                                  | **Description**                                                                                                                                                                                             | **Required** |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **API key**                                    | The private key that you will retrieve from the [Daily Developer Dashboard](https://dashboard.daily.co/developers). It enables creating rooms, creating meeting tokens, deleting rooms, and updating rooms. | Yes          |
+| **Privacy**                                    | Determines who can access the room. Options are public and private. If set to private, a user will need a corresponding meeting token to access the room.                                                   | Yes          |
+| **Not before time**                            | Users cannot join a meeting in this room before this time. If not set, the user will be able to join a room as soon as it is created.                                                                       | No           |
+| **Expiration time**                            | Users cannot join a meeting in this room after this time. If not set, the room will never expire.                                                                                                           | No           |
+| **Enable Prejoin UI**                          | Determines whether participants enter a waiting room with a camera, mic, and browser check before joining a call. Options are true and false.                                                               | No           |
+| **Enable Chat**                                | Determines whether chat is enabled. Options are true and false.                                                                                                                                             | No           |
+| **Owner Only Broadcast**                       | Options are true and false. If set to true, only meeting owners are allowed to turn on the camera, unmute the mic, and share the screen.                                                                    | No           |
+| **Enable Knocking**                            | Turns on a lobby experience for private rooms. A participant without a corresponding meeting token can request to be admitted with a 'knock'.                                                               | No           |
+| **Start Video Off**                            | When participants first join a meeting, keep their camera off. This property can be overridden by a meeting token.                                                                                          | No           |
+| **Start Audio Off**                            | When participants first join a meeting, keep their microphone muted. This property can be overridden by a meeting token.                                                                                    | No           |
+| **Show button styles**                         | Edit the button styles of the create room button, including text, fonts, colors, and rounding.                                                                                                              | No           |
+| **Additional actions after a room is created** | Configure actions in Adalo that should occur after a room is created.                                                                                                                                       | No           |
+
+### **Create Meeting Token Button**
+
+This component configures and styles a button to create a meeting token. You can configure the following fields:
+
+| **Parameter**                                   | **Description**                                                                                                                                                                                             | **Required** |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **API key**                                     | The private key that you will retrieve from the [Daily Developer Dashboard](https://dashboard.daily.co/developers). It enables creating rooms, creating meeting tokens, deleting rooms, and updating rooms. | Yes          |
+| **Room Name**                                   | The room for which this token is valid.                                                                                                                                                                     | Yes          |
+| **Username**                                    | Optional parameter to set the user's name in this meeting. The name displays in the user interface when the user is muted or has turned off the camera, and in the chat window.                             | No           |
+| **Is Owner**                                    | Determines whether the user has meeting owner privileges. Options are true and false.                                                                                                                       | No           |
+| **Start Video Off**                             | When a participant first joins a meeting, keep their camera off. Setting this on a meeting token overrides the setting on the room.                                                                         | No           |
+| **Start Audio Off**                             | When participants first join a meeting, keep their microphone muted. Setting this on a meeting token overrides the setting on the room.                                                                     | No           |
+| **Show button styles**                          | Edit the button styles of the create meeting token button, including text, fonts, colors, and rounding.                                                                                                     | No           |
+| **Additional actions after a token is created** | Configure actions in Adalo that should occur after a meeting token is created.                                                                                                                              | No           |
+
+### **Delete Room Button**
+
+This component configures and styles a button to delete a room. You can configure the following fields:
+
+| **Parameter**                                  | **Description**                                                                                                                                                                                             | **Required** |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **API key**                                    | The private key that you will retrieve from the [Daily Developer Dashboard](https://dashboard.daily.co/developers). It enables creating rooms, creating meeting tokens, deleting rooms, and updating rooms. | Yes          |
+| **Room Name**                                  | The name of the room to delete.                                                                                                                                                                             | Yes          |
+| **Show button styles**                         | Edit the button styles of the delete room button, including text, fonts, colors, and rounding.                                                                                                              | No           |
+| **Additional actions after a room is deleted** | Configure actions in Adalo that should occur after a room is deleted.                                                                                                                                       | No           |
+
+### **Update Room Button**
+
+This component configures and styles a button to update a room. You can configure the following fields:
+
+| **Parameter**                                  | **Description**                                                                                                                                                                                             | **Required** |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **API key**                                    | The private key that you will retrieve from the [Daily Developer Dashboard](https://dashboard.daily.co/developers). It enables creating rooms, creating meeting tokens, deleting rooms, and updating rooms. | Yes          |
+| **Room Name**                                  | The name of the room that will be updated.                                                                                                                                                                  | Yes          |
+| **Privacy**                                    | Determines who can access the room. Options are public and private. If set to private, a user will need a corresponding meeting token to access the room.                                                   | Yes          |
+| **Not before time**                            | Users cannot join a meeting in this room before this time. If not set, the user will be able to join a room as soon as it is created.                                                                       | No           |
+| **Expiration time**                            | Users cannot join a meeting in this room after this time. If not set, the room will never expire.                                                                                                           | No           |
+| **Enable Prejoin UI**                          | Determines whether participants enter a waiting room with a camera, mic, and browser check before joining a call. Options are true and false.                                                               | No           |
+| **Enable Chat**                                | Determines whether chat is enabled. Options are true and false.                                                                                                                                             | No           |
+| **Owner Only Broadcast**                       | Options are true and false. If set to true, only meeting owners are allowed to turn on the camera, unmute the mic, and share the screen.                                                                    | No           |
+| **Enable Knocking**                            | Turns on a lobby experience for private rooms. A participant without a corresponding meeting token can request to be admitted with a 'knock'.                                                               | No           |
+| **Start Video Off**                            | When participants first join a meeting, keep their camera off. This property can be overridden by a meeting token.                                                                                          | No           |
+| **Start Audio Off**                            | When participants first join a meeting, keep their microphone muted. This property can be overridden by a meeting token.                                                                                    | No           |
+| **Show button styles**                         | Edit the button styles of the update room button, including text, fonts, colors, and rounding.                                                                                                              | No           |
+| **Additional actions after a room is updated** | Configure actions in Adalo that should occur after a room is updated.                                                                                                                                       | No           |
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Need Help?" icon="envelope" href="/support/plans">
+    Access community or premium support.
+  </Card>
+  <Card
+    title="Have a feature request?"
+    icon="lightbulb"
+    href="https://lunchpaillabs.canny.io/feature-requests?selectedCategory=video-chat-kit-for-adalo"
+  >
+    Share your feature request on our{" "}
+    <a href="https://lunchpaillabs.canny.io/feature-requests?selectedCategory=video-chat-kit-for-adalo">
+      idea board.
+    </a>
+  </Card>
+</CardGroup>

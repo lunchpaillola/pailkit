@@ -1,0 +1,56 @@
+---
+description: "Getting started with the TalkJS Chat component for Adalo."
+---
+
+<Warning>
+  This component is currently unavailable for new downloads due to recent
+  platform updates. We appreciate your understanding and are exploring options
+  for future availability.
+</Warning>
+
+## Overview
+
+This component brings chat functionality to Adalo apps, leveraging the sophisticated chat UIs and APIs from TalkJS.The component is maintained by [Lunch Pail Labs](https://lunchpaillabs.com/).
+
+---
+
+## Installation and Configuration
+
+### Prerequisites
+
+Before starting, ensure you have:
+
+- An Adalo app with users eligible for adding to conversations.
+- A TalkJS account. Here's what you'll need:
+  - Your App ID, available in [your dashboard](https://talkjs.com/dashboard/) under the settings tab.
+  - To customize the Chat UI, adjust settings at [Chat UI settings](https://talkjs.com/dashboard/roles/settings/default/chat-ui) and assign roles appropriately through your dashboard.
+
+### Installation
+
+1. From the Adalo component library, drag and drop the chat component onto your app screen.
+2. Input your TalkJS App ID into the component settings.
+
+### Adding Participants
+
+- **"Me" parameter**: Essential for the component's functionality, this parameter identifies the user entering the chat.
+- **Adding other participants**: To include more people in a conversation, provide a list of users in the 'participant' parameter. Specify their details like ID, Email, Photo, or Role.
+
+- **Default view**: Without added participants, the component defaults to the inbox view, displaying all conversations involving the user, and will be empty if there are no conversations.
+
+---
+
+<CardGroup cols={2}>
+  <Card title="Need Help?" icon="envelope" href="/support/plans">
+    Access community or premium support.
+  </Card>
+  <Card
+    title="Have a feature request?"
+    icon="lightbulb"
+    href="https://lunchpaillabs.canny.io/feature-requests?selectedCategory=chat-component-for-adalo"
+  >
+    Post your feature request on our{" "}
+    <a href="https://lunchpaillabs.canny.io/feature-requests?selectedCategory=chat-component-for-adalo">
+      idea board.
+    </a>
+  </Card>
+</CardGroup>

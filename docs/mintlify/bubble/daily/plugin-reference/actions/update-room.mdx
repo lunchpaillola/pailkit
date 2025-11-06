@@ -1,0 +1,88 @@
+---
+title: "Update room"
+description: "Use this action to set a room's privacy and config properties through Daily's API. Learn more about this API call at [Daily API Reference](https://docs.daily.co/reference#set-room-configuration)"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+# Fields
+
+### General
+
+| **Field**               | **Type** | **Description**                                                                                                                                    |
+| ----------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Room**                | Text     | Name of the room that you would like to configure.                                                                                                 |
+| **Privacy**             | Text     | Determines room access. Options: public or private. Default is public.                                                                             |
+| **Enable Knocking**     | Boolean  | Turns on a lobby experience for private rooms. Users without meeting tokens can request access by "knocking." Options: Yes or No. Default is true. |
+| **Language**            | Text     | Default language for the room. Options: en (English), es (Spanish), etc. Default is en.                                                            |
+| **Enable Screen Share** | Boolean  | Determines whether screen share is enabled. Options: Yes or No. Default is true.                                                                   |
+| **Enable Chat**         | Boolean  | Determines whether chat is enabled. Options: Yes or No. Default is true.                                                                           |
+| **Enable People UI**    | Boolean  | Determines whether to display People UI. Default is true.                                                                                          |
+| **Enable Prejoin UI**   | Boolean  | Determines whether participants enter a waiting room with camera, mic, and browser checks before joining. Default is true.                         |
+| **Video Processing UI** | Boolean  | Enables background blur controls for participants. Default is false.                                                                               |
+| **Enable PiP UI**       | Boolean  | Sets whether Picture in Picture controls are enabled in Daily Prebuilt. Default is false.                                                          |
+| **Emoji Reactions**     | Boolean  | Enables emoji reactions in the call. Default is false.                                                                                             |
+| **Hand Raising**        | Boolean  | Allows participants to raise hands in Daily Prebuilt. Default is false.                                                                            |
+| **Noise Cancellation**  | Boolean  | Enables microphone noise cancellation during calls. Default is false.                                                                              |
+
+### Advanced Settings
+
+The following fields are optional advanced settings:
+
+| **Field**                       | **Type** | **Description**                                                                                                                                                                               |
+| ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Not Before (Unix Timestamp)** | Number   | Users cannot join the room before this time. A Unix timestamp (seconds since epoch). Optional.                                                                                                |
+| **Expires (Unix Timestamp)**    | Number   | Users cannot join the room after this time. A Unix timestamp (seconds since epoch).                                                                                                           |
+| **Owner Only Broadcast**        | Boolean  | If set to yes, only meeting owners can turn on camera, unmute mic, and share screen. Configure meeting owner token using Daily - create meeting token action. Default is false.               |
+| **Eject at Room Expiration**    | Boolean  | If a meeting is ongoing at room expiration time, this setting ejects all participants. Optional.                                                                                              |
+| **Eject After Elapsed Time**    | Number   | Ejects participants after a set number of seconds. Optional.                                                                                                                                  |
+| **Meeting Join Hook**           | Text     | Optional URL to receive a webhook when a user joins a room.                                                                                                                                   |
+| **Advanced Chat**               | Boolean  | Provides enhanced chat options like emoji reactions and Giphy messages. Default is false.                                                                                                     |
+| **Breakout Rooms**              | Boolean  | Sets whether Daily Prebuilt’s breakout rooms feature is enabled. When set to true, an owner in a Prebuilt call can create breakout rooms to divide participants into smaller, private groups. |
+| **Shared Chat History**         | Boolean  | When enabled, newly joined participants in Prebuilt calls will request chat history from remote peers, in order to view chat messages from before they joined.                                |
+
+### Credit Card Required to Unlock
+
+The following fields are only available after adding a credit card to your account. Visit [Daily Billing](https://dashboard.daily.co/billing) to learn more about pricing and unlock these features:
+
+| **Field**            | **Type** | **Description**                                                                                                       |
+| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Max Participants** | Number   | Maximum participants allowed in a room at the same time. Default is 200. Optional.                                    |
+| **Enable Recording** | Dropdown | Determines whether recording is enabled. Options: cloud, local, rtp-tracks, output-byte-stream, cloud-beta. Optional. |
+
+### Transcription
+
+<dailyPlusFlag feature="feature" />
+
+| **Field**                 | **Type** | **Description**                                                                                                                                                                                                               |
+| ------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Live Captions UI**      | Boolean  | Sets whether participants can see a closed captions button in the call tray. When set to `yes`, the button appears, and participants can toggle captions locally. When set to `no`, the button is hidden.                     |
+| **Transcription Storage** | Boolean  | Controls whether live transcriptions started with `startTranscription()` are saved as WebVTT files.                                                                                                                           |
+| **Auto Transcription**    | Boolean  | Set to `yes` to enable automatic transcription. Requires additional settings in the [create meeting token](/bubble/daily/plugin-reference/actions/create-meeting-token#transcription) action and to set the following fields. |
+| **Language**              | Text     | Specifies the transcription language. See available options in [Deepgram's documentation](https://developers.deepgram.com/docs/models-languages-overview).                                                                    |
+| **Model**                 | Dropdown | Selects the model for transcription. View available models in [Deepgram's documentation](https://developers.deepgram.com/docs/model).                                                                                         |
+| **Profanity Filter**      | Boolean  | Filters out recognized profanity, replacing it with a non-profane word or removing it entirely from the transcript. Learn more [here](https://developers.deepgram.com/docs/profanity-filter).                                 |
+| **Punctuate**             | Boolean  | Adds punctuation and capitalization to the transcript. Learn more [here](https://developers.deepgram.com/docs/punctuation).                                                                                                   |
+| **Endpointing**           | Number   | Controls the delay (in milliseconds) for returning transcripts when pauses in speech are detected. The default is 10 milliseconds. Learn more [here](https://developers.deepgram.com/docs/endpointing).                       |
+| **Redact**                | Text     | Removes sensitive information from transcripts. Provide a comma-separated list of entities to redact. Learn more [here](https://developers.deepgram.com/docs/redaction).                                                      |
+| **Raw Response**          | Boolean  | Includes Deepgram's raw response in the transcription data.                                                                                                                                                                   |
+
+# Returned Values
+
+The following values are returned by the action:
+
+| **Value**                  | **Type** | **Description**                                            |
+| -------------------------- | -------- | ---------------------------------------------------------- |
+| **Privacy**                | Text     | Defines room privacy setting (public or private).          |
+| **URL**                    | Text     | The room URL created.                                      |
+| **Created At**             | Date     | The date and time when the room was created.               |
+| **Expiration (Unix Time)** | Number   | The expiration time for the room in Unix timestamp format. |
+| **Enable Chat**            | Boolean  | Indicates if chat is enabled.                              |
+| **Room ID**                | Text     | The ID of the created room.                                |
+| **Room Name**              | Text     | The name of the created room.                              |
+| **Owner Only Broadcast**   | Boolean  | Indicates if only the owner can broadcast in the room.     |
+| **Not Before (Unix Time)** | Number   | The time before which no one can join the room. Optional.  |
+
+<dailyBubbleFooter />

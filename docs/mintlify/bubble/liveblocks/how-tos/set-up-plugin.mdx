@@ -1,0 +1,78 @@
+---
+title: "Set up the plugin"
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+
+This guide walks you through how to set up the Liveblocks plugin in your Bubble app and find your keys. If you prefer a video walkthrough, check out our step-by-step tutorial below. Otherwise, keep reading for the written guide:
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/LAs3olSKgqw"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+## Steps
+
+### **Prerequisites**:
+
+Ensure you have a [Liveblocks account](https://liveblocks.io/signup) and a [Bubble account](https://bubble.io/login?mode=signup). The free accounts for both services are more than enough to get started.
+
+### 1. **Create a new app**
+
+First, you'll need to create a new app in Bubble. Sign into Bubble, head to the [apps tab](https://bubble.io/home/apps) in your Bubble account, and click on the "Create new app" button.
+![create a new app](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576303/set_up_screenshot_1_ocb5qa.png)
+
+You won't need a template.
+![create new app widget](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576851/set_up_screenshot_2_pivsnx.png)
+
+You can start with the basic features and skip the application assistant.
+
+### 2. **Head to the plugins tab**
+
+Now that you're in the app editor, head to the plugins tab.
+
+![plugin tab](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576304/set_up_screenshot_3_iossqw.png)
+
+Select "Add plugins."
+
+![add plugins](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576304/set_up_screenshot_4_c5c97h.png)
+
+Search for "Liveblocks by Lunch Pail Labs" and click install.
+![screenshot placeholder](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576304/set_up_screenshot_5_gn84q5.png)
+
+### 3. **Create a Liveblocks project**
+
+Now you should see the Liveblocks plugin in the plugins tab.
+![Liveblocks plugin in plugin tab](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576304/set_up_screenshot_6_oj9bcs.png)
+
+You'll need to add your secret key to your app, so go to your [Liveblocks dashboard](https://liveblocks.io/dashboard/settings/api-keys).
+
+Add a project if you don't already have one.
+![Liveblocks project](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576304/set_up_screenshot_7_yo4dqj.png)
+
+For this demo, we'll set up a development project, but in a live production environment, you'll want to create a production environment as well.
+
+![Liveblocks development project](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576305/set_up_screenshot_8_svruft.png)
+
+### 4. **Add your secret key to the Liveblocks plugin**
+
+Go to the API Keys tab and reveal your key and copy it,
+![API Keys tab](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576305/set_up_screenshot_9_labxod.png)
+
+Next, paste the key into the dev field of the Liveblocks plugin. When you move to production, be sure to create a production project and use the production key.
+
+In the PLUS version of the plugin, make sure to add your key to the authorization field, and remember to prepend Bearer before your API key.
+
+⚠️ Remember, keys are sensitive—keep them secure to avoid unauthorized access and potential charges on your account.
+![Liveblocks secret key](https://res.cloudinary.com/dpfmaccxx/image/upload/v1726576305/set_up_screenshot_10_yga4a8.png)
+
+## Next Steps
+
+That's it for setting up the plugin! You now have it installed and ready to go.
+
+<liveblocksFooter />

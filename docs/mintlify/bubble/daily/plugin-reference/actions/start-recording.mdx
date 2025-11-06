@@ -1,0 +1,36 @@
+---
+title: "Start recording"
+description: "Use this action to start a recording in a Daily room. You can configure various settings such as layout, resolution, bitrate, and more. Learn more about starting recording in [Daily's documentation](https://docs.daily.co/reference/daily-js/instance-methods/start-recording#main)"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+<Note>
+  Live streams are pay-as-you-go. You'll need to add your [credit card details
+  to your Daily account](https://dashboard.daily.co/billing) to enable it.
+  Customizations only apply to rooms with `cloud` recordings enabled.
+</Note>
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**             | **Type** | **Description**                                                                                                                                                           |
+| --------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Layout**            | Dropdown | Specifies the layout for participants’ videos in the recording. Options: default, single-participant, active-participant, portrait, audio-only. Default is **default**.   |
+| **User ID**           | Text     | If using the single-participant layout, specify the user ID of the participant to focus on. You can set a user ID with the Daily - Create Meeting Token action. Optional. |
+| **Max Streams**       | Number   | Specify the number of maximum streams in the recording (from 1-9). The default value is 9.                                                                                |
+| **Variant**           | Dropdown | If using the portrait layout, specify the variant. Options: vertical (default), inset.                                                                                    |
+| **Height**            | Number   | Controls the height (resolution) of the recording. Must be an even number.                                                                                                |
+| **Width**             | Number   | Controls the width (resolution) of the recording. Must be an even number.                                                                                                 |
+| **Background Color**  | Color    | Specifies the background color of the recording.                                                                                                                          |
+| **Video Bitrate**     | Number   | Specifies the video bitrate in kilobits per second (kbps) to use for video output. Range: 10 to 10000.                                                                    |
+| **Audio Bitrate**     | Number   | Specifies the audio bitrate in kilobits per second (kbps) to use for audio output. Range: 10 to 320.                                                                      |
+| **Min Idle Time Out** | Number   | Specifies the amount of idle time (in seconds) before ending the recording when the room is idle (e.g., all users have muted video/audio).                                |
+| **Max Duration**      | Number   | Maximum duration (in seconds) after which the recording is forcefully stopped. Defaults to 10800 seconds (3 hours) for recordings.                                        |
+
+### Returned Values
+
+This action does not return any values.
+
+<dailyBubbleFooter />

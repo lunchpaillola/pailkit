@@ -1,0 +1,129 @@
+---
+description: "Get started with the Daily video conferencing plugin for Bubble."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+## What is Daily?
+
+[Daily](https://www.daily.co/) is a platform for video and audio chat. The Daily plugin for Bubble, maintained by [Lunch Pail Labs](https://www.lunchpaillabs.com), makes it easy to integrate real-time communication into your app.
+
+## Feature Overview
+
+![demo](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727828385/chatplugindemo_yxpv8u.gif)
+
+The [**free version**](https://bubble.io/plugin/daily-video-chat-1622494385281x917140771709124600) of the plugin provides core video and audio call features. The [**Bundle version**](https://bubble.io/plugin/video-audio--live-bundle-1727441795463x240182085842370560) includes an advanced version of the Daily plugin along with additional plugins for building enhanced media experiences. Learn more about the bundle [here](/bubble/video-audio-live-bundle/getting-started). <Step title="Create a Daily account">
+[Sign up for Daily](https://dashboard.daily.co/u/signup). Please note: Daily requires a credit card for all accounts, including the Free tier. Your card won't be charged as long as you stay within the Free tier limits. [Add a credit card here](https://dashboard.daily.co/billing).
+
+| **Feature**                                      | **Free Version** | **Bundle Version** |
+| ------------------------------------------------ | :--------------: | :----------------: |
+| **Video Calls**                                  |        ✅        |         ✅         |
+| **Audio Calls**                                  |        ✅        |         ✅         |
+| **Shared Chat History**                          |        ✅        |         ✅         |
+| **Embed Daily Prebuilt Interface**               |        ✅        |         ✅         |
+| **Start Breakout Rooms**                         |        ✅        |         ✅         |
+| **Room-Based Conferencing**                      |        ✅        |         ✅         |
+| **Participant Controls**                         |        ✅        |         ✅         |
+| **Live Streaming** _(pay as you go)_             |        ✅        |         ✅         |
+| **Record Calls** _(pay as you go)_               |        ✅        |         ✅         |
+| **Embed Third-Party Apps** (e.g., Miro, Figma)   |        ❌        |         ✅         |
+| **Custom Buttons in Call Interface**             |        ❌        |         ✅         |
+| **Media Player for Recordings & Live Streams**   |        ❌        |         ✅         |
+| **Webhooks** _(pay as you go)_                   |        ❌        |         ✅         |
+| **Real-Time Transcription** _(pay as you go)_    |        ❌        |         ✅         |
+| **Store Transcripts** _(pay as you go)_          |        ❌        |         ✅         |
+| **HLS Live Streaming via Mux** _(pay as you go)_ |        ❌        |         ✅         |
+
+## Watch the Tutorial
+
+Learn how to set up and use the plugin in just a few minutes by watching the video below:
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/jQGVUxl9WV4"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+## What Can You Build?
+
+Here's a quick overview of what you can build with the plugin:
+
+<CardGroup cols={3}>
+  <Card
+    title="Video calls"
+    icon="video"
+    href="https://www.daily.co/blog/integrate-daily-video-chat-in-your-bubble-app-in-less-than-30-minutes"
+  >
+    Create and manage high-quality video calls.
+  </Card>
+  <Card
+    title="Live streams"
+    icon="tv"
+    href="/bubble/daily/how-tos/set-up-livestream"
+  >
+    Stream video calls live to platforms like YouTube or Twitch.
+  </Card>
+  <Card
+    title="Broadcasts"
+    icon="airplay"
+    href="/bubble/daily/how-tos/owner-only-broadcast"
+  >
+    Allow only the call owner to share their screen.
+  </Card>
+</CardGroup>
+
+<CardGroup cols={2}>
+  <Card
+    title="Real-Time Transcriptions"
+    icon="text"
+    href="/bubble/daily/how-tos/transcribe-a-meeting"
+  >
+    Generate live meeting transcripts for note-taking or accessibility.
+  </Card>
+  <Card
+    title="Collaborative Apps"
+    icon="share"
+    href="/bubble/daily/how-tos/add-custom-integrations"
+  >
+    Embed apps like Miro, Figma or Google Docs in your calls and collaborate in
+    real-time.
+  </Card>
+</CardGroup>
+
+## Installation and Setup
+
+<Steps>
+  <Step title="Install the plugin">
+    Install the
+    [**free**](https://bubble.io/plugin/daily-video-chat-1622494385281x917140771709124600)
+    or
+    [**Bundle**](https://bubble.io/plugin/video-audio--live-bundle-1727441795463x240182085842370560)
+    version based on your needs.
+  </Step>
+  <Step title="Create a Daily account">
+    [Sign up for Daily](https://dashboard.daily.co/u/signup). Note: Daily now
+    requires a credit card for all accounts, including the Free tier. Your card
+    won't be charged as long as you stay within the Free tier limits. [Add a
+    credit card here](https://dashboard.daily.co/billing).
+  </Step>
+  <Step title="Get Your API Key">
+    Head to the [Daily Developer
+    Dashboard](https://dashboard.daily.co/developers) to grab your API key.
+  </Step>
+  <Step title="Configure the Plugin">
+    Enter your API key in the Bubble plugin settings, starting with `Bearer`
+    (e.g., `Bearer 4ffad...`)
+  </Step>
+</Steps>
+
+Once installed, you're ready to start hosting calls, managing participants, and leveraging advanced features.
+
+## Next Steps
+
+Explore the [plugin reference](/bubble/daily/plugin-reference/actions/create-room) or check out the [how-tos](/bubble/daily/how-tos/use-daily-events) to dive deeper.
+
+<dailyBubbleFooter />

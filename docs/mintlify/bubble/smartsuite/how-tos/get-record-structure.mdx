@@ -1,0 +1,41 @@
+---
+title: "Get the Record Structure"
+---
+
+import smartsuiteFooter from "/snippets/smartsuiteFooter.mdx";
+
+SmartSuite is a flexible and powerful tool, and SmartSuite tables have various data structures. To display a group of records in your Bubble app, you need to ensure Bubble knows the structure of the data it should expect. This is where the action to get the record structure for your table comes into play. This short how-to demonstrates how to do it.
+
+## Steps
+
+1.  **Create a Display Page**
+
+    - Create a page specifically for fetching the structure. This page isn’t user-facing; it’s just for you to grab the data structure needed to format your API call correctly. For an example setup, check out this [demo editor](https://bubble.io/page?id=smartsuite&tab=tabs-1&name=fetch-record-structure&type=page)
+
+2.  **Set Up the Workflow**
+
+    - Create a workflow with two actions on page load: 1. 'SmartSuite - Fetch Table' 2. Display the data
+      ![title](https://uploads-ssl.webflow.com/5eed6e6fe625d140525c5769/66c69cd2f7af9a4b1441a4fa_CleanShot%202024-08-21%20at%2021.40.00%402x.png)
+
+    - Refer to the demo workflow for an example setup : [here](https://prod-files-secure.s3.us-west-2.amazonaws.com/480f0932-72ea-496f-a70d-3632da8d6e99/6be7b0ab-7ba6-44cb-a7a4-9a87a1ed476c/Untitled.mp4).
+
+3.  **Import the Data Format**
+    - Copy the data format and add it to the API Connector. Refer to demo editor to see the setup [here](https://bubble.io/page?id=smartsuite&tab=tabs-2&name=fetch-record-structure&type=page)
+      {" "}
+      <iframe
+        width="560"
+        height="315"
+        src="https://www.youtube.com/embed/b3lfskyNiFM"
+        title="YouTube video player"
+        frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen
+      ></iframe>
+
+---
+
+### Next Steps
+
+Now that you've obtained the record structure, the next step is to display SmartSuite records in your Bubble app. Continue by following our [guide on displaying records](/bubble/smartsuite/how-tos/display-records).
+
+<smartsuiteFooter />

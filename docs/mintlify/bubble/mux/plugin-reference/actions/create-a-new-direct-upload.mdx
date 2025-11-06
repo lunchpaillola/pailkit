@@ -1,0 +1,44 @@
+---
+title: "Create a new direct upload"
+description: "Use this action to create a new direct upload. [Learn more in Mux's documentation](https://www.mux.com/docs/api-reference#video/operation/create-direct-upload)"
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+### Fields
+
+| **Field**                    | **Type** | **Description**                                                                                                                                                      |
+| ---------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **timeout**                  | Text     | Max time in seconds for the signed upload URL to be valid. Default: 3600, minimum: 60, maximum: 604800. If upload not completed before timeout, marked as timed_out. |
+| **cors origin**              | Text     | Required for browser uploads to ensure correct CORS headers.                                                                                                         |
+| **test**                     | Checkbox | Indicates if this is a test Direct Upload. The resulting Asset will be marked as a test Asset.                                                                       |
+| **playback policy**          | Dropdown | Sets playback options: **public** or **signed**.                                                                                                                     |
+| **passthrough**              | Text     | User-supplied metadata (max 255 characters) included in asset details and webhooks.                                                                                  |
+| **mp4 support**              | Dropdown | Options: **none**, **capped-1080p**, **audio-only**. Controls MP4 file generation and format.                                                                        |
+| **normalize audio**          | Boolean  | Enable audio track loudness normalization (only for on-demand assets).                                                                                               |
+| **master access**            | Dropdown | Support for master access: **none** or **temporary**.                                                                                                                |
+| **max resolution tier**      | Dropdown | Maximum resolution for encoding: **1080p**, **1440p**, **2160p**. Defaults to 1080p.                                                                                 |
+| **video quality**            | Dropdown | Sets quality tier: **basic**, **plus**, **premium**. Affects cost and available features.                                                                            |
+| **language code**            | Dropdown | Language for subtitle generation (e.g., en, es, fr).                                                                                                                 |
+| **generated subtitles name** | Text     | Name for the subtitle track.                                                                                                                                         |
+
+### Returned Values
+
+| **Field**             | **Type**    | **Description**                                  |
+| --------------------- | ----------- | ------------------------------------------------ |
+| **status**            | Text        | Current status of the upload.                    |
+| **timeout**           | Number      | The timeout value in seconds for the upload URL. |
+| **url**               | Text        | The upload URL.                                  |
+| **test**              | Boolean     | Indicates if this is a test upload.              |
+| **playback policies** | Text (list) | List of applied playback policies.               |
+| **mp4 support**       | Text        | The selected MP4 support option.                 |
+| **id**                | Text        | Unique identifier for the upload.                |
+| **master access**     | Text        | Selected master access level.                    |
+| **passthrough**       | Text        | User-supplied metadata.                          |
+| **video quality**     | Text        | Selected video quality tier.                     |
+| **cors origin**       | Text        | Specified CORS origin.                           |
+| **error**             | Boolean     | Indicates if an error occurred.                  |
+| **error message**     | Text        | Description of any error that occurred.          |
+| **error status**      | Number      | Numeric error status code.                       |
+
+<videoAudioLiveStreamBundleFooter />

@@ -1,0 +1,29 @@
+---
+title: "Create a Live Stream"
+description: "Use this action to create a live stream. [Learn more in Mux's documentation](https://docs.mux.com/api-reference#video/operation/create-live-stream)"
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+### Fields
+
+| **Field**           | **Type** | **Description**                                                                                        |
+| ------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| **playback policy** | Dropdown | Specifies playback options: **public**, **signed**, or **drm**.                                        |
+| **audio only**      | Boolean  | When set to true, processes only the audio track; Mux will drop the video track if broadcasted.        |
+| **latency mode**    | Dropdown | Sets the time from transmission to display in the player. Options: **low**, **reduced**, **standard**. |
+| **test**            | Boolean  | Marks the stream as a test. Test streams allow API evaluation without incurring costs.                 |
+
+### Returned Values
+
+| **Field**             | **Type**    | **Description**                                                                                                                 |
+| --------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **stream key**        | Text        | Unique key for streaming to a Mux RTMP endpoint. Treat this as sensitive information; anyone with this key can begin streaming. |
+| **status**            | Text        | Status of the stream. Possible values: **active**, **idle**, **disabled**.                                                      |
+| **reconnect window**  | Text        | Duration (in seconds) that Mux will wait for reconnection before ending the stream.                                             |
+| **playback ids**      | Text (list) | List of Playback IDs, used to generate HLS playback URLs.                                                                       |
+| **playback policies** | Text        | Lists the playback policies: **public**, **signed**, **drm**.                                                                   |
+| **id**                | Text        | Unique identifier for the live stream. Maximum of 255 characters.                                                               |
+| **created at**        | Text        | Creation timestamp for the live stream, given as a Unix timestamp (seconds since epoch).                                        |
+
+<videoAudioLiveStreamBundleFooter />

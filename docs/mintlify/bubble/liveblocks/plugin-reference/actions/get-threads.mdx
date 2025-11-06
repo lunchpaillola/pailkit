@@ -1,0 +1,52 @@
+---
+title: "Get room threads"
+description: "Use this action to return a list of threads and their associated details inside a room."
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+import liveblocksPlus from "/snippets/liveblocksPlus.mdx";
+
+<liveblocksPlus feature="action" />
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**   | **Type** | **Description**                                             |
+| ----------- | -------- | ----------------------------------------------------------- |
+| **Room ID** | Text     | The unique identifier of the room to retrieve threads from. |
+
+### Returned Values
+
+The following values are returned by the action: `[]` indicates an array of objects.
+
+| **Key**                                                   | **Type**  | **Description**                                                                                             |
+| --------------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------- |
+| **body.data[]**                                           | Array     | An array of thread objects found inside the room.                                                           |
+| **body.data[].type**                                      | Text      | The type of the object, typically `"thread"`.                                                               |
+| **body.data[].id**                                        | Text      | The unique identifier of the thread.                                                                        |
+| **body.data[].roomId**                                    | Text      | The unique identifier of the room where the thread exists.                                                  |
+| **body.data[].comments**                                  | Array     | An array of comments associated with the thread.                                                            |
+| **body.data[].comments[].type**                           | Text      | The type of the object, typically `"comment"`.                                                              |
+| **body.data[].comments[].threadId**                       | Text      | The unique identifier of the thread to which the comment belongs.                                           |
+| **body.data[].comments[].roomId**                         | Text      | The unique identifier of the room where the comment exists.                                                 |
+| **body.data[].comments[].id**                             | Text      | The unique identifier of the comment within the thread.                                                     |
+| **body.data[].comments[].userId**                         | Text      | The user ID of the person who created the comment.                                                          |
+| **body.data[].comments[].createdAt**                      | Date/Time | The timestamp of when the comment was created.                                                              |
+| **body.data[].comments[].body**                           | Object    | The content body of the comment. This is an object that includes `version` and `content`.                   |
+| **body.data[].comments[].body.version**                   | Number    | The version number of the comment content.                                                                  |
+| **body.data[].comments[].body.content**                   | Array     | An array of content blocks in the comment. Each block contains further nested data, such as paragraph text. |
+| **body.data[].comments[].body.content[].type**            | Text      | The type of the content block (e.g., `"paragraph"`).                                                        |
+| **body.data[].comments[].body.content[].children**        | Array     | An array containing the children of the content block, typically containing text objects.                   |
+| **body.data[].comments[].body.content[].children[].text** | Text      | The actual text content of the comment, such as `"hey this is athread"`.                                    |
+| **body.data[].createdAt**                                 | Date/Time | The timestamp of when the thread was created.                                                               |
+| **body.data[].updatedAt**                                 | Date/Time | The timestamp of when the thread was last updated.                                                          |
+| **body.data[].resolved**                                  | Boolean   | A flag indicating whether the thread has been resolved.                                                     |
+| **error.status_code**                                     | Number    | The HTTP status code returned by the API (e.g., `200` for success).                                         |
+| **error.status_message**                                  | Text      | The HTTP status message returned by the API (e.g., `"OK"`).                                                 |
+| **error.body**                                            | Text      | The raw error body message as a string.                                                                     |
+| **returned_an_error**                                     | Boolean   | A flag indicating whether the API returned an error. `false` means no error occurred.                       |
+
+---
+
+<liveblocksFooter />

@@ -1,0 +1,67 @@
+---
+title: "Submit job"
+description: "Use this action to submit jobs to the batch processor for generating transcripts, SOAP notes, and summaries. Learn more in [Daily's documentation](https://docs.daily.co/reference/rest-api/batch-processor)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+## Fields
+
+<ParamField path="preset" type="dropdown">
+  The type of job to run. Options: transcript, soap-notes, summarize. Default:
+  transcript
+</ParamField>
+
+<ParamField path="source type" type="dropdown">
+  The type of the input media. Options: uri, recordingId. Default: recordingId
+</ParamField>
+
+<ParamField path="uri" type="text">
+  The actual URL when using "uri" as sourceType. Required if source type is uri.
+</ParamField>
+
+<ParamField path="recording id" type="text">
+  The recording ID when using recordingId as sourceType. Required if source type
+  is recordingId.
+</ParamField>
+
+<ParamField path="language" type="text">
+  The BCP-47 language tag of the spoken audio for transcription. Default: en
+</ParamField>
+
+<ParamField path="s3 key template" type="text">
+  The filename of the output (e.g., "my-soap-note"). Default: my-daily-job
+</ParamField>
+
+<ParamField path="use replacement" type="boolean">
+  Whether to use template replacement in s3KeyTemplate. Default: true
+</ParamField>
+
+⚠️ Important Notes:
+
+- If using uri as the source type, you must fill out the URI field
+- If using recordingId as the source type, you must fill out the Recording ID field
+- Missing required fields will result in an error
+
+## Return Values
+
+<ResponseField name="id" type="text">
+  Unique identifier for the submitted job.
+</ResponseField>
+
+<ResponseField name="error" type="boolean">
+  Indicates if an error occurred during the request.
+</ResponseField>
+
+<ResponseField name="error message" type="text">
+  Description of any error that occurred.
+</ResponseField>
+
+<ResponseField name="error status" type="number">
+  Numeric error status code.
+</ResponseField>
+
+<dailyBubbleFooter />{" "}

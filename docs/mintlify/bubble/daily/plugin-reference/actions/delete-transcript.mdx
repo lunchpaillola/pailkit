@@ -1,0 +1,31 @@
+---
+title: "Delete transcript"
+description: "Use this action to delete a transcript. Learn more in [Daily's documentation](https://docs.daily.co/reference/rest-api/transcript/delete-transcript)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field**        | **Type** | **Description**                                   |
+| ---------------- | -------- | ------------------------------------------------- |
+| **transcriptId** | Text     | The ID of the transcript you would like to delete |
+
+### Returned Values
+
+| **Field**              | **Type** | **Description**                                                                                                    |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| **transcriptId**       | Text     | The unique ID of the transcription session that was deleted.                                                       |
+| **domainId**           | Text     | The ID of the domain where the transcription occurred.                                                             |
+| **roomId**             | Text     | The ID of the room where the transcription took place.                                                             |
+| **mtgSessionId**       | Text     | The meeting session ID associated with the transcription.                                                          |
+| **duration**           | Number   | The length of the transcription in seconds.                                                                        |
+| **participantMinutes** | Number   | The total number of participant minutes recorded during the transcription session.                                 |
+| **status**             | Text     | The status of the transcription (e.g., `t_finished`, `t_deleted`).                                                 |
+| **error**              | Text     | Contains details of any errors that occurred during the transcription. If no errors occurred, this will be `null`. |
+
+<dailyBubbleFooter />

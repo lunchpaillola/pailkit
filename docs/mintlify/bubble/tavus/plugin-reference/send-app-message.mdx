@@ -1,0 +1,26 @@
+---
+title: "Send app message"
+description: "Use this action to send app messages as part of Tavus's interaction protocol. [Learn more in Tavus documentation](https://docs.tavus.io/sections/conversational-video-interface/live-interactions)."
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+### Fields
+
+| **Field**           | **Type** | **Description**                                                                                                                                                                                |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **message type**    | String   | Indicates the product this event is associated with. For this use case, the `message_type` will be set to `conversation`.                                                                      |
+| **conversation id** | String   | The unique identifier for the conversation.                                                                                                                                                    |
+| **event type**      | String   | Specifies the type of event being sent. This field is included in all events and helps distinguish between different event types.                                                              |
+| **modality**        | String   | Indicates the input type for this event. Possible values: `audio`, `text`.                                                                                                                     |
+| **text**            | String   | If `modality` is set to `text`, this field contains the text that the replica will speak out loud.                                                                                             |
+| **audio**           | String   | If `modality` is set to `audio`, this field contains the base64-encoded audio that the replica will speak out loud. The encoded audio must be in 16-bit PCM 16000 format.                      |
+| **inference id**    | String   | A unique identifier for a given utterance. Multiple messages with the same `inference_id` indicate they belong to the same utterance.                                                          |
+| **done**            | Boolean  | Indicates if all audio chunks for an utterance have been sent. If `done` is not set to `True`, audio chunks will continue to stream until a final event with `done` set to `True` is received. |
+| **context**         | String   | Specifies the new conversational context that will be used by the LLM (Language Model).                                                                                                        |
+
+### Returned Values
+
+This action does not return any fields.
+
+<videoAudioLiveStreamBundleFooter />

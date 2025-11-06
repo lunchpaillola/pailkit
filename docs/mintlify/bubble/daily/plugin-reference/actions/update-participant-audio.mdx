@@ -1,0 +1,19 @@
+---
+title: "Update participant audio"
+description: "Use this action to modify a participant's audio settings for audio-only calls. Only a meeting owner can modify a participant. You can create a meeting owner token with the [Daily - Create Meeting Token](/bubble/daily/plugin-reference/actions/create-meeting-token) action."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+### Fields
+
+| **Field**     | **Type** | **Description**                                                                                                                                                                                                     |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **User ID**   | Text     | The user's ID of the participant that the action should update. You can use the Daily - Create Meeting Token action to create a user ID, used in conjunction with the Daily - Join Room action when the user joins. |
+| **Set Audio** | Boolean  | Set to true to enable the participant's audio, or false to disable the participant's audio.                                                                                                                         |
+
+### Returned Values
+
+This action does not return any values.
+
+<dailyBubbleFooter />

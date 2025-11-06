@@ -1,0 +1,60 @@
+---
+title: "Chat with a Tavus AI bot"
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+Learn how to start a conversation with Tavus and talk to a Tavus AI bot.
+
+If you prefer a video walkthrough, check out our step-by-step tutorial below. Otherwise, keep reading for the written guide:
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/LwGwRNyGIhU"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; fullscreen; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+## Steps
+
+<Steps>
+  <Step title="Install the Video, Audio & Live Bundle Plugin">
+    Go to the [Bubble Plugin
+    Marketplace](https://bubble.io/plugin/video-audio--live-bundle-1727441795463x240182085842370560)
+    and install the plugin into your app.
+  </Step>
+  <Step title="Get Your Tavus API Key">
+    Go to the [API Keys tab](https://platform.tavus.io/api-keys) in your Tavus
+    account and click **Create New Key** to generate your Tavus API key.
+  </Step>
+  <Step title="Configure the Plugin in Bubble">
+    In your Bubble app, go to **Plugins** and find the **Video, Audio & Live
+    Streaming Bundle** plugin. Enter your Tavus API key into the **Tavus API
+    Key** field.
+  </Step>
+  <Step title="Create a Workflow to Start a Conversation">
+    Use the [Create
+    Conversation](/bubble/tavus/plugin-reference/create-conversation) action to
+    start a conversation. You’ll need a **persona ID** and **replica ID**.
+    Depending on your Tavus plan, you can create your own personas or use [stock
+    replicas](https://docs.tavus.io/sections/replicas/stock-replicas) and [stock
+    personas](https://docs.tavus.io/sections/personas/stock-personas). ![Create
+    conversation](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732503675/CleanShot_2024-11-24_at_21.49.34_2x_mhtibg.png)
+  </Step>
+  <Step title="Join the Conversation">
+    This will create a Daily call. Use the [Join
+    Conversation](/bubble/daily/plugin-reference/actions/join-room) action to
+    join the call. ![Join
+    conversation](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732503675/CleanShot_2024-11-24_at_21.56.28_2x_wzdi6i.png)
+  </Step>
+  <Step title="Preview and Test">
+    Once everything is configured, preview your app to test the conversation
+    workflow. ![Tavus
+    Plugin](https://res.cloudinary.com/dpfmaccxx/image/upload/v1732503714/tavusdemo_htbe7k.gif)
+  </Step>
+</Steps>
+
+<videoAudioLiveStreamBundleFooter />

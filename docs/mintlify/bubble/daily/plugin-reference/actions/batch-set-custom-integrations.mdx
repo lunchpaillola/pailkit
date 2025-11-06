@@ -1,0 +1,48 @@
+---
+title: "Batch set custom integrations"
+description: "Use this action to set multiple custom integrations for your Daily Prebuilt call by providing a correctly formatted JSON object."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field** | **Type** | **Description**                            |
+| --------- | -------- | ------------------------------------------ |
+| **JSON**  | Text     | Provide a correctly formatted JSON object. |
+
+### Example of a Correctly Formatted JSON Object
+
+Here’s an example of a properly formatted JSON object for setting multiple custom integrations. Each key represents a specific integration (like `miroEmbed`), and the fields inside the object define the behavior and settings for that integration. Note that the keys and the values have double quotes around them. This is required otherwise it won't work.
+
+```json
+{
+  "miroEmbed": {
+    "controlledBy": "owners",
+    "iconURL": "https://files.readme.io/17d4a23-miro-logo-color-square.png",
+    "label": "Miro",
+    "location": "main",
+    "name": "miro",
+    "shared": true,
+    "allow": "fullscreen; clipboard-read; clipboard-write",
+    "src": "https://miro.com/board/boardid"
+  },
+  "googleDocEmbed": {
+    "controlledBy": "owners",
+    "iconURL": "https://some-google-doc-url/logo.png",
+    "label": "Google Docs",
+    "location": "sidebar",
+    "name": "googleDoc",
+    "shared": true,
+    "allow": "fullscreen",
+    "src": "https://docs.google.com/document/d/..."
+  }
+}
+```
+
+### Returned Values
+
+No values are returned by this action

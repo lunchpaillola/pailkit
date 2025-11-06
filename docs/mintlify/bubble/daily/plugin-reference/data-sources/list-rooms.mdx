@@ -1,0 +1,32 @@
+---
+title: "List rooms"
+description: "Use this action to retrieve a list of rooms from your Daily domain. This action does not require any parameters. Rooms are returned sorted by creation time in reverse chronological order (most recent room first). Learn more in Daily's API reference [here](https://docs.daily.co/reference/rest-api/rooms/list-rooms)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+### Fields
+
+This action takes no fields.
+
+### Returned Values
+
+The following values are returned by the action:
+
+| **Value**                | **Type** | **Description**                                                                               |
+| ------------------------ | -------- | --------------------------------------------------------------------------------------------- |
+| **Total Count**          | Number   | The total number of rooms available on your domain.                                           |
+| **Data**                 | List     | A list of rooms. Each item contains the following fields:                                     |
+| **Data → ID**            | Text     | The unique ID of the room.                                                                    |
+| **Data → Name**          | Text     | The name of the room.                                                                         |
+| **Data → API Created**   | Boolean  | Indicates whether the room was created via the API.                                           |
+| **Data → Privacy**       | Text     | The privacy setting of the room (e.g., public or private).                                    |
+| **Data → URL**           | Text     | The URL of the room.                                                                          |
+| **Data → Created At**    | DateTime | The timestamp of when the room was created.                                                   |
+| **Data → Config**        | Object   | Configuration options for the room, such as autojoin, enable_chat, enable_knocking, and more. |
+| **error.status_code**    | Number   | The HTTP status code returned by the API (e.g., `200` for success).                           |
+| **error.status_message** | Text     | The HTTP status message returned by the API (e.g., `"OK"`).                                   |
+| **error.body**           | Text     | The raw error body message as a string.                                                       |
+| **returned_an_error**    | Boolean  | A flag indicating whether the API returned an error. `false` means no error occurred.         |
+
+<dailyBubbleFooter />

@@ -1,0 +1,45 @@
+---
+title: "Enable breakout rooms"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+Breakout rooms allow you to split participants into smaller groups during a call. If you prefer a video walkthrough, check out our step-by-step tutorial below. Otherwise, keep reading for the written guide:
+
+<iframe
+  width="560"
+  height="315"
+  src="https://www.youtube.com/embed/8pqCwj-7i8k"
+  title="YouTube video player"
+  frameborder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowfullscreen
+></iframe>
+
+Here’s how to set it up:
+
+## 1. Enable breakout rooms in room settings
+
+When creating or updating a room, set the `enable breakout rooms` field to `yes` in the [create room](/bubble/daily/plugin-reference/actions/create-room) or [update room](/bubble/daily/plugin-reference/actions/update-room) actions.
+
+![Enable Breakout Rooms](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727360993/create_breakout_rooms_hmcsp7.png)
+
+## 2. Create a meeting token for the room owner
+
+To allow someone to create breakout rooms, they need to be the room owner. Use the [create meeting token](/bubble/daily/plugin-reference/actions/create-meeting-token) action, set the `room name` to the room created in [Step 1](#1-enable-breakout-rooms-in-room-settings), and mark `is owner` as `yes`.
+
+![Create Meeting Token](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727360993/create_meeting_token_egi6wc.png)
+
+## 3. Join the room with the meeting token
+
+Next, join the room using the [join room](/bubble/daily/plugin-reference/actions/join-room) action. The user creating the breakout rooms must use the meeting token from [Step 2](#2-create-a-meeting-token-for-the-room-owner) and the room name from [Step 1](#1-enable-breakout-rooms-in-room-settings).
+
+![Join Room](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727360993/join_room_xr0mqz.png)
+
+## 4. Start a breakout room
+
+Once in the call, the user will see an option to create a breakout room.
+
+![Create Breakout Room](https://res.cloudinary.com/dpfmaccxx/image/upload/v1727361002/breakout_room_kmixd1.png)
+
+<dailyBubbleFooter />

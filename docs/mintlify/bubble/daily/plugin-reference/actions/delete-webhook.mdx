@@ -1,0 +1,25 @@
+---
+title: "Delete webhook"
+description: "Use this action to delete a webhook. You must add a credit card to your Daily account to use this action. Learn more in [Daily's documentation](https://docs.daily.co/reference/rest-api/webhooks/delete)"
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+| **Field**                | **Type** | **Description**                                                                       |
+| ------------------------ | -------- | ------------------------------------------------------------------------------------- |
+| **uuid**                 | Text     | The webhook server endpoint that was provided.                                        |
+| **error.status_code**    | Number   | The HTTP status code returned by the API (e.g., `200` for success).                   |
+| **error.status_message** | Text     | The HTTP status message returned by the API (e.g., `"OK"`).                           |
+| **error.body**           | Text     | The raw error body message as a string.                                               |
+| **returned_an_error**    | Boolean  | A flag indicating whether the API returned an error. `false` means no error occurred. |
+
+### Returned Values
+
+This action returns no values
+
+<dailyBubbleFooter />

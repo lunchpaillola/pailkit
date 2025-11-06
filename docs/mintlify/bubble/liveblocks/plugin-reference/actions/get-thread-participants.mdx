@@ -1,0 +1,34 @@
+---
+title: "Get thread participants"
+description: "Use this action to retrieve all participants in a thread."
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+import liveblocksPlus from "/snippets/liveblocksPlus.mdx";
+
+<liveblocksPlus feature="action" />
+
+### Fields
+
+The following fields are available in this action:
+
+| **Field**     | **Type** | **Description**                      |
+| ------------- | -------- | ------------------------------------ |
+| **Room ID**   | Text     | The unique identifier of the room.   |
+| **Thread ID** | Text     | The unique identifier of the thread. |
+
+### Returned Values
+
+The following values are returned by the action: `[]` indicates an array of objects.
+
+| **Key**                   | **Type** | **Description**                                                                       |
+| ------------------------- | -------- | ------------------------------------------------------------------------------------- |
+| **body.participantIds[]** | Array    | An array of participant IDs who are involved in the thread.                           |
+| **error.status_code**     | Number   | The HTTP status code returned by the API (e.g., `200` for success).                   |
+| **error.status_message**  | Text     | The HTTP status message returned by the API (e.g., `"OK"`).                           |
+| **error.body**            | Text     | The raw error body message as a string.                                               |
+| **returned_an_error**     | Boolean  | A flag indicating whether the API returned an error. `false` means no error occurred. |
+
+---
+
+<liveblocksFooter />

@@ -1,0 +1,75 @@
+---
+title: "Daily Events"
+description: "Use this element to enable Daily events in your app. Learn how to use this element in the [how to guide](/bubble/daily/how-tos/use-daily-events)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+# Element Actions
+
+| **Action**                | **Description**                                                                                                                                |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Begin Event Listening** | Use this action after the Daily - join room action to start listening for events. Not required when using the Daily custom video call element. |
+
+# Events
+
+### General
+
+The following events can be emitted during a Daily call:
+
+| **Event**                  | **Description**                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------ |
+| **left-meeting**           | Emitted when the local participant has left the call. The call is considered disconnected. |
+| **joined-meeting**         | Emitted when the local participant has joined the call. The call is considered connected.  |
+| **participant-left**       | Emitted when a remote participant leaves the call.                                         |
+| **participant-joined**     | Emitted when a remote participant joins the call.                                          |
+| **active-speaker-changed** | Emitted when the active speaker changes during the call.                                   |
+| **recording-started**      | Emitted for all participants when a recording starts.                                      |
+| **recording-stopped**      | Emitted for all participants when a recording stops.                                       |
+| **recording-error**        | Emitted when a recording error occurs.                                                     |
+
+### Bundle Events
+
+<dailyPlusFlag feature="feature" />
+
+| **Event**                  | **Description**                                                            |
+| -------------------------- | -------------------------------------------------------------------------- |
+| **transcription-started**  | Emitted for all participants when transcription starts.                    |
+| **transcription-error**    | Emitted for all participants when there has been a transcription error.    |
+| **transcription-message**  | Emitted for all participants when a new transcription snippet is available |
+| **transcription-stopped**  | Emitted for all participants when transcription stops.                     |
+| **live-streaming-started** | Emitted for all participants when live streaming starts.                   |
+| **live-streaming-stopped** | Emitted for all participants when live streaming stops.                    |
+| **live-streaming-error**   | Emitted for all participants when there has been a live streaming error.   |
+| **live-streaming-updated** | Emitted for all participants when live streaming is updated.               |
+
+# Exposed States
+
+The following states are available to access information about participants and events in a Daily call:
+
+| **State**                        | **Type** | **Description**                                                                          |
+| -------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| **event participant user id**    | Text     | The participant user ID associated with the current event.                               |
+| **current participant user ids** | List     | A list of user IDs for all current participants in the call.                             |
+| **active speaker**               | Text     | The user ID of the active speaker in the call.                                           |
+| **recording instance id**        | Text     | Displays the instance ID whenever the instance is started or stopped.                    |
+| **recording id**                 | Text     | Shows the recording ID when the recording begins. Useful for grabbing the recording URL. |
+
+### Bundle States
+
+<dailyPlusFlag feature="feature" />
+
+| **State**                             | **Type** | **Description**                                                                                                |
+| ------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| **transcription id**                  | Text     | The unique ID assigned to the transcription session when it starts.                                            |
+| **transcript message participant id** | Text     | Participant ID for the user who spoke the transcription snippet                                                |
+| **transcript message text**           | Text     | The text of the transcription snippet                                                                          |
+| **transcript message timestamp**      | Text     | The timestamp of the transcription snippet                                                                     |
+| **custom button id**                  | Text     | The ID of the custom button that was clicked.                                                                  |
+| **live streaming instance id**        | Text     | Shows the live streaming instance ID when the live streaming starts.                                           |
+| **live streaming error message**      | Text     | Shows the live streaming error message when there is an error.                                                 |
+| **app message**                       | Text     | The message sent using the [send app message](/bubble/daily/plugin-reference/actions/send-app-message) action. |
+
+<dailyBubbleFooter />

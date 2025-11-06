@@ -1,0 +1,72 @@
+---
+description: "Reference for all elements that come with the plugin"
+---
+
+import liveblocksFooter from "/snippets/liveblocksFooter.mdx";
+
+## **Liveblocks Presence**
+
+The **Liveblocks Presence** element enables real-time presence tracking in your Bubble app. This section covers the exposed states, events, and actions for this element.
+
+### Exposed States
+
+These states hold real-time data from the Liveblocks-Presence element in the Bubble Editor. They help track users in a room, manage errors, and more.
+
+| **State**           | **Type**    | **Description**                                                                                                                                      |
+| ------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **others**          | Text (list) | Other users in the room. Empty when no room is currently synced.                                                                                     |
+| **Room ID**         | Text        | The room where this element is currently monitoring presence.                                                                                        |
+| **Everyone**        | Text (list) | All users currently in the room, including the local user.                                                                                           |
+| **User ID**         | Text        | The Liveblocks user ID for the current user.                                                                                                         |
+| **Lost Connection** | Text        | A special event that triggers when a previously connected Liveblocks client loses connection. The possible statuses are: lost, restored, and failed. |
+| **Error**           | Yes/No      | Displays the error message if the room is currently experiencing an error.                                                                           |
+| **Error Message**   | Text        | Displays the error message if an error occurs in the room.                                                                                           |
+| **Error Code**      | Number      | Displays the error status code if the room is currently experiencing an error.                                                                       |
+
+### Events
+
+The following events are triggered by changes in connection status, room updates, or errors in the Liveblocks Presence element. These events can initiate workflows in your app.
+
+| **Event**           | **Description**                                      |
+| ------------------- | ---------------------------------------------------- |
+| **Lost Connection** | Triggers when a lost connection event occurs.        |
+| **error**           | Triggers when an error occurs in the element.        |
+| **New Room ID**     | Triggers when the room ID changes while in the room. |
+
+### Actions
+
+Here are the actions available for the **Liveblocks Presence** plugin element. These actions allow you to control user presence and leave and join a room.
+
+#### Create client
+
+**Description:** Create the [Liveblocks client](https://liveblocks.io/docs/api-reference/liveblocks-client#createClient).
+
+| **Parameter**               | **Type** | **Description**                                                                                                                                                                                          |
+| --------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ID Token**                | Text     | The user's ID token. Ensure the user is authorized first using the 'Liveblocks - Authorize User' action.                                                                                                 |
+| **Throttle**                | Number   | A number between 16 and 1000 milliseconds that determines how frequently presence updates are sent.                                                                                                      |
+| **Lost Connection Timeout** | Number   | After a user disconnects, the time in milliseconds before a "lost-connection" event is fired. [Learn more](https://liveblocks.io/docs/api-reference/liveblocks-client#createClientLostConnectionTimeout) |
+
+#### **Enter Room**
+
+**Description:** Use this action to join a Liveblocks room. Ensure you’ve created a client with the [Create Client action](#create-client) before proceeding.
+
+| **Parameter**         | **Type** | **Description**                                                                                               |
+| --------------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
+| **roomId**            | Text     | The ID of the room to be joined.                                                                              |
+| **userId**            | Text     | The unique ID of the local user joining the room.                                                             |
+| **Enable position**   | Yes/No   | An optional advanced parameter.Enable this parameter to allow live movement tracking of the user on the page. |
+| **HTML ID prefix**    | Text     | An optional advanced parameter. Add an HTML ID prefix so the plugin knows which elements to track.            |
+| **hideDefaultCursor** | Yes/NO   | Enable this option to hide the default browser cursor                                                         |
+
+#### **Log Out**
+
+**Description:** Clears any authentication tokens from the client’s memory. Forces reauthorization of connected rooms. Use this action if you need to log out and reauthenticate the user.
+
+#### **Leave**
+
+**Description:** leave a room and unsubscribe from events
+
+---
+
+<liveblocksFooter />

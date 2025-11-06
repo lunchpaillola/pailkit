@@ -1,0 +1,43 @@
+---
+title: "Set custom integration"
+description: "Configures Daily Prebuilt so that an Internet hosted website can be embedded into Prebuilt as an iframe. Learn more about this method in [Daily's documentation](https://docs.daily.co/reference/daily-js/instance-methods/set-custom-integrations)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### General Fields
+
+| **Field**          | **Type** | **Description**                                                                                                                                                                                                                                                                                              |
+| ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Integration ID** | Text     | The ID for the integration. You can select the ID. To use the start custom integrations and stop custom integration actions you will set the integration                                                                                                                                                     |
+| **Clear Existing** | Boolean  | Set to `no` to clear existing integrations. Set to `yes` to keep existing integrations and add new ones. Useful when adding multiple integrations.                                                                                                                                                           |
+| **src**            | Text     | The iframe's source URL. For more info see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#src. Either provide a src or a srcdoc                                                                                                                                                            |
+| **src doc**        | Text     | Usage: srcdoc: HTMLIFrameElement['srcdoc']; Allows you to integrate inline HTML in an iframe. For more info see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#srcdoc To see if your browser supports this, read here https://caniuse.com/iframe-srcdoc. Either provide a src or a src doc |
+| **Controlled By**  | dropdown | Specifies who in the call is able to start and stop this integration. '\*' means all participants can start and stop this integration. 'owners' means only meeting owners can start and stop.                                                                                                                |
+| **icon URI**       | text     | Specifies a publicly available URL to an icon image file associated with the integration.                                                                                                                                                                                                                    |
+| **label**          | dropdown | Used to render the integration's name in Prebuilt.                                                                                                                                                                                                                                                           |
+| **loading**        | dropdown | Options are `eager` and `lazy`. By default integrations will be loaded lazily.                                                                                                                                                                                                                               |
+| **location**       | dropdown | Daily supports two different types of custom integrations: 1. Main call area integrations 2. Sidebar integrations                                                                                                                                                                                            |
+| **shared**         | dropdown | When configured, it shares the integration's state with other participants in the call: `true` will share with all other participants `false` won't share `owners` will share with owners only.                                                                                                              |
+|                    |
+
+### Advanced Settings
+
+Below are optional advanced recording settings to further configure a custom integration with policies
+
+| **Field**           | **Type** | **Description**                                                                                                                                                                                            |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **csp**             | text     | Specifies the Content Security Policy for the iframe. Please check browser support before using this property.                                                                                             |
+| **Referrer Policy** | text     | Usage: referrerPolicy: HTMLIFrameElement['referrerPolicy']; Indicates which referrer to send when fetching the frame's resource.                                                                           |
+| **allow**           | text     | Usage: allow: HTMLIFrameElement['allow']; Specifies the feature policy for the iframe.                                                                                                                     |
+| **sandbox**         | text     | Usage: sandbox: string A unique policy for the iframe. Applies extra restrictions to the content in the frame. For more info see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox. |
+
+### Returned Values
+
+No values are returned by this action
+
+<dailyBubbleFooter />

@@ -1,0 +1,34 @@
+---
+title: "List transcripts"
+description: "Use this action to retrieve all transcripts on the domain. Learn more in [Daily's documentation](https://docs.daily.co/reference/rest-api/transcript/list-transcripts)."
+---
+
+import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
+
+<dailyPlusFlag feature="action" />
+
+### Fields
+
+This action takes no fields.
+
+### Returned Values
+
+| **Value**                     | **Type** | **Description**                                                                                            |
+| ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| **Total Count**               | Number   | The total number of transcripts available on your domain.                                                  |
+| **Data**                      | List     | A list of transcripts. Each item contains the following fields:                                            |
+| **Data → transcriptId**       | Text     | The unique ID of the transcription session.                                                                |
+| **Data → domainId**           | Text     | The ID of the domain where the transcription occurred.                                                     |
+| **Data → roomId**             | Text     | The ID of the room where the transcription took place.                                                     |
+| **Data → mtgSessionId**       | Text     | The meeting session ID associated with the transcription.                                                  |
+| **Data → duration**           | Number   | The length of the transcription in seconds.                                                                |
+| **Data → participantMinutes** | Number   | The total number of participant minutes recorded during the transcription session.                         |
+| **Data → status**             | Text     | The status of the transcription. Example values could include `t_in_progress`, `t_finished`, or `t_error`. |
+| **error.status_code**         | Number   | The HTTP status code returned by the API (e.g., `200` for success).                                        |
+| **error.status_message**      | Text     | The HTTP status message returned by the API (e.g., `"OK"`).                                                |
+| **error.body**                | Text     | The raw error body message as a string.                                                                    |
+| **returned_an_error**         | Boolean  | A flag indicating whether the API returned an error. `false` means no error occurred.                      |
+
+<dailyBubbleFooter />
