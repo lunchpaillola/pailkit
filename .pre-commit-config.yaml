@@ -33,6 +33,16 @@ repos:
       - id: check-added-large-files
       - id: check-merge-conflict
 
+  # License header check
+  - repo: local
+    hooks:
+      - id: check-license-headers
+        name: Check License Headers
+        entry: python3 scripts/check_license_headers.py
+        language: system
+        files: \.py$
+        description: "Check that Python files have Apache 2.0 license headers"
+
   # Run your tests (regular tests only, not integration tests)
   # Integration tests are skipped by default (require RUN_INTEGRATION_TESTS=true)
   - repo: local

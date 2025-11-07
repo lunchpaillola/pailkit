@@ -78,3 +78,8 @@ A single API and MCP interface for creating and managing rooms — for video, au
 * [ ] `/mcp/rooms/create_room` — agent-callable version
 * [ ] `/mcp/transcribe` — agent-callable capability
 
+---
+
+## 📄 License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.

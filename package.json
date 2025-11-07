@@ -2,14 +2,18 @@
   "name": "pailkit",
   "version": "1.0.0",
   "description": "Tools for builders. Built by Lunch Pail Labs.",
+  "license": "Apache-2.0",
   "private": true,
   "workspaces": [
+    "api",
+    "flow",
     "mcp",
     "widgets"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev:api\" \"npm run dev:mcp\" \"npm run dev:widgets\"",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:flow\" \"npm run dev:mcp\" \"npm run dev:widgets\"",
     "dev:api": "cd api && python3.12 main.py",
+    "dev:flow": "cd flow && python3.12 -m flow.mcp.server",
     "dev:mcp": "cd mcp && npm run dev",
     "dev:widgets": "cd widgets && npm run dev",
     "build": "npm run build:api && npm run build:mcp && npm run build:widgets",
@@ -23,7 +27,8 @@
     "typecheck:api": "cd api && python3.12 -m mypy .",
     "lint": "cd api && ruff check .",
     "lint:fix": "cd api && ruff check --fix .",
-    "lint:api": "cd api && ruff check ."
+    "lint:api": "cd api && ruff check .",
+    "update:copyright": "python3 scripts/update_copyright_year.py"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
