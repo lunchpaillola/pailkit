@@ -425,7 +425,9 @@ def test_order_food_workflow_via_generic_endpoint(
         },
     }
 
-    with patch("flow.workflows.order_food.httpx.Client") as mock_client_class:
+    with patch("flow.workflows.order_food.httpx.Client") as mock_client_class, patch(
+        "flow.workflows.order_food.MEALME_API_KEY", "test-api-key"
+    ):
         mock_client = Mock()
         mock_client_class.return_value.__enter__.return_value = mock_client
         mock_client_class.return_value.__exit__.return_value = None
