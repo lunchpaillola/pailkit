@@ -139,6 +139,7 @@ def test_order_food_workflow_missing_api_key() -> None:
 
 
 @patch("flow.workflows.order_food.httpx.Client")
+@patch("flow.workflows.order_food.MEALME_API_KEY", "test-api-key")
 def test_order_food_workflow_full_flow_mocked(mock_client_class: Mock) -> None:
     """Test the complete order_food workflow with mocked HTTP responses."""
     # Setup mock responses for each API call
@@ -241,6 +242,7 @@ def test_order_food_workflow_full_flow_mocked(mock_client_class: Mock) -> None:
 
 
 @patch("flow.workflows.order_food.httpx.Client")
+@patch("flow.workflows.order_food.MEALME_API_KEY", "test-api-key")
 def test_order_food_workflow_with_coordinates(mock_client_class: Mock) -> None:
     """Test order_food workflow with pre-provided coordinates (skips geocoding)."""
     mock_client = Mock()
@@ -324,6 +326,7 @@ def test_order_food_workflow_with_coordinates(mock_client_class: Mock) -> None:
 
 
 @patch("flow.workflows.order_food.httpx.Client")
+@patch("flow.workflows.order_food.MEALME_API_KEY", "test-api-key")
 def test_order_food_workflow_no_products_found(mock_client_class: Mock) -> None:
     """Test order_food workflow when no products are found."""
     mock_client = Mock()
