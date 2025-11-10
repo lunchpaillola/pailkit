@@ -294,6 +294,66 @@ def get_workflow_info_mcp(workflow_name: str) -> dict[str, Any]:
         return create_error_response(str(e), workflow_name=workflow_name)
 
 
+@mcp.tool()
+def order_food_mcp(
+    query: str,
+    customer: dict[str, Any],
+    address: str | None = None,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    dropoff_instructions: str | None = None,
+    quantity: int = 1,
+) -> dict[str, Any]:
+    """
+    Execute the order_food workflow via MCP with structured parameters.
+
+    This tool orchestrates the complete food ordering process through the MealMe API:
+    1. Geocodes address (if provided)
+    2. Searches for products near the location
+    3. Creates a shopping cart
+    4. Adds the selected product to the cart
+    5. Creates an order with customer details
+    6. Retrieves a checkout link for payment
+
+    Args:
+        query: Product search term (e.g., "coffee", "Cold Brew")
+        customer: Customer information dict with name, email, phone_number, and address
+        address: Delivery address (optional if latitude/longitude provided)
+        latitude: Latitude coordinate (optional if address provided)
+        longitude: Longitude coordinate (optional if address provided)
+        dropoff_instructions: Optional delivery instructions
+        quantity: Quantity of product to order (default: 1)
+
+    Returns:
+        Dictionary with status, order_id, product name, and checkout_url
+    """
+    from flow.workflows.order_food import run as order_food_run
+
+    try:
+        params = {
+            "query": query,
+            "address": address,
+            "latitude": latitude,
+            "longitude": longitude,
+            "customer": customer,
+            "dropoff_instructions": dropoff_instructions,
+            "quantity": quantity,
+        }
+
+        # Call the workflow's run function
+        result = order_food_run(params)
+
+        # Return the result directly (it already has the correct structure)
+        return result
+
+    except Exception as e:
+        logger.error(f"Error executing order_food workflow via MCP: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": f"Error executing order_food workflow: {str(e)}",
+        }
+
+
 # Mount FastMCP into FastAPI
 app.mount("/mcp", mcp.streamable_http_app())
 

@@ -5,6 +5,8 @@
 
 from typing import Any, Protocol
 
+from flow.workflows.order_food import OrderFoodWorkflow
+
 
 class Workflow(Protocol):
     """Base workflow interface."""
@@ -25,21 +27,11 @@ class WorkflowNotFoundError(Exception):
     pass
 
 
-class CodeWorkflow:
-    """Placeholder workflow for testing."""
-
-    name = "Code Workflow"
-    description = "Placeholder code workflow for testing"
-
-    def execute(
-        self, message: str, user_id: str | None = None, channel_id: str | None = None
-    ) -> dict[str, Any]:
-        return {"success": True, "result": "yes"}
-
-
 def get_workflows() -> dict[str, Workflow]:
     """Return all available workflows."""
-    return {"code": CodeWorkflow()}
+    return {
+        "order_food": OrderFoodWorkflow(),
+    }
 
 
 def get_workflow(name: str) -> Workflow:
@@ -59,7 +51,7 @@ def get_workflow(name: str) -> Workflow:
 
 __all__ = [
     "Workflow",
-    "CodeWorkflow",
+    "OrderFoodWorkflow",
     "get_workflows",
     "get_workflow",
     "WorkflowNotFoundError",
