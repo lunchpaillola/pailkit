@@ -13,9 +13,10 @@ import argparse
 import logging
 from typing import Any
 
+import uvicorn
 from mcp.server.fastmcp import FastMCP
 
-import uvicorn
+from flow.workflows import WorkflowNotFoundError, get_workflow, get_workflows
 
 # Configure logging
 logging.basicConfig(
@@ -23,9 +24,6 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-# Import workflows
-from flow.workflows import get_workflows, get_workflow, WorkflowNotFoundError
 
 
 # Create FastMCP server instance
@@ -121,14 +119,14 @@ def execute_workflow(
             "result": result,
             "workflow_name": workflow_name,
         }
-    except WorkflowNotFoundError as e:
+    except WorkflowNotFoundError:
         logger.warning(f"Workflow not found: {workflow_name}")
         return {
             "success": False,
             "error": f"Workflow '{workflow_name}' not found",
             "workflow_name": workflow_name,
         }
-    except NotImplementedError as e:
+    except NotImplementedError:
         logger.warning(f"Workflow not yet implemented: {workflow_name}")
         return {
             "success": False,
@@ -136,9 +134,7 @@ def execute_workflow(
             "workflow_name": workflow_name,
         }
     except Exception as e:
-        logger.error(
-            f"Error executing workflow '{workflow_name}': {e}", exc_info=True
-        )
+        logger.error(f"Error executing workflow '{workflow_name}': {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e),
@@ -181,13 +177,13 @@ def get_workflow_info(workflow_name: str) -> dict[str, Any]:
             info["metadata"] = workflow.metadata
 
         return info
-    except WorkflowNotFoundError as e:
+    except WorkflowNotFoundError:
         logger.warning(f"Workflow not found: {workflow_name}")
         return {
             "name": workflow_name,
             "error": f"Workflow '{workflow_name}' not found",
         }
-    except NotImplementedError as e:
+    except NotImplementedError:
         logger.warning(f"Workflow not yet implemented: {workflow_name}")
         return {
             "name": workflow_name,
