@@ -21,8 +21,8 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from transcribe.config_builder import build_config
-from transcribe.providers.base import TranscriptionProvider
+from api.transcribe.config_builder import build_config
+from api.transcribe.providers.base import TranscriptionProvider
 
 router = APIRouter()
 
@@ -105,7 +105,7 @@ def get_provider(provider_name: str, api_key: str) -> TranscriptionProvider:
     _normalized_provider = provider_name.lower().strip()
 
     if _normalized_provider == "daily":
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         return DailyTranscription(api_key=api_key)
 

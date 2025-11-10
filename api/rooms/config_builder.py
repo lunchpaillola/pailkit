@@ -10,9 +10,10 @@ This is the single source of truth for config composition across all adapters.
 
 from typing import Any
 
-from rooms.config_schema import BASE_CONFIG
-from rooms.profiles import PROFILES
-from utils import deep_merge
+from api.utils import deep_merge
+
+from .config_schema import BASE_CONFIG
+from .profiles import PROFILES
 
 
 def build_config(

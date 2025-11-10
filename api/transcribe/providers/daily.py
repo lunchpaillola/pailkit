@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from transcribe.providers.base import TranscriptionProvider
+from .base import TranscriptionProvider
 
 # Maps PailKit profiles to Daily.co transcription models
 MODEL_MAPPING: dict[str, str] = {

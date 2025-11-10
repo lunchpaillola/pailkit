@@ -10,12 +10,13 @@ This is the single source of truth for config composition across all adapters.
 
 from typing import Any
 
-from transcribe.config_schema import (
+from api.utils.deep_merge import deep_merge
+
+from .config_schema import (
     BASE_TRANSCRIPTION_CONFIG,
     validate_redact,
 )
-from transcribe.profiles import PROFILES
-from utils.deep_merge import deep_merge
+from .profiles import PROFILES
 
 
 def build_config(

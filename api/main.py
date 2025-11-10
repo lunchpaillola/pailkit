@@ -12,10 +12,10 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from shared.auth import UnkeyAuthMiddleware
 
-from middleware.unkey_auth import UnkeyAuthMiddleware
-from routers.rooms import router as rooms_router
-from routers.transcribe import router as transcribe_router
+from api.routers.rooms import router as rooms_router
+from api.routers.transcribe import router as transcribe_router
 
 # Load environment variables
 load_dotenv()

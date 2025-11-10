@@ -20,7 +20,7 @@ from typing import Any
 
 import httpx
 
-from rooms.config_builder import build_config
+from ..config_builder import build_config
 
 
 class DailyRooms:

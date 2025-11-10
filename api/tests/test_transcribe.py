@@ -15,19 +15,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
-# Load environment variables before importing main
-load_dotenv()
-
-from main import app  # noqa: E402
+from api.main import app  # noqa: E402
+from api.tests.conftest import AUTH_KEY  # noqa: E402
 
 client = TestClient(app)
-
-# If an Unkey test secret is provided, use it for Authorization so that
-# middleware verification against Unkey can pass during tests.
-AUTH_KEY = os.getenv("UNKEY_PAILKIT_SECRET", "pailkit_test_123")
 
 # Check if integration tests should run
 RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "true"
@@ -38,7 +31,7 @@ class TestDailyTranscriptionProvider:
 
     def test_extract_room_name_valid_url(self) -> None:
         """Test extracting room name from valid Daily.co URL."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         room_name = provider._extract_room_name(
@@ -48,7 +41,7 @@ class TestDailyTranscriptionProvider:
 
     def test_extract_room_name_with_trailing_slash(self) -> None:
         """Test extracting room name from URL with trailing slash."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         room_name = provider._extract_room_name("https://example.daily.co/test-room/")
@@ -56,7 +49,7 @@ class TestDailyTranscriptionProvider:
 
     def test_extract_room_name_empty_url(self) -> None:
         """Test extracting room name from empty URL raises error."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         with pytest.raises(ValueError, match="audio_url is required"):
@@ -64,7 +57,7 @@ class TestDailyTranscriptionProvider:
 
     def test_extract_room_name_invalid_url(self) -> None:
         """Test extracting room name from invalid URL raises error."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         with pytest.raises(ValueError, match="Invalid Daily.co room URL"):
@@ -72,7 +65,7 @@ class TestDailyTranscriptionProvider:
 
     def test_get_model_from_profile_meeting(self) -> None:
         """Test getting model from meeting profile."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         config = {"profile": "meeting"}
@@ -81,7 +74,7 @@ class TestDailyTranscriptionProvider:
 
     def test_get_model_from_profile_medical(self) -> None:
         """Test getting model from medical profile."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         config = {"profile": "medical"}
@@ -90,7 +83,7 @@ class TestDailyTranscriptionProvider:
 
     def test_get_model_from_profile_finance(self) -> None:
         """Test getting model from finance profile."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         config = {"profile": "finance"}
@@ -99,7 +92,7 @@ class TestDailyTranscriptionProvider:
 
     def test_get_model_from_profile_general(self) -> None:
         """Test getting model from general profile."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         config = {"profile": "general"}
@@ -108,7 +101,7 @@ class TestDailyTranscriptionProvider:
 
     def test_get_model_from_profile_default(self) -> None:
         """Test getting model from unknown profile defaults to meeting."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         config = {"profile": "unknown"}
@@ -117,7 +110,7 @@ class TestDailyTranscriptionProvider:
 
     def test_to_daily_config_basic(self) -> None:
         """Test converting PailKit config to Daily config format."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         config = {"profile": "meeting", "language": "en"}
@@ -129,7 +122,7 @@ class TestDailyTranscriptionProvider:
 
     def test_to_daily_config_with_overrides(self) -> None:
         """Test converting config with feature overrides."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         config = {
@@ -146,7 +139,7 @@ class TestDailyTranscriptionProvider:
     @pytest.mark.asyncio
     async def test_start_transcription_success(self) -> None:
         """Test starting transcription successfully."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
 
@@ -156,7 +149,7 @@ class TestDailyTranscriptionProvider:
         mock_response.raise_for_status = MagicMock()
 
         # Mock httpx.AsyncClient
-        with patch("transcribe.providers.daily.httpx.AsyncClient") as mock_client:
+        with patch("api.transcribe.providers.daily.httpx.AsyncClient") as mock_client:
             mock_client_instance = AsyncMock()
             mock_client_instance.__aenter__ = AsyncMock(
                 return_value=mock_client_instance
@@ -180,7 +173,7 @@ class TestDailyTranscriptionProvider:
     @pytest.mark.asyncio
     async def test_start_transcription_missing_url(self) -> None:
         """Test starting transcription without audio_url."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         result = await provider.start_transcription(audio_url=None)
@@ -194,7 +187,7 @@ class TestDailyTranscriptionProvider:
         """Test starting transcription with 404 error (room not found)."""
         import httpx
 
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
 
@@ -214,7 +207,7 @@ class TestDailyTranscriptionProvider:
         )
 
         # Mock httpx.AsyncClient
-        with patch("transcribe.providers.daily.httpx.AsyncClient") as mock_client:
+        with patch("api.transcribe.providers.daily.httpx.AsyncClient") as mock_client:
             mock_client_instance = AsyncMock()
             mock_client_instance.__aenter__ = AsyncMock(
                 return_value=mock_client_instance
@@ -237,7 +230,7 @@ class TestDailyTranscriptionProvider:
         """Test starting transcription with 400 error (invalid request)."""
         import httpx
 
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
 
@@ -257,7 +250,7 @@ class TestDailyTranscriptionProvider:
         )
 
         # Mock httpx.AsyncClient
-        with patch("transcribe.providers.daily.httpx.AsyncClient") as mock_client:
+        with patch("api.transcribe.providers.daily.httpx.AsyncClient") as mock_client:
             mock_client_instance = AsyncMock()
             mock_client_instance.__aenter__ = AsyncMock(
                 return_value=mock_client_instance
@@ -278,7 +271,7 @@ class TestDailyTranscriptionProvider:
     @pytest.mark.asyncio
     async def test_start_transcription_invalid_url(self) -> None:
         """Test starting transcription with invalid URL."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         result = await provider.start_transcription(
@@ -292,7 +285,7 @@ class TestDailyTranscriptionProvider:
     @pytest.mark.asyncio
     async def test_stop_transcription_success(self) -> None:
         """Test stopping transcription successfully."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
 
@@ -302,7 +295,7 @@ class TestDailyTranscriptionProvider:
         mock_response.raise_for_status = MagicMock()
 
         # Mock httpx.AsyncClient
-        with patch("transcribe.providers.daily.httpx.AsyncClient") as mock_client:
+        with patch("api.transcribe.providers.daily.httpx.AsyncClient") as mock_client:
             mock_client_instance = AsyncMock()
             mock_client_instance.__aenter__ = AsyncMock(
                 return_value=mock_client_instance
@@ -323,7 +316,7 @@ class TestDailyTranscriptionProvider:
     @pytest.mark.asyncio
     async def test_stop_transcription_missing_id(self) -> None:
         """Test stopping transcription without transcription_id."""
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
         result = await provider.stop_transcription("")
@@ -336,7 +329,7 @@ class TestDailyTranscriptionProvider:
         """Test stopping transcription with API error."""
         import httpx
 
-        from transcribe.providers.daily import DailyTranscription
+        from api.transcribe.providers.daily import DailyTranscription
 
         provider = DailyTranscription(api_key="test-key")
 
@@ -351,7 +344,7 @@ class TestDailyTranscriptionProvider:
         )
 
         # Mock httpx.AsyncClient
-        with patch("transcribe.providers.daily.httpx.AsyncClient") as mock_client:
+        with patch("api.transcribe.providers.daily.httpx.AsyncClient") as mock_client:
             mock_client_instance = AsyncMock()
             mock_client_instance.__aenter__ = AsyncMock(
                 return_value=mock_client_instance
@@ -378,7 +371,7 @@ class TestTranscriptionRouter:
         assert response.status_code == 401
         assert "Authorization header required" in response.json().get("detail", "")
 
-    @patch("routers.transcribe.get_provider")
+    @patch("api.routers.transcribe.get_provider")
     def test_start_transcription_success(self, mock_get_provider: Any) -> None:
         """Test starting transcription via API endpoint."""
         # Create a mock provider instance
@@ -424,7 +417,7 @@ class TestTranscriptionRouter:
         assert "room_name" in data
         assert "config" in data
 
-    @patch("routers.transcribe.get_provider")
+    @patch("api.routers.transcribe.get_provider")
     def test_start_transcription_with_overrides(self, mock_get_provider: Any) -> None:
         """Test starting transcription with profile and overrides."""
         # Create a mock provider instance
@@ -466,7 +459,7 @@ class TestTranscriptionRouter:
         data = response.json()
         assert data["success"] is True
 
-    @patch("routers.transcribe.get_provider")
+    @patch("api.routers.transcribe.get_provider")
     def test_start_transcription_provider_failure(self, mock_get_provider: Any) -> None:
         """Test starting transcription when provider fails."""
         # Create a mock provider instance
@@ -525,7 +518,7 @@ class TestTranscriptionRouter:
         data = response.json()
         assert "not yet implemented" in data["detail"]
 
-    @patch("routers.transcribe.get_provider")
+    @patch("api.routers.transcribe.get_provider")
     def test_start_transcription_missing_api_key(self, mock_get_provider: Any) -> None:
         """Test starting transcription with missing API key."""
         request_data = {
@@ -545,7 +538,7 @@ class TestTranscriptionRouter:
 
         assert response.status_code == 422  # FastAPI validation error
 
-    @patch("routers.transcribe.get_provider")
+    @patch("api.routers.transcribe.get_provider")
     def test_stop_transcription_success(self, mock_get_provider: Any) -> None:
         """Test stopping transcription via API endpoint."""
         # Create a mock provider instance
@@ -587,7 +580,7 @@ class TestTranscriptionRouter:
         assert data["message"] == "Transcription stopped successfully"
         assert data["final_transcript"] is None
 
-    @patch("routers.transcribe.get_provider")
+    @patch("api.routers.transcribe.get_provider")
     def test_stop_transcription_provider_failure(self, mock_get_provider: Any) -> None:
         """Test stopping transcription when provider fails."""
         # Create a mock provider instance
