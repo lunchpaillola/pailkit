@@ -15,8 +15,8 @@ from typing import Any
 
 # Add project root directory to Python path to allow imports from shared module
 # This allows the script to find the 'shared' module in the project root
-# Since we're now in experiments/flow/, we need to go up two levels to reach the project root
-project_root = Path(__file__).parent.parent.parent
+# Since we're now in flow/, we need to go up one level to reach the project root
+project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -27,7 +27,7 @@ from mcp.server import FastMCP  # noqa: E402
 from pydantic import BaseModel, Field, field_validator  # noqa: E402
 from shared.auth import UnkeyAuthMiddleware  # noqa: E402
 
-from experiments.flow.workflows import (  # noqa: E402
+from flow.workflows import (  # noqa: E402
     WorkflowNotFoundError,
     get_workflow,
     get_workflows,
@@ -340,7 +340,7 @@ def order_food_mcp(
     Returns:
         Dictionary with status, order_id, product name, and checkout_url
     """
-    from experiments.flow.workflows.order_food import run as order_food_run
+    from flow.workflows.order_food import run as order_food_run
 
     try:
         params = {

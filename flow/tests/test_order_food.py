@@ -16,8 +16,8 @@ from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
-from experiments.flow.workflows import get_workflow, get_workflows
-from experiments.flow.workflows.order_food import OrderFoodWorkflow, run
+from flow.workflows import get_workflow, get_workflows
+from flow.workflows.order_food import OrderFoodWorkflow, run
 
 
 def test_order_food_workflow_registered() -> None:
@@ -132,14 +132,14 @@ def test_order_food_workflow_missing_api_key() -> None:
     }
 
     # Patch the MEALME_API_KEY variable directly instead of reloading the module
-    with patch("experiments.flow.workflows.order_food.MEALME_API_KEY", None):
+    with patch("flow.workflows.order_food.MEALME_API_KEY", None):
         result = run(params)
         assert result["status"] == "error"
         assert "MEALME_API_KEY" in result["error"]
 
 
-@patch("experiments.flow.workflows.order_food.httpx.Client")
-@patch("experiments.flow.workflows.order_food.MEALME_API_KEY", "test-api-key")
+@patch("flow.workflows.order_food.httpx.Client")
+@patch("flow.workflows.order_food.MEALME_API_KEY", "test-api-key")
 def test_order_food_workflow_full_flow_mocked(mock_client_class: Mock) -> None:
     """Test the complete order_food workflow with mocked HTTP responses."""
     # Setup mock responses for each API call
@@ -241,8 +241,8 @@ def test_order_food_workflow_full_flow_mocked(mock_client_class: Mock) -> None:
     assert mock_client.post.call_count == 3  # Create cart, add item, create order
 
 
-@patch("experiments.flow.workflows.order_food.httpx.Client")
-@patch("experiments.flow.workflows.order_food.MEALME_API_KEY", "test-api-key")
+@patch("flow.workflows.order_food.httpx.Client")
+@patch("flow.workflows.order_food.MEALME_API_KEY", "test-api-key")
 def test_order_food_workflow_with_coordinates(mock_client_class: Mock) -> None:
     """Test order_food workflow with pre-provided coordinates (skips geocoding)."""
     mock_client = Mock()
@@ -325,8 +325,8 @@ def test_order_food_workflow_with_coordinates(mock_client_class: Mock) -> None:
     assert mock_client.get.call_count == 2
 
 
-@patch("experiments.flow.workflows.order_food.httpx.Client")
-@patch("experiments.flow.workflows.order_food.MEALME_API_KEY", "test-api-key")
+@patch("flow.workflows.order_food.httpx.Client")
+@patch("flow.workflows.order_food.MEALME_API_KEY", "test-api-key")
 def test_order_food_workflow_no_products_found(mock_client_class: Mock) -> None:
     """Test order_food workflow when no products are found."""
     mock_client = Mock()
@@ -388,7 +388,7 @@ def test_order_food_workflow_execute_method() -> None:
         },
     }
 
-    with patch("experiments.flow.workflows.order_food.run") as mock_run:
+    with patch("flow.workflows.order_food.run") as mock_run:
         mock_run.return_value = {"status": "success", "order_id": "test_order"}
         message = json.dumps(params)
         result = workflow.execute(message)
@@ -425,9 +425,7 @@ def test_order_food_workflow_via_generic_endpoint(
         },
     }
 
-    with patch(
-        "experiments.flow.workflows.order_food.httpx.Client"
-    ) as mock_client_class, patch(
+    with patch("flow.workflows.order_food.httpx.Client") as mock_client_class, patch(
         "flow.workflows.order_food.MEALME_API_KEY", "test-api-key"
     ):
         mock_client = Mock()
@@ -505,9 +503,7 @@ def test_order_food_workflow_via_mcp_tool(
         },
     }
 
-    with patch(
-        "experiments.flow.workflows.order_food.httpx.Client"
-    ) as mock_client_class:
+    with patch("flow.workflows.order_food.httpx.Client") as mock_client_class:
         mock_client = Mock()
         mock_client_class.return_value.__enter__.return_value = mock_client
         mock_client_class.return_value.__exit__.return_value = None
@@ -597,9 +593,9 @@ def test_order_food_workflow_via_mcp_tool(
 
 def test_order_food_mcp_tool() -> None:
     """Test that order_food MCP tool works correctly."""
-    from experiments.flow.main import order_food_mcp
+    from flow.main import order_food_mcp
 
-    with patch("experiments.flow.workflows.order_food.run") as mock_run:
+    with patch("flow.workflows.order_food.run") as mock_run:
         mock_run.return_value = {
             "status": "success",
             "order_id": "test_123",
@@ -648,9 +644,9 @@ def test_order_food_mcp_tool() -> None:
 
 def test_order_food_mcp_tool_error_handling() -> None:
     """Test that order_food MCP tool handles errors correctly."""
-    from experiments.flow.main import order_food_mcp
+    from flow.main import order_food_mcp
 
-    with patch("experiments.flow.workflows.order_food.run") as mock_run:
+    with patch("flow.workflows.order_food.run") as mock_run:
         mock_run.side_effect = Exception("Test error")
 
         result = order_food_mcp(

@@ -11,7 +11,7 @@ import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
-from experiments.flow.main import app
+from flow.main import app
 
 # Load environment variables
 load_dotenv()

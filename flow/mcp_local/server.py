@@ -16,7 +16,7 @@ from typing import Any
 import uvicorn
 from mcp.server import FastMCP
 
-from experiments.flow.workflows import (
+from flow.workflows import (
     WorkflowNotFoundError,
     get_workflow,
     get_workflows,
