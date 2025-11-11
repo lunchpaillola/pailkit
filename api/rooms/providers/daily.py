@@ -1,3 +1,6 @@
+# Copyright 2025 Lunch Pail Labs, LLC
+# Licensed under the Apache License, Version 2.0
+
 """
 Daily Rooms Provider - PailKit API
 
@@ -17,7 +20,7 @@ from typing import Any
 
 import httpx
 
-from rooms.config_builder import build_config
+from ..config_builder import build_config
 
 
 class DailyRooms:

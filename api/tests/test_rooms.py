@@ -1,3 +1,6 @@
+# Copyright 2025 Lunch Pail Labs, LLC
+# Licensed under the Apache License, Version 2.0
+
 """
 Tests for the rooms router with profile-based API.
 
@@ -10,19 +13,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
-# Load environment variables before importing main
-load_dotenv()
-
-from main import app  # noqa: E402
+from api.main import app  # noqa: E402
+from api.tests.conftest import AUTH_KEY  # noqa: E402
 
 client = TestClient(app)
-
-# If an Unkey test secret is provided, use it for Authorization so that
-# middleware verification against Unkey can pass during tests.
-AUTH_KEY = os.getenv("UNKEY_PAILKIT_SECRET", "pailkit_test_123")
 
 # Check if integration tests should run
 RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS", "false").lower() == "true"
@@ -41,7 +37,7 @@ class TestRoomsRouter:
         auth = client.get("/health", headers={"Authorization": f"Bearer {AUTH_KEY}"})
         assert auth.status_code == 200
 
-    @patch("routers.rooms.get_provider")
+    @patch("api.routers.rooms.get_provider")
     def test_create_room_with_conversation_profile(
         self, mock_get_provider: Any
     ) -> None:
@@ -84,7 +80,7 @@ class TestRoomsRouter:
         assert data["profile"] == "conversation"
         assert "room_url" in data
 
-    @patch("routers.rooms.get_provider")
+    @patch("api.routers.rooms.get_provider")
     def test_create_room_with_broadcast_profile(self, mock_get_provider: Any) -> None:
         """Test creating a room with broadcast profile."""
         # Create a mock provider instance
@@ -123,7 +119,7 @@ class TestRoomsRouter:
         assert data["success"] is True
         assert data["profile"] == "broadcast"
 
-    @patch("routers.rooms.get_provider")
+    @patch("api.routers.rooms.get_provider")
     def test_create_room_with_audio_room_profile(self, mock_get_provider: Any) -> None:
         """Test creating a room with audio_room profile."""
         # Create a mock provider instance
@@ -163,7 +159,7 @@ class TestRoomsRouter:
         assert data["profile"] == "audio_room"
         assert "room_url" in data
 
-    @patch("routers.rooms.get_provider")
+    @patch("api.routers.rooms.get_provider")
     def test_create_room_with_overrides(self, mock_get_provider: Any) -> None:
         """Test creating a room with profile and overrides."""
         # Create a mock provider instance
@@ -223,7 +219,7 @@ class TestRoomsRouter:
         data = response.json()
         assert "Unsupported provider" in data["detail"]
 
-    @patch("routers.rooms.get_provider")
+    @patch("api.routers.rooms.get_provider")
     def test_create_room_provider_failure(self, mock_get_provider: Any) -> None:
         """Test room creation when provider fails."""
         # Create a mock provider instance

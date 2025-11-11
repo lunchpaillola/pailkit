@@ -1,3 +1,6 @@
+# Copyright 2025 Lunch Pail Labs, LLC
+# Licensed under the Apache License, Version 2.0
+
 """
 Rooms Router - PailKit API
 
@@ -18,7 +21,7 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from rooms.providers.daily import DailyRooms
+from api.rooms.providers.daily import DailyRooms
 
 router = APIRouter()
 

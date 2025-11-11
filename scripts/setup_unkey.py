@@ -1,3 +1,6 @@
+# Copyright 2025 Lunch Pail Labs, LLC
+# Licensed under the Apache License, Version 2.0
+
 """
 Utility script placeholder to help create initial PailKit keys via Unkey.
 

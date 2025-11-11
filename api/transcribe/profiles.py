@@ -1,3 +1,6 @@
+# Copyright 2025 Lunch Pail Labs, LLC
+# Licensed under the Apache License, Version 2.0
+
 """
 Transcription Profiles - PailKit API
 
@@ -7,8 +10,9 @@ Each profile represents a complete transcription setup with sensible defaults.
 
 from typing import Any
 
-from transcribe.config_schema import BASE_TRANSCRIPTION_CONFIG
-from utils import deep_merge
+from api.utils import deep_merge
+
+from .config_schema import BASE_TRANSCRIPTION_CONFIG
 
 # Meeting profile - Optimized for meeting transcription
 # Use case: Business meetings, team standups, conference calls

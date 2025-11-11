@@ -1,3 +1,6 @@
+# Copyright 2025 Lunch Pail Labs, LLC
+# Licensed under the Apache License, Version 2.0
+
 """
 Daily Transcription Provider - PailKit API
 
@@ -13,7 +16,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from transcribe.providers.base import TranscriptionProvider
+from .base import TranscriptionProvider
 
 # Maps PailKit profiles to Daily.co transcription models
 MODEL_MAPPING: dict[str, str] = {

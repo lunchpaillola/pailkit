@@ -2,5 +2,5 @@
 # Licensed under the Apache License, Version 2.0
 
 """
-Tests module - PailKit API
+Shared modules for PailKit.
 """
