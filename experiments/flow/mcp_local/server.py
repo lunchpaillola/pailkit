@@ -14,9 +14,13 @@ import logging
 from typing import Any
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
+from mcp.server import FastMCP
 
-from flow.workflows import WorkflowNotFoundError, get_workflow, get_workflows
+from experiments.flow.workflows import (
+    WorkflowNotFoundError,
+    get_workflow,
+    get_workflows,
+)
 
 # Configure logging
 logging.basicConfig(

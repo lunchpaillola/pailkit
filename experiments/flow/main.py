@@ -9,16 +9,29 @@ Main entry point for the PailFlow API server with REST API and MCP integration.
 
 import logging
 import os
+import sys
+from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel, Field, field_validator
-from shared.auth import UnkeyAuthMiddleware
+# Add project root directory to Python path to allow imports from shared module
+# This allows the script to find the 'shared' module in the project root
+# Since we're now in experiments/flow/, we need to go up two levels to reach the project root
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
-from flow.workflows import WorkflowNotFoundError, get_workflow, get_workflows
+from dotenv import load_dotenv  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from mcp.server import FastMCP  # noqa: E402
+from pydantic import BaseModel, Field, field_validator  # noqa: E402
+from shared.auth import UnkeyAuthMiddleware  # noqa: E402
+
+from experiments.flow.workflows import (  # noqa: E402
+    WorkflowNotFoundError,
+    get_workflow,
+    get_workflows,
+)
 
 load_dotenv()
 
@@ -327,7 +340,7 @@ def order_food_mcp(
     Returns:
         Dictionary with status, order_id, product name, and checkout_url
     """
-    from flow.workflows.order_food import run as order_food_run
+    from experiments.flow.workflows.order_food import run as order_food_run
 
     try:
         params = {

@@ -5,7 +5,7 @@
 
 from typing import Any, Protocol
 
-from flow.workflows.order_food import OrderFoodWorkflow
+from experiments.flow.workflows.order_food import OrderFoodWorkflow
 
 
 class Workflow(Protocol):
