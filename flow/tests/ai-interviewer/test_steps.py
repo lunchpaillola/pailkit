@@ -10,7 +10,6 @@ and tested independently.
 
 # TODO: Add comprehensive step tests
 # This file will contain tests for individual steps:
-# - test_initialize_session.py
 # - test_create_room.py
 # - test_configure_agent.py
 # - test_start_recording.py

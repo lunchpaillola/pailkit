@@ -15,14 +15,12 @@ from flow.steps.interview.create_room import CreateRoomStep
 from flow.steps.interview.extract_insights import ExtractInsightsStep
 from flow.steps.interview.generate_questions import GenerateQuestionsStep
 from flow.steps.interview.generate_summary import GenerateSummaryStep
-from flow.steps.interview.initialize_session import InitializeSessionStep
 from flow.steps.interview.package_results import PackageResultsStep
 from flow.steps.interview.process_transcript import ProcessTranscriptStep
 from flow.steps.interview.start_recording import StartRecordingStep
 
 __all__ = [
     "InterviewStep",
-    "InitializeSessionStep",
     "CreateRoomStep",
     "ConfigureAgentStep",
     "StartRecordingStep",

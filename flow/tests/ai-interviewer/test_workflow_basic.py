@@ -27,7 +27,7 @@ def test_workflow_instantiation():
     assert workflow is not None
     assert workflow.name == "ai_interviewer"
     assert workflow.description is not None
-    assert len(workflow.steps) == 10
+    assert len(workflow.steps) == 9
 
 
 def test_workflow_registered():
@@ -51,7 +51,6 @@ def test_workflow_has_all_steps():
     workflow = AIInterviewerWorkflow()
 
     expected_steps = [
-        "initialize_session",
         "create_room",
         "configure_agent",
         "start_recording",

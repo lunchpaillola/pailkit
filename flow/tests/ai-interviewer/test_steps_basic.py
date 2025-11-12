@@ -16,29 +16,10 @@ from flow.steps.interview import (
     ExtractInsightsStep,
     GenerateQuestionsStep,
     GenerateSummaryStep,
-    InitializeSessionStep,
     PackageResultsStep,
     ProcessTranscriptStep,
     StartRecordingStep,
 )
-
-
-@pytest.mark.asyncio
-async def test_initialize_session_step():
-    """Test InitializeSessionStep."""
-    step = InitializeSessionStep()
-    state = {
-        "candidate_info": {"name": "Test Candidate"},
-        "processing_status": "starting",
-    }
-
-    result = await step.execute(state)
-
-    assert result["session_id"] is not None
-    assert result["processing_status"] == "session_initialized"
-    assert result["current_question_index"] == 0
-    assert result["qa_pairs"] == []
-    assert result["insights"] == {}
 
 
 @pytest.mark.asyncio

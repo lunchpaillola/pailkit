@@ -22,7 +22,6 @@ from flow.steps.interview import (
     ExtractInsightsStep,
     GenerateQuestionsStep,
     GenerateSummaryStep,
-    InitializeSessionStep,
     PackageResultsStep,
     ProcessTranscriptStep,
     StartRecordingStep,
@@ -141,7 +140,6 @@ class AIInterviewerWorkflow:
         """Initialize the workflow and build the LangGraph graph."""
         # Initialize all step instances
         self.steps = {
-            "initialize_session": InitializeSessionStep(),
             "create_room": CreateRoomStep(),
             "configure_agent": ConfigureAgentStep(),
             "start_recording": StartRecordingStep(),
@@ -176,8 +174,7 @@ class AIInterviewerWorkflow:
             workflow.add_node(step_name, create_step_wrapper(step_instance))
 
         # Define the flow - connect nodes in order
-        workflow.set_entry_point("initialize_session")
-        workflow.add_edge("initialize_session", "create_room")
+        workflow.set_entry_point("create_room")
         workflow.add_edge("create_room", "configure_agent")
         workflow.add_edge("configure_agent", "start_recording")
         workflow.add_edge("start_recording", "generate_questions")
@@ -214,6 +211,9 @@ class AIInterviewerWorkflow:
             interview_config = context.get("interview_config", {})
             provider_keys = context.get("provider_keys", {})
 
+            # Generate session ID for tracking
+            import uuid
+
             # Prepare initial state
             initial_state: InterviewState = {
                 "candidate_info": candidate_info,
@@ -223,7 +223,7 @@ class AIInterviewerWorkflow:
                 "error": None,
                 "room_id": None,
                 "room_url": None,
-                "session_id": None,
+                "session_id": str(uuid.uuid4()),
                 "interviewer_persona": None,
                 "interviewer_context": None,
                 "recording_id": None,
