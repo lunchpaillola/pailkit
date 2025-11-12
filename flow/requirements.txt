@@ -8,6 +8,7 @@ uvicorn>=0.24.0
 pydantic>=2.8.0
 python-dotenv>=1.0.0
 unkey-py>=0.3.0
+langgraph==0.2.40
 
 # Development dependencies
 pytest>=7.4.0
