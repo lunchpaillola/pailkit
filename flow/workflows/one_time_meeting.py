@@ -63,7 +63,7 @@ class OneTimeMeetingWorkflow:
 
             meeting_config = context.get("meeting_config", {})
             provider_keys = context.get("provider_keys", {})
-            base_url = os.getenv("MEET_BASE_URL", "https://meet.pailkit.com")
+            base_url = os.getenv("MEET_BASE_URL", "http://localhost:8001")
 
             initial_state: OneTimeMeetingState = {
                 "meeting_config": meeting_config,
@@ -95,8 +95,8 @@ class OneTimeMeetingWorkflow:
                 }
 
             hosted_url = None
-            if result.get("room_name"):
-                hosted_url = f"{base_url}/meet/{result['room_name']}"
+            if result.get("room_name") and result.get("room_url"):
+                hosted_url = f"{base_url}/meet/{result['room_name']}?room_url={result['room_url']}"
 
             return {
                 "success": True,
