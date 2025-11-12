@@ -50,6 +50,13 @@ class UnkeyAuthMiddleware:
 
         request = Request(scope, receive=receive)
 
+        # Skip authentication for public routes (e.g., hosted meeting pages, favicon)
+        path = request.url.path
+        if path.startswith("/meet/") or path == "/favicon.ico":
+            # Public route - allow access without authentication
+            await self.app(scope, receive, send)
+            return
+
         # Require Authorization header
         auth_header = request.headers.get("authorization", "").strip()
         if not auth_header or not auth_header.lower().startswith("bearer "):

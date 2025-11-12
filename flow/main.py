@@ -21,8 +21,9 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from dotenv import load_dotenv  # noqa: E402
-from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi import FastAPI, HTTPException, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from mcp.server import FastMCP  # noqa: E402
 from pydantic import BaseModel, Field, field_validator  # noqa: E402
 from shared.auth import UnkeyAuthMiddleware  # noqa: E402
@@ -178,6 +179,77 @@ class WorkflowRequest(BaseModel):
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy", "service": "pailflow"}
+
+
+@app.get("/favicon.ico")
+async def favicon() -> Response:
+    """Return empty favicon to prevent 401 errors."""
+    return Response(status_code=204)  # No Content
+
+
+@app.get("/meet/{room_name}", response_class=HTMLResponse)
+async def serve_meeting_page(
+    room_name: str,
+    room_url: str | None = Query(
+        None,
+        description="Daily.co room URL (optional, will be fetched if not provided)",
+    ),
+    theme: str | None = Query("light", description="Theme: 'light' or 'dark'"),
+    bgColor: str | None = Query(None, description="Background color (hex code)"),
+    accentColor: str | None = Query(None, description="Accent color (hex code)"),
+    textColor: str | None = Query(None, description="Text color (hex code)"),
+    logo: str | None = Query(None, description="Logo image URL"),
+    logoText: str | None = Query(None, description="Logo text"),
+    interviewerContext: str | None = Query(
+        None, description="Interviewer context for AI interviews"
+    ),
+) -> HTMLResponse:
+    """
+    Serve the hosted meeting page for a room.
+
+    **Simple Explanation:**
+    This endpoint serves a nice branded page where participants can join a video meeting.
+    You can customize the look and feel using query parameters.
+
+    **Query Parameters:**
+    - `room_url`: The Daily.co room URL (optional, will try to fetch from API if not provided)
+    - `theme`: 'light' or 'dark' theme
+    - `bgColor`: Background color (hex code like #ffffff)
+    - `accentColor`: Accent color (hex code like #3b82f6)
+    - `textColor`: Text color (hex code)
+    - `logo`: URL to logo image
+    - `logoText`: Text to display as logo
+    - `interviewerContext`: Context for AI interviewer (if applicable)
+
+    **Example:**
+    ```
+    https://meet.pailkit.com/meet/abc123?theme=dark&accentColor=#60a5fa&logoText=MyCompany
+    ```
+    """
+    try:
+        # Get the path to the HTML template
+        hosting_dir = Path(__file__).parent / "hosting"
+        html_file = hosting_dir / "meeting.html"
+
+        if not html_file.exists():
+            logger.error(f"Meeting page template not found: {html_file}")
+            raise HTTPException(
+                status_code=500, detail="Meeting page template not found"
+            )
+
+        # Read the HTML template
+        with open(html_file, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # The HTML template already handles query parameters via JavaScript
+        # So we just need to serve it - the query params will be available in the URL
+        return HTMLResponse(content=html_content)
+
+    except Exception as e:
+        logger.error(f"Error serving meeting page: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to serve meeting page: {str(e)}"
+        )
 
 
 @app.get("/workflows")
