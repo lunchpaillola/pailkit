@@ -190,10 +190,6 @@ async def favicon() -> Response:
 @app.get("/meet/{room_name}", response_class=HTMLResponse)
 async def serve_meeting_page(
     room_name: str,
-    room_url: str | None = Query(
-        None,
-        description="Daily.co room URL (optional, will be fetched if not provided)",
-    ),
     theme: str | None = Query("light", description="Theme: 'light' or 'dark'"),
     bgColor: str | None = Query(None, description="Background color (hex code)"),
     accentColor: str | None = Query(None, description="Accent color (hex code)"),
@@ -209,10 +205,13 @@ async def serve_meeting_page(
 
     **Simple Explanation:**
     This endpoint serves a nice branded page where participants can join a video meeting.
-    You can customize the look and feel using query parameters.
+    The room URL is automatically constructed from the room name using the DAILY_DOMAIN
+    environment variable. You can customize the look and feel using query parameters.
+
+    **Path Parameters:**
+    - `room_name`: The Daily.co room name (e.g., "abc123")
 
     **Query Parameters:**
-    - `room_url`: The Daily.co room URL (optional, will try to fetch from API if not provided)
     - `theme`: 'light' or 'dark' theme
     - `bgColor`: Background color (hex code like #ffffff)
     - `accentColor`: Accent color (hex code like #3b82f6)
@@ -240,6 +239,14 @@ async def serve_meeting_page(
         # Read the HTML template
         with open(html_file, "r", encoding="utf-8") as f:
             html_content = f.read()
+
+        # Inject DAILY_DOMAIN into the HTML template
+        daily_domain = os.getenv("DAILY_DOMAIN", "https://your-domain.daily.co").rstrip(
+            "/"
+        )
+        html_content = html_content.replace(
+            "const DAILY_DOMAIN = null;", f'const DAILY_DOMAIN = "{daily_domain}";'
+        )
 
         # The HTML template already handles query parameters via JavaScript
         # So we just need to serve it - the query params will be available in the URL

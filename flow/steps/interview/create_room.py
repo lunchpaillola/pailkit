@@ -162,7 +162,9 @@ class CreateRoomStep(InterviewStep):
         if room_provider != "daily":
             return self.set_error(state, f"Unsupported room provider: {room_provider}")
 
-        interview_config = state.get("interview_config", {})
+        interview_config = state.get("interview_config") or state.get(
+            "meeting_config", {}
+        )
         branding = interview_config.get("branding", {})
 
         logger.info(f"📹 Creating video room (session: {state.get('session_id')})")

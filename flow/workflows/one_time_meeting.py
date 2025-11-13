@@ -30,7 +30,6 @@ class OneTimeMeetingState(TypedDict, total=False):
     room_provider: str | None
     processing_status: str
     error: str | None
-    interview_config: Dict[str, Any]
 
 
 def create_step_wrapper(step_instance: CreateRoomStep):
@@ -64,6 +63,9 @@ class OneTimeMeetingWorkflow:
             meeting_config = context.get("meeting_config", {})
             provider_keys = context.get("provider_keys", {})
             base_url = os.getenv("MEET_BASE_URL", "http://localhost:8001")
+            daily_domain = os.getenv(
+                "DAILY_DOMAIN", "https://your-domain.daily.co"
+            ).rstrip("/")
 
             initial_state: OneTimeMeetingState = {
                 "meeting_config": meeting_config,
@@ -76,11 +78,6 @@ class OneTimeMeetingWorkflow:
                 "hosted_url": None,
                 "room_provider": None,
                 "session_id": str(uuid.uuid4()),
-                "interview_config": {
-                    "profile": meeting_config.get("profile", "conversation"),
-                    "overrides": meeting_config.get("overrides"),
-                    "branding": meeting_config.get("branding"),
-                },
                 "meet_base_url": base_url,
             }
 
@@ -94,15 +91,24 @@ class OneTimeMeetingWorkflow:
                     "workflow": self.name,
                 }
 
-            hosted_url = None
-            if result.get("room_name") and result.get("room_url"):
-                hosted_url = f"{base_url}/meet/{result['room_name']}?room_url={result['room_url']}"
+            room_name = result.get("room_name")
+            if not room_name:
+                return {
+                    "success": False,
+                    "error": "Room created but no room_name returned",
+                    "processing_status": result.get("processing_status"),
+                    "workflow": self.name,
+                }
+
+            # Generate room URL from room name using Daily domain
+            room_url = f"{daily_domain}/{room_name}"
+            hosted_url = f"{base_url}/meet/{room_name}"
 
             return {
                 "success": True,
-                "room_url": result.get("room_url"),
+                "room_url": room_url,
                 "hosted_url": hosted_url,
-                "room_name": result.get("room_name"),
+                "room_name": room_name,
                 "room_id": result.get("room_id"),
                 "processing_status": result.get("processing_status"),
                 "workflow": self.name,
@@ -130,22 +136,7 @@ class OneTimeMeetingWorkflow:
                 "provider_keys": provider_keys,
             }
 
-            try:
-                asyncio.get_running_loop()
-                import concurrent.futures
-
-                def run_in_thread():
-                    new_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(new_loop)
-                    try:
-                        return new_loop.run_until_complete(self.execute_async(context))
-                    finally:
-                        new_loop.close()
-
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    return executor.submit(run_in_thread).result()
-            except RuntimeError:
-                return asyncio.run(self.execute_async(context))
+            return asyncio.run(self.execute_async(context))
         except json.JSONDecodeError as e:
             return {"success": False, "error": f"Invalid JSON: {str(e)}"}
         except Exception as e:
