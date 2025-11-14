@@ -17,13 +17,11 @@ from flow.steps.interview.generate_questions import GenerateQuestionsStep
 from flow.steps.interview.generate_summary import GenerateSummaryStep
 from flow.steps.interview.package_results import PackageResultsStep
 from flow.steps.interview.process_transcript import ProcessTranscriptStep
-from flow.steps.interview.start_recording import StartRecordingStep
 
 __all__ = [
     "InterviewStep",
     "CreateRoomStep",
     "ConfigureAgentStep",
-    "StartRecordingStep",
     "GenerateQuestionsStep",
     "ConductInterviewStep",
     "ProcessTranscriptStep",

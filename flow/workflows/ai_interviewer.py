@@ -6,11 +6,17 @@ AI Interviewer Workflow
 
 This workflow orchestrates a complete AI-powered interview process using modular steps.
 Each step is implemented as a separate, testable unit in flow/steps/interview/.
+
+This workflow uses one_time_meeting.py as a subgraph for room creation:
+1. Uses one_time_meeting workflow as a subgraph to create the room
+   (with auto-start recording/transcription via URL parameters)
+2. Continues with AI interviewer configuration and interview execution
 """
 
 import asyncio
 import json
 import logging
+import os
 from typing import Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -18,13 +24,15 @@ from langgraph.graph import END, StateGraph
 from flow.steps.interview import (
     ConfigureAgentStep,
     ConductInterviewStep,
-    CreateRoomStep,
     ExtractInsightsStep,
     GenerateQuestionsStep,
     GenerateSummaryStep,
     PackageResultsStep,
     ProcessTranscriptStep,
-    StartRecordingStep,
+)
+from flow.workflows.one_time_meeting import (
+    OneTimeMeetingState,
+    OneTimeMeetingWorkflow,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +63,8 @@ class InterviewState(TypedDict):
     # Room and session data
     room_id: Optional[str]  # Created video room ID
     room_url: Optional[str]  # URL for joining the room
+    room_name: Optional[str]  # Room name (extracted from URL, used for API calls)
+    room_provider: Optional[str]  # Room provider name (e.g., "daily")
     session_id: Optional[str]  # Unique interview session ID
 
     # AI Interviewer configuration
@@ -63,7 +73,10 @@ class InterviewState(TypedDict):
 
     # Recording and transcription
     recording_id: Optional[str]  # Recording session ID
-    transcription_id: Optional[str]  # Transcription session ID
+    transcription_id: Optional[
+        str
+    ]  # Transcription session ID (deprecated, use transcription_session_id)
+    transcription_session_id: Optional[str]  # Unique transcription session ID
 
     # Questions and interview flow
     question_bank: List[Dict[str, Any]]  # Available questions
@@ -89,10 +102,6 @@ def create_step_wrapper(step_instance: Any):
     """
     Create a wrapper function for a step instance to use in LangGraph.
 
-    **Simple Explanation:**
-    LangGraph needs regular functions, but our steps are class instances.
-    This wrapper converts a step instance into a function that LangGraph can use.
-
     Args:
         step_instance: An instance of an InterviewStep
 
@@ -107,6 +116,105 @@ def create_step_wrapper(step_instance: Any):
     return wrapper
 
 
+def map_to_one_time_meeting_state(state: InterviewState) -> OneTimeMeetingState:
+    """
+    Map InterviewState to OneTimeMeetingState for the subgraph.
+
+    Args:
+        state: InterviewState from the parent workflow
+
+    Returns:
+        OneTimeMeetingState for the one_time_meeting subgraph
+    """
+    import uuid
+
+    interview_config = state.get("interview_config", {})
+    base_url = os.getenv("MEET_BASE_URL", "http://localhost:8001")
+    session_id = state.get("session_id")
+    if not session_id:
+        session_id = str(uuid.uuid4())
+
+    return {
+        "meeting_config": interview_config,  # Use interview_config as meeting_config
+        "provider_keys": state.get("provider_keys", {}),
+        "session_id": session_id,
+        "meet_base_url": base_url,
+        "processing_status": state.get("processing_status", "starting"),
+        "error": state.get("error"),
+        "room_id": state.get("room_id"),
+        "room_name": state.get("room_name"),
+        "room_url": state.get("room_url"),
+        "hosted_url": None,
+        "room_provider": None,
+    }
+
+
+def map_from_one_time_meeting_state(
+    one_time_state: OneTimeMeetingState, parent_state: InterviewState
+) -> InterviewState:
+    """
+    Map OneTimeMeetingState back to InterviewState after subgraph execution.
+
+    Args:
+        one_time_state: OneTimeMeetingState from the subgraph
+        parent_state: Original InterviewState to preserve other fields
+
+    Returns:
+        Updated InterviewState with room information from subgraph
+    """
+    # Update parent state with room information from subgraph
+    parent_state["room_id"] = one_time_state.get("room_id")
+    parent_state["room_name"] = one_time_state.get("room_name")
+    parent_state["room_url"] = one_time_state.get("room_url")
+    parent_state["processing_status"] = one_time_state.get(
+        "processing_status", parent_state.get("processing_status")
+    )
+    parent_state["error"] = one_time_state.get("error")
+
+    # Preserve room_provider if it was set by the subgraph
+    room_provider = one_time_state.get("room_provider")
+    if room_provider:
+        parent_state["room_provider"] = room_provider
+
+    return parent_state
+
+
+async def one_time_meeting_subgraph_wrapper(
+    state: InterviewState,
+) -> InterviewState:
+    """
+    Wrapper to execute one_time_meeting workflow as a subgraph.
+
+    This function:
+    1. Maps InterviewState to OneTimeMeetingState
+    2. Executes the one_time_meeting graph
+    3. Maps the result back to InterviewState
+
+    Args:
+        state: Current InterviewState
+
+    Returns:
+        Updated InterviewState with room creation results
+    """
+    # Create the one_time_meeting workflow instance
+    one_time_workflow = OneTimeMeetingWorkflow()
+
+    # Map state to one_time_meeting format
+    one_time_state = map_to_one_time_meeting_state(state)
+
+    # Execute the subgraph
+    result_state = await one_time_workflow.graph.ainvoke(one_time_state)
+
+    # Check for errors from subgraph
+    if result_state.get("error"):
+        state["error"] = result_state.get("error")
+        state["processing_status"] = "error"
+        return state
+
+    # Map results back to InterviewState
+    return map_from_one_time_meeting_state(result_state, state)
+
+
 # ============================================================================
 # Workflow Class
 # ============================================================================
@@ -116,8 +224,10 @@ class AIInterviewerWorkflow:
     """
     AI Interviewer Workflow using LangGraph and modular steps.
 
-    This workflow orchestrates a complete AI-powered interview process:
-    1. Creates a video room with recording/transcription
+    This workflow uses one_time_meeting.py as a subgraph and orchestrates
+    a complete AI-powered interview process:
+    1. Creates a video room using one_time_meeting workflow as a subgraph
+       (with auto-start recording/transcription via URL parameters)
     2. Configures an AI interviewer persona
     3. Generates questions from a question bank
     4. Conducts the interview (AI-led)
@@ -126,11 +236,9 @@ class AIInterviewerWorkflow:
     7. Generates a candidate summary
     8. Packages all results
 
-    **Simple Explanation:**
-    This is like a recipe that runs all the steps of an AI interview
-    automatically. You give it candidate info and interview settings,
-    and it handles everything from start to finish. Each step is a
-    separate, testable module that can be developed independently.
+    Note: Recording and transcription are now handled client-side in meeting.html
+    using Daily.co's callFrame.startRecording() and callFrame.startTranscription()
+    methods, triggered automatically via URL parameters (autoRecord=true, autoTranscribe=true).
     """
 
     name = "ai_interviewer"
@@ -138,17 +246,16 @@ class AIInterviewerWorkflow:
 
     def __init__(self):
         """Initialize the workflow and build the LangGraph graph."""
-        # Initialize all step instances
+        # Initialize step instances (excluding create_room, which is handled by subgraph)
+        # Recording and transcription are now handled client-side in meeting.html
         self.steps = {
-            "create_room": CreateRoomStep(),
-            "configure_agent": ConfigureAgentStep(),
-            "start_recording": StartRecordingStep(),
-            "generate_questions": GenerateQuestionsStep(),
-            "conduct_interview": ConductInterviewStep(),
-            "process_transcript": ProcessTranscriptStep(),
-            "extract_insights": ExtractInsightsStep(),
-            "generate_summary": GenerateSummaryStep(),
-            "package_results": PackageResultsStep(),
+            "configure_agent": ConfigureAgentStep(),  # Step 2: Configure AI interviewer
+            "generate_questions": GenerateQuestionsStep(),  # Step 3: Generate interview questions
+            "conduct_interview": ConductInterviewStep(),  # Step 4: Conduct the interview
+            "process_transcript": ProcessTranscriptStep(),  # Step 5: Process transcript into Q&A pairs
+            "extract_insights": ExtractInsightsStep(),  # Step 6: Extract insights and assessments
+            "generate_summary": GenerateSummaryStep(),  # Step 7: Generate candidate summary
+            "package_results": PackageResultsStep(),  # Step 8: Package final results
         }
 
         # Build the workflow graph
@@ -156,12 +263,7 @@ class AIInterviewerWorkflow:
 
     def _build_graph(self) -> Any:
         """
-        Build the LangGraph workflow graph.
-
-        **Simple Explanation:**
-        This creates a flowchart of all the steps. Each step is a "node"
-        and they're connected in order. LangGraph will run them one after
-        another, passing data between them.
+        Build the LangGraph workflow graph with one_time_meeting as a subgraph.
 
         Returns:
             Compiled LangGraph workflow
@@ -169,15 +271,22 @@ class AIInterviewerWorkflow:
         # Create the state graph
         workflow = StateGraph(InterviewState)
 
-        # Add all the workflow nodes using step wrappers
+        # Add one_time_meeting workflow as a subgraph node
+        # This handles room creation using the one_time_meeting workflow
+        workflow.add_node("create_room", one_time_meeting_subgraph_wrapper)
+
+        # Add all other workflow nodes using step wrappers
         for step_name, step_instance in self.steps.items():
             workflow.add_node(step_name, create_step_wrapper(step_instance))
 
         # Define the flow - connect nodes in order
-        workflow.set_entry_point("create_room")
-        workflow.add_edge("create_room", "configure_agent")
-        workflow.add_edge("configure_agent", "start_recording")
-        workflow.add_edge("start_recording", "generate_questions")
+        # Flow starts with one_time_meeting subgraph for room creation
+        # Recording and transcription are handled client-side via URL parameters
+        workflow.set_entry_point("create_room")  # Start with one_time_meeting subgraph
+        workflow.add_edge(
+            "create_room", "configure_agent"
+        )  # Go directly to configure agent
+        workflow.add_edge("configure_agent", "generate_questions")
         workflow.add_edge("generate_questions", "conduct_interview")
         workflow.add_edge("conduct_interview", "process_transcript")
         workflow.add_edge("process_transcript", "extract_insights")
@@ -223,11 +332,14 @@ class AIInterviewerWorkflow:
                 "error": None,
                 "room_id": None,
                 "room_url": None,
+                "room_name": None,
+                "room_provider": None,
                 "session_id": str(uuid.uuid4()),
                 "interviewer_persona": None,
                 "interviewer_context": None,
                 "recording_id": None,
                 "transcription_id": None,
+                "transcription_session_id": None,
                 "question_bank": [],
                 "selected_questions": [],
                 "current_question_index": 0,

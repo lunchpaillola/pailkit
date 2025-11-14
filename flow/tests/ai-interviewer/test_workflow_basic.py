@@ -27,7 +27,8 @@ def test_workflow_instantiation():
     assert workflow is not None
     assert workflow.name == "ai_interviewer"
     assert workflow.description is not None
-    assert len(workflow.steps) == 9
+    # Recording and transcription steps removed - now handled client-side
+    assert len(workflow.steps) == 7
 
 
 def test_workflow_registered():
@@ -51,9 +52,7 @@ def test_workflow_has_all_steps():
     workflow = AIInterviewerWorkflow()
 
     expected_steps = [
-        "create_room",
         "configure_agent",
-        "start_recording",
         "generate_questions",
         "conduct_interview",
         "process_transcript",
@@ -64,6 +63,15 @@ def test_workflow_has_all_steps():
 
     for step_name in expected_steps:
         assert step_name in workflow.steps, f"Missing step: {step_name}"
+
+    # Verify recording/transcription steps are NOT in the workflow
+    # (they're now handled client-side in meeting.html)
+    assert (
+        "start_recording" not in workflow.steps
+    ), "start_recording should not be in workflow"
+    assert (
+        "start_transcript" not in workflow.steps
+    ), "start_transcript should not be in workflow"
 
 
 def test_workflow_graph_builds():
