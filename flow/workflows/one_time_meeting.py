@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from typing import Any, Dict, TypedDict
+from urllib.parse import urlencode
 
 from langgraph.graph import END, StateGraph
 
@@ -28,6 +29,7 @@ class OneTimeMeetingState(TypedDict, total=False):
     room_url: str | None
     hosted_url: str | None
     room_provider: str | None
+    meeting_token: str | None
     processing_status: str
     error: str | None
 
@@ -102,7 +104,45 @@ class OneTimeMeetingWorkflow:
 
             # Generate room URL from room name using Daily domain
             room_url = f"{daily_domain}/{room_name}"
-            hosted_url = f"{base_url}/meet/{room_name}"
+
+            # Build hosted URL with optional auto-start parameters
+            # Check meeting_config for autoRecord and autoTranscribe settings
+            # These can be set in meeting_config or default to True for interviews
+            auto_record = meeting_config.get(
+                "autoRecord", meeting_config.get("auto_record", True)
+            )
+            auto_transcribe = meeting_config.get(
+                "autoTranscribe", meeting_config.get("auto_transcribe", True)
+            )
+
+            # Build URL with query parameters
+            query_params = {}
+            if auto_record:
+                query_params["autoRecord"] = "true"
+            if auto_transcribe:
+                query_params["autoTranscribe"] = "true"
+
+            # Add meeting token if available (for transcription admin permissions)
+            meeting_token = result.get("meeting_token")
+            if meeting_token:
+                query_params["token"] = meeting_token
+
+            # Add any other URL parameters from meeting_config (theme, accentColor, etc.)
+            if "theme" in meeting_config:
+                query_params["theme"] = meeting_config["theme"]
+            if "accentColor" in meeting_config or "accent_color" in meeting_config:
+                query_params["accentColor"] = meeting_config.get(
+                    "accentColor"
+                ) or meeting_config.get("accent_color")
+            if "logoText" in meeting_config or "logo_text" in meeting_config:
+                query_params["logoText"] = meeting_config.get(
+                    "logoText"
+                ) or meeting_config.get("logo_text")
+
+            if query_params:
+                hosted_url = f"{base_url}/meet/{room_name}?{urlencode(query_params)}"
+            else:
+                hosted_url = f"{base_url}/meet/{room_name}"
 
             return {
                 "success": True,

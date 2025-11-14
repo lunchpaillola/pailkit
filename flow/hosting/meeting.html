@@ -35,10 +35,11 @@
     </style>
 </head>
 <body class="flex flex-col min-h-screen">
-    <header class="p-4 px-6 border-b border-gray-200 w-screen">
+    <header class="p-4 px-6 border-b border-gray-200 w-screen flex items-center justify-between">
         <div class="font-semibold text-xl">
             <span id="logo-text">PailKit</span>
         </div>
+        <!-- Status indicators removed - using console.log instead -->
     </header>
     <div class="flex-1 relative w-screen h-[calc(100vh-4rem)]">
         <div id="loading" class="flex flex-col items-center justify-center h-full gap-4">
@@ -55,6 +56,12 @@
         const theme = urlParams.get('theme') || 'light';
         const accentColor = urlParams.get('accentColor') || '#3b82f6';
         const logoText = urlParams.get('logoText') || 'PailKit';
+
+        // Auto-start configuration from URL parameters
+        const autoRecord = urlParams.get('autoRecord') === 'true';
+        const autoTranscribe = urlParams.get('autoTranscribe') === 'true';
+
+        const meetingToken = urlParams.get('token');
 
         if (logoText) {
             document.getElementById('logo-text').textContent = logoText;
@@ -103,7 +110,54 @@
                     document.getElementById('error').style.display = 'block';
                 });
 
-                await dailyFrame.join({ url: roomUrl });
+                dailyFrame.on('recording-started', () => console.log('Recording started'));
+                dailyFrame.on('recording-stopped', () => console.log('Recording stopped'));
+                dailyFrame.on('recording-error', (error) => console.error('Recording error:', error));
+
+                dailyFrame.on('transcription-started', () => console.log('Transcription started'));
+                dailyFrame.on('transcription-stopped', () => console.log('Transcription stopped'));
+                dailyFrame.on('transcription-error', (error) => console.error('Transcription error:', error));
+
+                async function startRecording() {
+                    try {
+                        await dailyFrame.startRecording();
+                        console.log('Recording started');
+                    } catch (error) {
+                        const msg = error?.message || error?.error || '';
+                        if (!msg.includes('already started') && !msg.includes('not enabled')) {
+                            console.error('Failed to start recording:', error);
+                        }
+                    }
+                }
+
+                async function startTranscription() {
+                    try {
+                        await dailyFrame.startTranscription();
+                        console.log('Transcription started');
+                    } catch (error) {
+                        const msg = error?.message || error?.error || '';
+                        if (!msg.includes('already started') && !msg.includes('not enabled')) {
+                            console.error('Failed to start transcription:', error);
+                        }
+                    }
+                }
+
+                if (autoRecord || autoTranscribe) {
+                    dailyFrame.on('joined-meeting', () => {
+                        if (autoRecord) {
+                            startRecording();
+                        }
+                        if (autoTranscribe) {
+                            startTranscription();
+                        }
+                    });
+                }
+
+                const joinOptions = { url: roomUrl };
+                if (meetingToken) {
+                    joinOptions.token = meetingToken;
+                }
+                await dailyFrame.join(joinOptions);
             });
         }
     </script>

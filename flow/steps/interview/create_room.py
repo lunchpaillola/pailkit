@@ -27,54 +27,19 @@ class CreateRoomStep(InterviewStep):
         )
 
     def _build_daily_config(self, interview_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Build Daily.co API configuration from interview config."""
+        """Build Daily.co API configuration for interview room."""
         daily_properties: Dict[str, Any] = {
             "enable_recording": "cloud",
             "enable_transcription_storage": True,
-            "auto_transcription_settings": {
-                "language": "en",
-                "model": "nova-2",
-                "punctuate": True,
-                "profanity_filter": False,
-            },
             "enable_prejoin_ui": True,
-            "enable_chat": False,
+            "enable_chat": True,
+            "enable_screenshare": True,
         }
-
-        if interview_config.get("live_captions"):
-            daily_properties["enable_live_captions_ui"] = True
-
-        room_settings = interview_config.get("room_settings", {})
-        if room_settings:
-            capabilities = room_settings.get("capabilities", {})
-            media = room_settings.get("media", {})
-            access = room_settings.get("access", {})
-
-            if "chat" in capabilities:
-                daily_properties["enable_chat"] = capabilities["chat"]
-            if "recording" in capabilities:
-                daily_properties["enable_recording"] = (
-                    "cloud" if capabilities["recording"] else False
-                )
-            if "screenshare" in capabilities:
-                daily_properties["enable_screenshare"] = capabilities["screenshare"]
-            if "video" in media and not media["video"]:
-                daily_properties["start_video_off"] = True
-            if "screenshare_capable" in media:
-                daily_properties["enable_screenshare"] = media["screenshare_capable"]
-
-            privacy = access.get("privacy", "public")
-            max_participants = access.get("max_participants")
-        else:
-            privacy = "public"
-            max_participants = None
 
         config: Dict[str, Any] = {
             "properties": daily_properties,
-            "privacy": privacy,
+            "privacy": "public",
         }
-        if max_participants is not None:
-            config["max_participants"] = max_participants
 
         return config
 
@@ -90,6 +55,39 @@ class CreateRoomStep(InterviewStep):
             "Authorization": auth_header,
         }
 
+    async def _create_daily_token(self, api_key: str, room_name: str) -> str | None:
+        """Create a Daily.co meeting token with transcription admin permissions."""
+        headers = self._get_daily_headers(api_key)
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.daily.co/v1/meeting-tokens",
+                    headers=headers,
+                    json={
+                        "properties": {
+                            "room_name": room_name,
+                            "is_owner": True,
+                            "permissions": {
+                                "canAdmin": ["transcription"],
+                            },
+                        },
+                    },
+                )
+                response.raise_for_status()
+                result = response.json()
+                return result.get("token")
+        except httpx.HTTPStatusError as e:
+            try:
+                error_data = e.response.json()
+                logger.warning(f"Failed to create meeting token: {error_data}")
+            except Exception:
+                logger.warning(f"Failed to create meeting token: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to create meeting token: {e}")
+            return None
+
     async def _create_daily_room(
         self, api_key: str, daily_config: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -102,7 +100,6 @@ class CreateRoomStep(InterviewStep):
                     "https://api.daily.co/v1/rooms",
                     headers=headers,
                     json=daily_config,
-                    timeout=30.0,
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -126,8 +123,12 @@ class CreateRoomStep(InterviewStep):
             try:
                 error_data = e.response.json()
                 error_detail = error_data.get("error", str(e))
+                logger.error(
+                    f"Daily.co API error: {error_detail} (status: {e.response.status_code})"
+                )
             except Exception:
                 error_detail = str(e)
+                logger.error(f"Daily.co API error: {error_detail}")
 
             return {
                 "success": False,
@@ -184,10 +185,25 @@ class CreateRoomStep(InterviewStep):
             if not room_url:
                 return self.set_error(state, "Room created but no room_url returned")
 
+            room_name = result.get("room_name")
+
+            # Create a token with transcription admin permissions for auto-start
+            meeting_token = await self._create_daily_token(room_provider_key, room_name)
+            if meeting_token:
+                logger.info(
+                    f"✅ Meeting token created with transcription admin permissions: {meeting_token[:20]}..."
+                )
+            else:
+                logger.warning(
+                    "⚠️ Meeting token creation failed - transcription may not auto-start"
+                )
+
             state["room_id"] = result.get("room_id")
             state["room_url"] = room_url
-            state["room_name"] = result.get("room_name")
+            state["room_name"] = room_name
             state["room_provider"] = room_provider
+            if meeting_token:
+                state["meeting_token"] = meeting_token
 
             if branding:
                 state["branding"] = branding
