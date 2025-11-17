@@ -15,6 +15,7 @@ from flow.steps.interview.create_room import CreateRoomStep
 from flow.steps.interview.extract_insights import ExtractInsightsStep
 from flow.steps.interview.generate_questions import GenerateQuestionsStep
 from flow.steps.interview.generate_summary import GenerateSummaryStep
+from flow.steps.interview.join_bot import JoinBotStep
 from flow.steps.interview.package_results import PackageResultsStep
 from flow.steps.interview.process_transcript import ProcessTranscriptStep
 
@@ -27,5 +28,6 @@ __all__ = [
     "ProcessTranscriptStep",
     "ExtractInsightsStep",
     "GenerateSummaryStep",
+    "JoinBotStep",
     "PackageResultsStep",
 ]

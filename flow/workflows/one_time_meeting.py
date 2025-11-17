@@ -3,7 +3,6 @@
 
 """One-Time Meeting Workflow - Creates a video meeting room and returns URLs."""
 
-import asyncio
 import json
 import logging
 import os
@@ -13,6 +12,7 @@ from urllib.parse import urlencode
 from langgraph.graph import END, StateGraph
 
 from flow.steps.interview import CreateRoomStep
+from flow.steps.interview.join_bot import JoinBotStep
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +48,16 @@ class OneTimeMeetingWorkflow:
     description = "Create a one-time video meeting room with hosted page"
 
     def __init__(self):
-        self.steps = {"create_room": CreateRoomStep()}
+        self.steps = {"create_room": CreateRoomStep(), "join_bot": JoinBotStep()}
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
         workflow = StateGraph(OneTimeMeetingState)
         workflow.add_node("create_room", create_step_wrapper(self.steps["create_room"]))
+        workflow.add_node("join_bot", create_step_wrapper(self.steps["join_bot"]))
         workflow.set_entry_point("create_room")
-        workflow.add_edge("create_room", END)
+        workflow.add_edge("create_room", "join_bot")
+        workflow.add_edge("join_bot", END)
         return workflow.compile()
 
     async def execute_async(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -127,6 +129,10 @@ class OneTimeMeetingWorkflow:
             if meeting_token:
                 query_params["token"] = meeting_token
 
+            # Add bot parameter if enabled
+            if meeting_config.get("bot", {}).get("enabled"):
+                query_params["bot"] = "true"
+
             # Add any other URL parameters from meeting_config (theme, accentColor, etc.)
             if "theme" in meeting_config:
                 query_params["theme"] = meeting_config["theme"]
@@ -157,7 +163,7 @@ class OneTimeMeetingWorkflow:
             logger.error(f"Error in One-Time Meeting workflow: {e}", exc_info=True)
             return {"success": False, "error": str(e), "workflow": self.name}
 
-    def execute(
+    async def execute(
         self, message: str, user_id: str | None = None, channel_id: str | None = None
     ) -> Dict[str, Any]:
         try:
@@ -176,7 +182,8 @@ class OneTimeMeetingWorkflow:
                 "provider_keys": provider_keys,
             }
 
-            return asyncio.run(self.execute_async(context))
+            return await self.execute_async(context)
+
         except json.JSONDecodeError as e:
             return {"success": False, "error": f"Invalid JSON: {str(e)}"}
         except Exception as e:
