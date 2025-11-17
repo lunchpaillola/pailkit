@@ -10,6 +10,9 @@ python-dotenv>=1.0.0
 unkey-py>=0.3.0
 langgraph==0.2.40
 
+# Pipecat for AI bot functionality
+pipecat-ai[daily,openai,local-smart-turn-v3]>=0.0.94
+
 # Development dependencies
 pytest>=7.4.0
 pytest-asyncio>=0.21.0

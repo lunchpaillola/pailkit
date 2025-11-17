@@ -5,10 +5,37 @@
 
 import asyncio
 import logging
+import os
 import signal
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
+
+try:
+    from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
+    from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
+        LocalSmartTurnAnalyzerV3,
+    )
+    from pipecat.audio.vad.silero import SileroVADAnalyzer
+    from pipecat.audio.vad.vad_analyzer import VADParams
+    from pipecat.frames.frames import LLMRunFrame
+    from pipecat.pipeline.pipeline import Pipeline
+    from pipecat.pipeline.runner import PipelineRunner
+    from pipecat.pipeline.task import PipelineParams, PipelineTask
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    from pipecat.processors.aggregators.llm_response_universal import (
+        LLMContextAggregatorPair,
+    )
+    from pipecat.services.openai.llm import OpenAILLMService
+    from pipecat.services.openai.tts import OpenAITTSService
+    from pipecat.transports.daily.transport import DailyParams, DailyTransport
+except ImportError as e:
+    # Pipecat is required for bot functionality, but we allow the module to be imported
+    # so that other code can check if bot_service is available
+    raise ImportError(
+        "Pipecat is required for bot functionality but is not installed. "
+        "Install with: pip install pipecat-ai[daily,openai,local-smart-turn-v3]"
+    ) from e
 
 logger = logging.getLogger(__name__)
 
@@ -93,34 +120,6 @@ class BotService:
     ) -> None:
         """Run the Pipecat bot directly without subprocess."""
         try:
-            # Import Pipecat modules here to avoid import issues if not installed
-            try:
-                from pipecat.audio.turn.smart_turn.base_smart_turn import (
-                    SmartTurnParams,
-                )
-                from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
-                    LocalSmartTurnAnalyzerV3,
-                )
-                from pipecat.audio.vad.silero import SileroVADAnalyzer
-                from pipecat.audio.vad.vad_analyzer import VADParams
-                from pipecat.frames.frames import LLMRunFrame
-                from pipecat.pipeline.pipeline import Pipeline
-                from pipecat.pipeline.runner import PipelineRunner
-                from pipecat.pipeline.task import PipelineParams, PipelineTask
-                from pipecat.processors.aggregators.llm_context import LLMContext
-                from pipecat.processors.aggregators.llm_response_universal import (
-                    LLMContextAggregatorPair,
-                )
-                from pipecat.services.openai.llm import OpenAILLMService
-                from pipecat.services.openai.tts import OpenAITTSService
-                from pipecat.transports.daily.transport import (
-                    DailyParams,
-                    DailyTransport,
-                )
-            except ImportError as e:
-                raise RuntimeError(
-                    f"Pipecat dependencies not installed: {e}. Install with: pip install pipecat-ai[daily,openai,local-smart-turn-v3]"
-                )
 
             system_message = bot_config.get(
                 "system_message",
@@ -144,9 +143,11 @@ class BotService:
                 ),
             )
 
-            # Use OpenAI for both LLM and TTS
-            import os
+            logger.info(
+                f"Bot transport initialized for room: {room_url}, bot_name: {bot_name}"
+            )
 
+            # Use OpenAI for both LLM and TTS
             llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
             tts = OpenAITTSService(api_key=os.getenv("OPENAI_API_KEY"), voice="alloy")
 
@@ -179,58 +180,48 @@ class BotService:
                 ),
             )
 
-            # Track human participants (exclude the bot itself)
-            human_participants = set()
+            @transport.event_handler("on_first_participant_joined")
+            async def on_first_participant_joined(transport, participant):
+                logger.info(f"First participant joined: {participant['id']}")
+                await transport.capture_participant_transcription(participant["id"])
+                logger.info(
+                    f"Started capturing transcription for participant: {participant['id']}"
+                )
+                # Kick off the conversation.
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": "Please introduce yourself to the user.",
+                    }
+                )
+                await task.queue_frames([LLMRunFrame()])
 
-            @transport.event_handler("on_participant_joined")
-            async def on_participant_joined(transport, participant):
-                # Track human participants (exclude our bot)
-                if participant["id"] != transport._my_participant_id():
-                    human_participants.add(participant["id"])
-                    await transport.capture_participant_transcription(participant["id"])
-                    logger.info(
-                        f"Human participant joined: {participant['id']}. Total humans: {len(human_participants)}"
-                    )
+            @transport.event_handler("on_transcription_message")
+            async def on_transcription_message(transport, message):
+                """Log when transcription messages are received from users."""
+                participant_id = message.get("participant_id", "unknown")
+                text = message.get("text", "")
+                is_final = message.get("is_final", False)
+                logger.info(
+                    f"Transcription received - Participant: {participant_id}, "
+                    f"Text: '{text}', Final: {is_final}"
+                )
 
-                    # Kick off conversation for first human
-                    if len(human_participants) == 1:
-                        messages.append(
-                            {
-                                "role": "system",
-                                "content": "Please introduce yourself to the user.",
-                            }
-                        )
-                        await task.queue_frames([LLMRunFrame()])
+            @transport.event_handler("on_transcription_error")
+            async def on_transcription_error(transport, error):
+                """Log transcription errors."""
+                logger.error(f"Transcription error: {error}")
 
             @transport.event_handler("on_participant_left")
             async def on_participant_left(transport, participant, reason):
-                # Remove from human participants if it was a human
-                if participant["id"] in human_participants:
-                    human_participants.remove(participant["id"])
-                    logger.info(
-                        f"Human participant left: {participant['id']}. Remaining humans: {len(human_participants)}"
-                    )
-
-                # Only leave if no humans are left in the room
-                if len(human_participants) == 0:
-                    logger.info("All humans have left the room. Bot is leaving now.")
-                    await task.cancel()
-
-            # Add safety timeout - bot will leave after max 2 hours even if something goes wrong
-            async def safety_timeout():
-                await asyncio.sleep(7200)  # 2 hours
-                logger.warning(
-                    "Bot reached maximum runtime limit (2 hours). Leaving now."
-                )
+                logger.info(f"Participant left: {participant['id']}, reason: {reason}")
                 await task.cancel()
 
-            timeout_task = asyncio.create_task(safety_timeout())
-
             runner = PipelineRunner()
-            try:
-                await runner.run(task)
-            finally:
-                timeout_task.cancel()
+
+            logger.info("Starting bot pipeline runner...")
+            await runner.run(task)
+            logger.info("Bot pipeline runner finished")
 
         except Exception as e:
             logger.error(f"Bot process error: {e}", exc_info=True)
