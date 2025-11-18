@@ -4,8 +4,8 @@
 """
 Call VAPI Step
 
-Makes an outbound call using VAPI to dial a SIP URI for joining a Daily.co room.
-This enables the AI interviewer (via VAPI) to join the room via SIP.
+Makes an outbound call using VAPI to dial a Daily.co phone number and enter a PIN via DTMF.
+This enables the AI interviewer (via VAPI) to join the room via phone dial-in.
 """
 
 import logging
@@ -21,20 +21,24 @@ logger = logging.getLogger(__name__)
 
 class CallVAPIStep(InterviewStep):
     """
-    Step to make an outbound call using VAPI.
+    Step to make an outbound call using VAPI with DTMF PIN dialing.
 
     **Simple Explanation:**
     This step calls VAPI's API to make an outbound call. VAPI will:
-    1. Use the phoneNumberId to make an outbound call
-    2. Dial the Daily.co SIP URI (customer.sipUri)
-    3. This allows VAPI to join the Daily.co room via SIP
+    1. Use the phoneNumberId to make an outbound call to the Daily.co phone number
+    2. Once connected, use DTMF to dial the PIN code
+    3. This allows VAPI to join the Daily.co room via phone dial-in
     4. Once in the room, VAPI acts as the AI interviewer
+
+    Note: The VAPI assistant must be configured to use the "dial-keypad-dtmf" tool
+    (https://docs.vapi.ai/tools/default-tools#dial-keypad-dtmf) to dial the PIN
+    after connecting to the phone number. The PIN is passed in call metadata.
     """
 
     def __init__(self):
         super().__init__(
             name="call_vapi",
-            description="Make outbound call using VAPI to join room via SIP",
+            description="Make outbound call using VAPI to join room via PIN dial-in with DTMF",
         )
 
     def _get_vapi_headers(self, api_key: str) -> Dict[str, str]:
@@ -54,23 +58,25 @@ class CallVAPIStep(InterviewStep):
         api_key: str,
         assistant_id: str,
         phone_number_id: str,
-        sip_uri: str,
+        daily_phone_number: str,
+        dialin_code: str,
         customer_name: str | None = None,
     ) -> Dict[str, Any]:
         """
-        Create an outbound call using VAPI's API.
+        Create an outbound call using VAPI's API with DTMF PIN dialing.
 
         **Simple Explanation:**
         This calls VAPI's API to start an outbound call. VAPI will:
-        1. Use the phoneNumberId to make an outbound call
-        2. Dial the Daily.co SIP URI (customer.sipUri)
-        3. This allows VAPI to join the Daily.co room via SIP
+        1. Use the phoneNumberId to make an outbound call to the Daily.co phone number
+        2. Once connected, use DTMF (Dual-Tone Multi-Frequency) to dial the PIN code
+        3. This allows VAPI to join the Daily.co room via phone dial-in
 
         Args:
             api_key: VAPI API key
             assistant_id: VAPI assistant ID to use for the call
             phone_number_id: VAPI phone number ID to use for outbound calling
-            sip_uri: Daily.co SIP URI endpoint (e.g., "sip:123456780@example.sip.daily.co")
+            daily_phone_number: Daily.co phone number to dial (in E.164 format)
+            dialin_code: PIN code to dial via DTMF after connecting
             customer_name: Optional name of the candidate
 
         Returns:
@@ -78,50 +84,40 @@ class CallVAPIStep(InterviewStep):
         """
         headers = self._get_vapi_headers(api_key)
 
-        # Ensure SIP URI has the "sip:" prefix (Daily.co may return it without prefix)
-        # **Simple Explanation:** VAPI requires the full SIP URI format: "sip:username@domain"
-        # Daily.co might return just "username@domain", so we add "sip:" if missing
-        formatted_sip_uri = sip_uri.strip()
-        if not formatted_sip_uri.startswith("sip:"):
-            formatted_sip_uri = f"sip:{formatted_sip_uri}"
-
-        # Get Daily.co phone number from environment variable
-        # **Simple Explanation:** VAPI requires customer.number field for Twilio setup
-        # When both number and sipUri are present, VAPI should use sipUri for the connection
-        # The number field is used for Twilio routing but sipUri takes precedence for the actual dial
-        daily_phone_number = os.getenv("DAILY_PHONE_NUMBER")
-
         # Format phone number to E.164 format (ensure it has + prefix)
         # **Simple Explanation:** VAPI requires E.164 format (e.g., "+12092080701")
-        # If the number in .env doesn't have a +, we add it
-        if daily_phone_number:
-            formatted_phone = daily_phone_number.strip()
-            if not formatted_phone.startswith("+"):
-                formatted_phone = f"+{formatted_phone}"
-        else:
-            # Fallback to a valid placeholder if DAILY_PHONE_NUMBER not set
-            # This should match your Twilio account's phone number format
-            formatted_phone = "+12092080701"  # Default placeholder - update if needed
+        # If the number doesn't have a +, we add it
+        formatted_phone = daily_phone_number.strip()
+        if not formatted_phone.startswith("+"):
+            formatted_phone = f"+{formatted_phone}"
 
         # Build the request payload according to VAPI API documentation
         # **Simple Explanation:** Based on https://docs.vapi.ai/api-reference/calls/create
-        # VAPI requires customer.number for Twilio setup, but when sipUri is present,
-        # VAPI should use the SIP URI for the actual connection. The number is used for
-        # Twilio routing/configuration but sipUri takes precedence.
         # VAPI API expects:
         # - assistantId: Which AI assistant to use (required)
         # - phoneNumberId: Which phone number to call from (required)
         # - customer: Object with customer information
-        #   - sipUri: The SIP URI endpoint to dial (e.g., "sip:123456780@example.sip.daily.co")
-        #   - number: Phone number in E.164 format (required by VAPI for Twilio setup)
+        #   - number: Phone number in E.164 format to dial (Daily.co phone number)
         #   - name: Optional customer name
-        # NOTE: When sipUri is present, VAPI should use it for the connection even if number is also provided
+        # - metadata: Optional metadata that can be accessed by the assistant
+        #   - dialin_code: PIN code that the assistant should dial via DTMF
+        #
+        # The assistant must be configured to use the "dial-keypad-dtmf" tool
+        # (https://docs.vapi.ai/tools/default-tools#dial-keypad-dtmf) to dial the PIN
+        # after connecting to the phone number.
+        # IMPORTANT: Append "#" (pound) key after PIN to submit it
+        # **Simple Explanation:** Most phone systems require pressing # after entering a PIN
+        # to submit it. We append "#" to the PIN so VAPI dials: PIN + # (e.g., "12345678987#")
+        dialin_code_with_pound = f"{dialin_code}#"
+
         payload = {
             "assistantId": assistant_id,
             "phoneNumberId": phone_number_id,
             "customer": {
-                "sipUri": formatted_sip_uri,  # SIP URI endpoint - this should be used for the connection
-                "number": formatted_phone,  # Required by VAPI for Twilio setup, but sipUri takes precedence
+                "number": formatted_phone,  # Daily.co phone number to dial
+            },
+            "metadata": {
+                "dialin_code": dialin_code_with_pound,  # PIN code + # for DTMF dialing
             },
         }
 
@@ -130,7 +126,8 @@ class CallVAPIStep(InterviewStep):
             payload["customer"]["name"] = customer_name
 
         logger.info(
-            f"📱 Creating VAPI call: Using phone {phone_number_id} to dial SIP URI {formatted_sip_uri}"
+            f"📱 Creating VAPI call: Using phone {phone_number_id} to dial {formatted_phone}, "
+            f"then DTMF PIN {dialin_code}#"
         )
         logger.debug(f"VAPI request payload: {payload}")
 
@@ -200,12 +197,12 @@ class CallVAPIStep(InterviewStep):
 
     async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute VAPI outbound call.
+        Execute VAPI outbound call with DTMF PIN dialing.
 
         **Simple Explanation:**
-        This checks if VAPI calling is enabled, gets the Daily.co SIP URI
+        This checks if VAPI calling is enabled, gets the Daily.co phone number and PIN
         from the room creation step, and makes an outbound call. VAPI will dial the
-        Daily.co SIP URI to join the room.
+        Daily.co phone number and then use DTMF to enter the PIN to join the room.
         """
         # Check if VAPI calling is enabled
         interview_config = state.get("interview_config") or state.get(
@@ -254,20 +251,30 @@ class CallVAPIStep(InterviewStep):
             logger.error(f"❌ {error_msg}")
             return self.set_error(state, error_msg)
 
-        # Get Daily.co SIP URI from state (set by create_room step)
+        # Get Daily.co phone number from environment variable
+        # **Simple Explanation:** This is the Daily.co phone number that VAPI will dial
+        # to join the room via phone dial-in
+        daily_phone_number = os.getenv("DAILY_PHONE_NUMBER")
+
+        if not daily_phone_number:
+            error_msg = "Missing DAILY_PHONE_NUMBER environment variable (required for PIN dial-in)"
+            logger.error(f"❌ {error_msg}")
+            return self.set_error(state, error_msg)
+
+        # Get dial-in code (PIN) from state (set by create_room step)
         # **Simple Explanation:**
-        # 1. CreateRoomStep enables SIP dial-in on the Daily.co room
-        # 2. Daily.co returns a SIP URI endpoint (e.g., "sip:123456780@example.sip.daily.co")
-        # 3. CreateRoomStep stores this in state as "sip_uri"
-        # 4. We read it here to use for the VAPI call
-        sip_uri = state.get("sip_uri")
+        # 1. CreateRoomStep enables PIN dial-in on the Daily.co room
+        # 2. Daily.co returns a dial-in code (PIN) (e.g., "12345678987")
+        # 3. CreateRoomStep stores this in state as "dialin_code"
+        # 4. We read it here to use for DTMF dialing in the VAPI call
+        dialin_code = state.get("dialin_code")
 
-        logger.info(f"📋 Reading SIP URI from state: sip_uri={sip_uri}")
+        logger.info(f"📋 Reading dialin_code from state: dialin_code={dialin_code}")
 
-        if not sip_uri:
+        if not dialin_code:
             error_msg = (
-                f"Missing sip_uri in state (required for VAPI calling). "
-                f"sip_uri={sip_uri}. "
+                f"Missing dialin_code in state (required for VAPI calling). "
+                f"dialin_code={dialin_code}. "
                 f"State keys: {list(state.keys())}"
             )
             logger.error(f"❌ {error_msg}")
@@ -286,27 +293,23 @@ class CallVAPIStep(InterviewStep):
                 meeting_config.get("display_name") or "Interview Participant"
             )
 
-        # IMPORTANT: Wait for SIP worker to initialize after meeting session starts
-        # **Simple Explanation:** According to Daily.co docs, the SIP worker starts after
-        # the meeting session begins (when someone joins). The bot should join first to
-        # start the meeting session, then we wait a bit for the SIP worker to initialize
-        # and register the SIP URI with the SIP network before VAPI tries to dial.
-        #
-        # Daily.co docs: "Once the meeting session starts, the SIP worker(s) will startup
-        # and when the SIP URIs are registered with the SIP network, dialin-ready will fire"
+        # IMPORTANT: Wait for meeting session to start before dialing
+        # **Simple Explanation:** According to Daily.co docs, PIN dial-in requires
+        # the meeting session to have started (when someone joins). The bot should join first
+        # to start the meeting session, then we wait a bit before VAPI tries to dial.
         logger.info(
-            "⏳ Waiting for SIP worker to initialize (bot should have joined to start meeting)..."
+            "⏳ Waiting for meeting session to start (bot should have joined)..."
         )
         import asyncio
 
         await asyncio.sleep(
             3
-        )  # Wait 3 seconds for SIP worker to initialize after bot joins
+        )  # Wait 3 seconds for meeting session to start after bot joins
 
         # Log what VAPI will do
         logger.info(
-            f"📞 Creating VAPI call: Using phone {phone_number_id} to dial Daily.co SIP URI "
-            f"{sip_uri}"
+            f"📞 Creating VAPI call: Using phone {phone_number_id} to dial {daily_phone_number}, "
+            f"then DTMF PIN {dialin_code}#"
         )
 
         try:
@@ -314,7 +317,8 @@ class CallVAPIStep(InterviewStep):
                 api_key=vapi_api_key,
                 assistant_id=assistant_id,
                 phone_number_id=phone_number_id,
-                sip_uri=sip_uri,
+                daily_phone_number=daily_phone_number,
+                dialin_code=dialin_code,
                 customer_name=customer_name,
             )
 

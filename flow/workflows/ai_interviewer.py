@@ -67,7 +67,7 @@ class InterviewState(TypedDict):
     room_name: Optional[str]  # Room name (extracted from URL, used for API calls)
     room_provider: Optional[str]  # Room provider name (e.g., "daily")
     meeting_token: Optional[str]  # Daily.co meeting token
-    sip_uri: Optional[str]  # SIP URI endpoint for dial-in (from Daily.co)
+    dialin_code: Optional[str]  # PIN code for dial-in (from Daily.co)
     vapi_call_id: Optional[str]  # VAPI call ID if VAPI calling is used
     vapi_call_created: bool  # Whether VAPI call was successfully created
     session_id: Optional[str]  # Unique interview session ID
@@ -184,8 +184,8 @@ def map_from_one_time_meeting_state(
     # Preserve VAPI-related fields from subgraph
     if one_time_state.get("meeting_token"):
         parent_state["meeting_token"] = one_time_state.get("meeting_token")
-    if one_time_state.get("sip_uri"):
-        parent_state["sip_uri"] = one_time_state.get("sip_uri")
+    if one_time_state.get("dialin_code"):
+        parent_state["dialin_code"] = one_time_state.get("dialin_code")
     if one_time_state.get("vapi_call_id"):
         parent_state["vapi_call_id"] = one_time_state.get("vapi_call_id")
     parent_state["vapi_call_created"] = one_time_state.get("vapi_call_created", False)
@@ -353,7 +353,7 @@ class AIInterviewerWorkflow:
                 "room_name": None,
                 "room_provider": None,
                 "meeting_token": None,
-                "sip_uri": None,
+                "dialin_code": None,
                 "vapi_call_id": None,
                 "vapi_call_created": False,
                 "session_id": str(uuid.uuid4()),

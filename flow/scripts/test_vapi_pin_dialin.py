@@ -2,23 +2,19 @@
 # Copyright 2025 Lunch Pail Labs, LLC
 # Licensed under the Apache License, Version 2.0
 """
-Create a room with VAPI enabled for manual testing.
+Test VAPI PIN dial-in with pound key.
 
-This script creates a real room, enables PIN dial-in, and creates a VAPI call.
-It prints all the information you need to join the call and waits so you can join.
+This script creates a room, enables PIN dial-in, and makes a VAPI call.
+It waits for you to join the room so you can test if VAPI successfully dials in.
 
-Run with: python flow/scripts/create_room_with_vapi.py
+Run with: python flow/scripts/test_vapi_pin_dialin.py
 
 Note: This requires valid API keys in your .env file:
 - DAILY_API_KEY
 - VAPI_API_KEY
 - VAPI_ASSISTANT_ID
 - VAPI_PHONE_NUMBER_ID
-- DAILY_PHONE_NUMBER (Daily.co phone number for dial-in)
-
-The VAPI assistant must be configured to use the "dial-keypad-dtmf" tool
-(https://docs.vapi.ai/tools/default-tools#dial-keypad-dtmf) to dial the PIN
-after connecting to the phone number.
+- DAILY_PHONE_NUMBER
 """
 
 import asyncio
@@ -27,7 +23,6 @@ import sys
 from dotenv import load_dotenv
 
 # Add project root to path so we can import flow modules
-# This script is in flow/scripts/, so we need to go up two levels to get to project root
 script_dir = os.path.dirname(os.path.abspath(__file__))
 flow_dir = os.path.dirname(script_dir)  # flow/
 project_root = os.path.dirname(flow_dir)  # project root (pailkit/)
@@ -37,15 +32,24 @@ from flow.workflows.one_time_meeting import OneTimeMeetingWorkflow  # noqa: E402
 
 
 async def main():
-    """Create room with VAPI and wait for user to join."""
+    """Create room with VAPI PIN dial-in and wait for user to join."""
     load_dotenv()
 
     daily_api_key = os.getenv("DAILY_API_KEY")
     vapi_api_key = os.getenv("VAPI_API_KEY")
     vapi_assistant_id = os.getenv("VAPI_ASSISTANT_ID")
     vapi_phone_number_id = os.getenv("VAPI_PHONE_NUMBER_ID")
+    daily_phone_number = os.getenv("DAILY_PHONE_NUMBER")
 
-    if not all([daily_api_key, vapi_api_key, vapi_assistant_id, vapi_phone_number_id]):
+    if not all(
+        [
+            daily_api_key,
+            vapi_api_key,
+            vapi_assistant_id,
+            vapi_phone_number_id,
+            daily_phone_number,
+        ]
+    ):
         missing = []
         if not daily_api_key:
             missing.append("DAILY_API_KEY")
@@ -55,6 +59,8 @@ async def main():
             missing.append("VAPI_ASSISTANT_ID")
         if not vapi_phone_number_id:
             missing.append("VAPI_PHONE_NUMBER_ID")
+        if not daily_phone_number:
+            missing.append("DAILY_PHONE_NUMBER")
         print(
             f"❌ Missing required API keys in environment variables: {', '.join(missing)}"
         )
@@ -81,7 +87,7 @@ async def main():
     os.environ["MEET_BASE_URL"] = os.getenv("MEET_BASE_URL", "http://localhost:8001")
 
     print(f"\n{'='*80}")
-    print("🚀 Creating room with VAPI calling enabled...")
+    print("🚀 Creating room with VAPI PIN dial-in (with # key)...")
     print(f"{'='*80}\n")
 
     result = await workflow.execute_async(context)
@@ -108,9 +114,6 @@ async def main():
             print("📱 PIN Dial-in Information:")
             print(f"   PIN Code: {dialin_code}")
             print(f"   PIN with #: {dialin_code}#")
-            daily_phone_number = os.getenv(
-                "DAILY_PHONE_NUMBER", "your-daily-phone-number"
-            )
             print(f"   Phone Number: {daily_phone_number}")
             print(
                 f"   VAPI will dial {daily_phone_number} and enter PIN {dialin_code}# via DTMF\n"
@@ -118,7 +121,7 @@ async def main():
 
         print(f"{'='*80}")
         print("🔗 JOIN THE MEETING - Use this link:")
-        print(f"   {room_url}")
+        print(f"   {hosted_url or room_url}")
         print(f"{'='*80}\n")
 
         if hosted_url and hosted_url.startswith("http://localhost"):
@@ -128,9 +131,6 @@ async def main():
             print(f"   Then visit: {hosted_url}\n")
 
         if dialin_code:
-            daily_phone_number = os.getenv(
-                "DAILY_PHONE_NUMBER", "your-daily-phone-number"
-            )
             print("📞 VAPI will dial phone number and enter PIN:")
             print(f"   Phone: {daily_phone_number}")
             print(f"   PIN: {dialin_code}# (via DTMF - note the # key at the end)\n")
@@ -142,9 +142,6 @@ async def main():
             print("   ✅ VAPI call created successfully!")
             if vapi_call_id:
                 print(f"   Call ID: {vapi_call_id}")
-            daily_phone_number = os.getenv(
-                "DAILY_PHONE_NUMBER", "your-daily-phone-number"
-            )
             print(
                 f"\n   VAPI is dialing {daily_phone_number} and will enter PIN {dialin_code}# via DTMF"
             )
@@ -152,17 +149,11 @@ async def main():
             print("   (This usually takes 5-15 seconds)\n")
 
             # Wait for VAPI to connect (give it time to dial and join)
-            # **Simple Explanation:** VAPI needs time to:
-            # 1. Process the call request
-            # 2. Dial the Daily.co phone number
-            # 3. Enter the PIN via DTMF
-            # 4. Connect to Daily.co and join the room
-            # We wait a bit to give it time to complete this process
-            wait_seconds = 15
+            wait_seconds = 20
             for i in range(wait_seconds):
                 await asyncio.sleep(1)
                 remaining = wait_seconds - i - 1
-                if remaining > 0 and remaining % 3 == 0:  # Print every 3 seconds
+                if remaining > 0 and remaining % 5 == 0:  # Print every 5 seconds
                     print(f"   ⏳ Still waiting... ({remaining} seconds remaining)")
 
             print("\n   ✅ VAPI should have joined by now!")

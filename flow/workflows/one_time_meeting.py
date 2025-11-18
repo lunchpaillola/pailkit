@@ -30,7 +30,7 @@ class OneTimeMeetingState(TypedDict, total=False):
     hosted_url: str | None
     room_provider: str | None
     meeting_token: str | None
-    sip_uri: str | None  # Daily.co SIP URI endpoint for dial-in
+    dialin_code: str | None  # Daily.co PIN code for dial-in
     vapi_call_id: str | None
     vapi_call_created: bool
     processing_status: str
@@ -68,10 +68,10 @@ class OneTimeMeetingWorkflow:
         workflow.set_entry_point("create_room")
         workflow.add_edge("create_room", "join_bot")
         # IMPORTANT: Join bot BEFORE calling VAPI
-        # **Simple Explanation:** According to Daily.co docs, the SIP worker only starts
-        # after the meeting session begins (when someone joins). By joining the bot first,
-        # we start the meeting session, which starts the SIP worker and registers the SIP URI.
-        # Then VAPI can successfully dial the SIP URI to join the room.
+        # **Simple Explanation:** According to Daily.co docs, PIN dial-in requires
+        # the meeting session to have started (when someone joins). By joining the bot first,
+        # we start the meeting session, which enables PIN dial-in functionality.
+        # Then VAPI can successfully dial the phone number and enter the PIN to join the room.
         workflow.add_edge("join_bot", "call_vapi")
         workflow.add_edge("call_vapi", END)
         return workflow.compile()
@@ -98,7 +98,7 @@ class OneTimeMeetingWorkflow:
                 "hosted_url": None,
                 "room_provider": None,
                 "meeting_token": None,
-                "sip_uri": None,
+                "dialin_code": None,
                 "vapi_call_id": None,
                 "vapi_call_created": False,
                 "session_id": str(uuid.uuid4()),
@@ -188,8 +188,8 @@ class OneTimeMeetingWorkflow:
             }
 
             # Include VAPI info if available (even if call failed)
-            if "sip_uri" in result:
-                response["sip_uri"] = result.get("sip_uri")
+            if "dialin_code" in result:
+                response["dialin_code"] = result.get("dialin_code")
             if "vapi_call_created" in result:
                 response["vapi_call_created"] = result.get("vapi_call_created")
             if "vapi_call_id" in result:

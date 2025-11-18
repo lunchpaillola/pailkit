@@ -8,6 +8,7 @@ Creates a Daily.co video room for the interview with recording and transcription
 """
 
 import logging
+import time
 from typing import Any, Dict
 
 import httpx
@@ -33,7 +34,8 @@ class CreateRoomStep(InterviewStep):
         **Simple Explanation:**
         This method creates the configuration that tells Daily.co how to set up the room.
         It includes basic settings like recording and transcription. If VAPI calling is enabled,
-        we'll enable SIP dial-in after room creation so VAPI can join the room via SIP URI.
+        we'll enable PIN dial-in after room creation so VAPI can join the room by dialing
+        the phone number and entering the PIN via DTMF.
         """
         daily_properties: Dict[str, Any] = {
             "enable_recording": "cloud",
@@ -100,37 +102,44 @@ class CreateRoomStep(InterviewStep):
             logger.warning(f"Failed to create meeting token: {e}")
             return None
 
-    async def _update_room_for_sip_dialin(
-        self, api_key: str, room_name: str, display_name: str = "SIP Participant"
+    async def _update_room_for_pin_dialin(
+        self, api_key: str, room_name: str, display_name: str = "Phone Caller"
     ) -> Dict[str, Any] | None:
         """
-        Update room properties to enable SIP dial-in (following Daily.co guide).
+        Update room properties to enable PIN dial-in (following Daily.co guide).
 
         **Simple Explanation:**
         According to Daily.co docs, we update the room properties directly with a POST request.
-        This enables SIP dial-in and returns the SIP URI endpoint. Daily.co will:
-        1. Configure the room for SIP dial-in mode
-        2. Generate a SIP URI endpoint (like sip:123456780@example.sip.daily.co)
-        3. Return the SIP URI so we can use it for VAPI calling
+        This enables PIN dial-in and returns the dial-in code (PIN). Daily.co will:
+        1. Configure the room for PIN dial-in mode
+        2. Generate a dial-in code (PIN) that callers need to enter
+        3. Return the PIN so we can use it for VAPI calling via DTMF
 
         Args:
             api_key: Daily.co API key
             room_name: Name of the room to enable dial-in for
-            display_name: Display name for SIP participants
+            display_name: Display name for phone participants
 
         Returns:
-            Dictionary with sip_uri endpoint, or None if failed
+            Dictionary with dialin_code (PIN), or None if failed
         """
         headers = self._get_daily_headers(api_key)
 
+        # Calculate expiration timestamp (1 year from now)
+        # **Simple Explanation:** Daily.co requires an expiration timestamp (exp) for PIN dial-in
+        # We set it to 1 year from now (365 days = 31536000 seconds)
+        exp_timestamp = int(time.time()) + 31536000  # 1 year from now
+
         # Build the request payload following Daily.co guide format
         # **Simple Explanation:** This matches the curl example from Daily.co docs
-        # We set sip_mode to "dial-in" which enables SIP dial-in functionality
+        # We set dialin properties with display_name and wait_for_meeting_start
+        # The exp field sets when the dial-in will expire (required field)
         properties = {
-            "sip": {
-                "sip_mode": "dial-in",
+            "dialin": {
                 "display_name": display_name,
+                "wait_for_meeting_start": True,
             },
+            "exp": exp_timestamp,
         }
 
         payload = {
@@ -140,7 +149,7 @@ class CreateRoomStep(InterviewStep):
         try:
             async with httpx.AsyncClient() as client:
                 # Update room using POST to /v1/rooms/{room_name} as per Daily.co guide
-                # **Simple Explanation:** We POST to update the room properties with SIP settings
+                # **Simple Explanation:** We POST to update the room properties with PIN dial-in settings
                 response = await client.post(
                     f"https://api.daily.co/v1/rooms/{room_name}",
                     headers=headers,
@@ -149,21 +158,20 @@ class CreateRoomStep(InterviewStep):
                 response.raise_for_status()
                 result = response.json()
 
-                # Extract SIP URI from the response
-                # **Simple Explanation:** Daily.co returns the SIP URI endpoint in config.sip_uri.endpoint
-                # This is the URI that VAPI (or any SIP client) will use to dial into the room
+                # Extract dial-in code (PIN) from the response
+                # **Simple Explanation:** Daily.co returns the dial-in code in config.dialin_code
+                # This is the PIN that callers need to enter when dialing into the room
                 config = result.get("config", {})
-                sip_uri_obj = config.get("sip_uri", {})
-                sip_uri_endpoint = sip_uri_obj.get("endpoint")
+                dialin_code = config.get("dialin_code")
 
-                if sip_uri_endpoint:
-                    logger.info(f"✅ SIP dial-in enabled: {sip_uri_endpoint}")
+                if dialin_code:
+                    logger.info(f"✅ PIN dial-in enabled: PIN code is {dialin_code}")
                     return {
-                        "sip_uri": sip_uri_endpoint,
+                        "dialin_code": dialin_code,
                     }
                 else:
                     logger.warning(
-                        f"SIP dial-in enabled but sip_uri endpoint missing. "
+                        f"PIN dial-in enabled but dialin_code missing. "
                         f"Response: {result}"
                     )
                     return None
@@ -171,12 +179,12 @@ class CreateRoomStep(InterviewStep):
         except httpx.HTTPStatusError as e:
             try:
                 error_data = e.response.json()
-                logger.warning(f"Failed to enable SIP dial-in: {error_data}")
+                logger.warning(f"Failed to enable PIN dial-in: {error_data}")
             except Exception:
-                logger.warning(f"Failed to enable SIP dial-in: {e}")
+                logger.warning(f"Failed to enable PIN dial-in: {e}")
             return None
         except Exception as e:
-            logger.warning(f"Failed to enable SIP dial-in: {e}")
+            logger.warning(f"Failed to enable PIN dial-in: {e}")
             return None
 
     async def _create_daily_room(
@@ -289,34 +297,36 @@ class CreateRoomStep(InterviewStep):
                     "⚠️ Meeting token creation failed - transcription may not auto-start"
                 )
 
-            # Enable SIP dial-in if VAPI calling is enabled
-            # **Simple Explanation:** If VAPI is enabled, we need to enable SIP dial-in
-            # so that VAPI can join the room via SIP URI. This gives us a SIP URI endpoint
-            # that VAPI will use to dial into the room.
+            # Enable PIN dial-in if VAPI calling is enabled
+            # **Simple Explanation:** If VAPI is enabled, we need to enable PIN dial-in
+            # so that VAPI can join the room by dialing the phone number and entering the PIN.
+            # This gives us a dial-in code (PIN) that VAPI will use via DTMF to join the room.
             vapi_config = interview_config.get("vapi", {})
             enable_vapi_calling = vapi_config.get("enabled", False)
 
             if enable_vapi_calling:
-                # Get display name for SIP participants
+                # Get display name for phone participants
                 display_name = (
-                    branding.get("display_name") if branding else "SIP Participant"
+                    branding.get("display_name") if branding else "Phone Caller"
                 )
 
-                # Update room to enable SIP dial-in and get SIP URI endpoint
+                # Update room to enable PIN dial-in and get dial-in code (PIN)
                 # **Simple Explanation:** We update the room properties after creation
-                # to enable SIP dial-in, following Daily.co's guide approach
-                sip_result = await self._update_room_for_sip_dialin(
+                # to enable PIN dial-in, following Daily.co's guide approach
+                pin_result = await self._update_room_for_pin_dialin(
                     room_provider_key, room_name, display_name
                 )
 
-                if sip_result:
-                    # Store SIP URI endpoint in state for VAPI to use
-                    # **Simple Explanation:** VAPI needs the SIP URI to dial into the room
-                    state["sip_uri"] = sip_result.get("sip_uri")
-                    logger.info(f"✅ SIP dial-in enabled: {state['sip_uri']}")
+                if pin_result:
+                    # Store dial-in code (PIN) in state for VAPI to use
+                    # **Simple Explanation:** VAPI needs the PIN to dial into the room using DTMF
+                    state["dialin_code"] = pin_result.get("dialin_code")
+                    logger.info(
+                        f"✅ PIN dial-in enabled: PIN code is {state['dialin_code']}"
+                    )
                 else:
                     logger.warning(
-                        "⚠️ Failed to enable SIP dial-in - VAPI calling may not work"
+                        "⚠️ Failed to enable PIN dial-in - VAPI calling may not work"
                     )
 
             state["room_id"] = result.get("room_id")

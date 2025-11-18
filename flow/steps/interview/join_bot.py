@@ -16,23 +16,35 @@ class JoinBotStep:
 
     async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Configure bot to join the created room."""
+        logger.info("🟢 JoinBotStep.execute() called")
+        logger.info(f"   State keys: {list(state.keys())}")
         try:
             bot_config = state.get("meeting_config", {}).get("bot", {})
+            logger.info(f"   bot_config: {bot_config}")
+            logger.info(f"   bot_config.get('enabled'): {bot_config.get('enabled')}")
 
             if bot_config.get("enabled"):
                 room_url = state.get("room_url")
                 meeting_token = state.get("meeting_token")
                 room_name = state.get("room_name")
+                logger.info(f"   room_url: {room_url}")
+                logger.info(
+                    f"   meeting_token: {meeting_token[:20] if meeting_token else None}..."
+                )
+                logger.info(f"   room_name: {room_name}")
 
                 if not room_url:
+                    logger.error("❌ Room URL not available for bot to join")
                     state["error"] = "Room URL not available for bot to join"
                     state["bot_joined"] = False
                     return state
 
                 # Start the actual bot service
+                logger.info("📞 Calling bot_service.start_bot()...")
                 success = await bot_service.start_bot(
                     room_url, meeting_token, bot_config
                 )
+                logger.info(f"   bot_service.start_bot() returned: {success}")
 
                 if success:
                     state["bot_joined"] = True
