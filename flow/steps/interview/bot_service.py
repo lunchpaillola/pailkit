@@ -104,21 +104,24 @@ class BotService:
         self, room_url: str, token: str, bot_config: Dict[str, Any]
     ) -> None:
         """Run the Pipecat bot directly without subprocess."""
-        # **CRITICAL SAFEGUARDS:**
-        # - Maximum runtime: 2 hours (prevents bots running forever)
-        # - Idle timeout: 10 minutes (stop if no one joins)
-        MAX_RUNTIME_SECONDS = 2 * 60 * 60  # 2 hours maximum
-        IDLE_TIMEOUT_SECONDS = 10 * 60  # 10 minutes - stop if no one joins
-
-        participant_joined_event = asyncio.Event()
-
         try:
 
             system_message = bot_config.get(
                 "system_message",
-                "You are a helpful AI assistant in a video call. Your goal is to helpful and engaging. "
-                "Your output will be spoken aloud, so avoid special characters that can't easily be spoken, "
-                "such as emojis or bullet points. Respond to what the user says in a creative and helpful way.",
+                "You are an AI interview host conducting a structured behavioral interview. "
+                "Your output will be spoken aloud, so keep language natural and easy to say. "
+                "Do not use special characters. Ask one question at a time. "
+                "After asking a question, wait for the candidate's response before continuing. "
+                "When the candidate finishes speaking, acknowledge their answer briefly, offer light positive reinforcement, and then move on. "
+                "Keep your tone warm, steady, and professional. "
+                "Follow these questions in order and do not add new ones unless the candidate asks for clarification.\n\n"
+                "Questions:\n\n"
+                "Tell me about a time you had to solve a difficult problem. What was the situation and what did you do.\n\n"
+                "Describe a moment when you made a mistake at work. How did you handle it.\n\n"
+                "Give an example of a time you had to work with a challenging teammate or stakeholder. What did you do to make it successful.\n\n"
+                "Tell me about a goal you set that you had to work hard to achieve. How did you approach it.\n\n"
+                "Describe a situation where you had to make a decision with incomplete information. How did you think through it.\n\n"
+                "Guide the interview smoothly, keep the pacing natural, and help the candidate stay on track.",
             )
 
             bot_name = bot_config.get("name", "PailBot")
@@ -176,26 +179,32 @@ class BotService:
             @transport.event_handler("on_participant_joined")
             async def on_participant_joined(transport, participant):
                 """Log when any participant (including bot) joins."""
+                participant_id = participant.get("id", "unknown")
+                participant_name = participant.get("user_name", "unknown")
+                is_local = participant.get("local", False)
                 logger.info(
-                    f"Participant joined room: {participant.get('id', 'unknown')}"
+                    f"🔵 Participant joined - ID: {participant_id}, Name: {participant_name}, Local: {is_local}"
                 )
 
             @transport.event_handler("on_first_participant_joined")
             async def on_first_participant_joined(transport, participant):
-                logger.info(f"First participant joined: {participant['id']}")
-                participant_joined_event.set()  # Mark that someone joined
+                participant_id = participant.get("id", "unknown")
+                logger.info(f"🟢 FIRST participant joined: {participant_id}")
                 await transport.capture_participant_transcription(participant["id"])
                 logger.info(
-                    f"Started capturing transcription for participant: {participant['id']}"
+                    f"✅ Started capturing transcription for participant: {participant_id}"
                 )
-                # Kick off the conversation.
+                # Kick off the conversation with a greeting first
+                # This tells the LLM to introduce itself before starting the interview
                 messages.append(
                     {
                         "role": "system",
-                        "content": "Please introduce yourself to the user.",
+                        "content": "Please introduce yourself warmly to the user. Greet them and let them know you're here to conduct an interview. Wait for them to respond before starting with the interview questions.",
                     }
                 )
+                logger.info("📤 Queuing LLMRunFrame to start conversation...")
                 await task.queue_frames([LLMRunFrame()])
+                logger.info("✅ LLMRunFrame queued successfully")
 
             @transport.event_handler("on_transcription_message")
             async def on_transcription_message(transport, message):
@@ -222,57 +231,10 @@ class BotService:
 
             logger.info("Starting bot pipeline runner...")
 
-            # Start the runner in the background so the transport can connect
-            # The runner needs to be running for the transport to connect and detect participants
-            runner_task = asyncio.create_task(runner.run(task))
-
-            # **SAFEGUARD 1: Wait for participant with idle timeout**
-            # If no one joins within IDLE_TIMEOUT_SECONDS, stop the bot
-            # NOTE: We wait AFTER starting the runner because the transport needs to be
-            # running to connect to Daily and detect when participants join
-            try:
-                logger.info(
-                    f"Waiting for participant to join (timeout: {IDLE_TIMEOUT_SECONDS}s)..."
-                )
-                await asyncio.wait_for(
-                    participant_joined_event.wait(), timeout=IDLE_TIMEOUT_SECONDS
-                )
-                logger.info("Participant joined, bot is active")
-            except asyncio.TimeoutError:
-                logger.warning(
-                    f"No participants joined within {IDLE_TIMEOUT_SECONDS}s, stopping bot"
-                )
-                await task.cancel()
-                # Wait for runner to finish cancelling
-                try:
-                    await runner_task
-                except (asyncio.CancelledError, Exception):
-                    pass
-                return
-
-            # **SAFEGUARD 2: Maximum runtime timeout**
-            # Wait for the runner task to complete, with a maximum runtime limit
-            try:
-                await asyncio.wait_for(runner_task, timeout=MAX_RUNTIME_SECONDS)
-                logger.info("Bot pipeline runner finished normally")
-            except asyncio.TimeoutError:
-                logger.error(
-                    f"Bot exceeded maximum runtime of {MAX_RUNTIME_SECONDS}s ({MAX_RUNTIME_SECONDS/3600:.1f} hours), forcing shutdown"
-                )
-                await task.cancel()
-                # Wait for runner to finish cancelling
-                try:
-                    await runner_task
-                except (asyncio.CancelledError, Exception):
-                    pass
-                # Log warning for monitoring
-                logger.warning(
-                    f"⚠️ FORCED SHUTDOWN: Bot for room {room_url.split('/')[-1]} "
-                    f"ran for {MAX_RUNTIME_SECONDS/3600:.1f} hours and was stopped"
-                )
-            except asyncio.CancelledError:
-                logger.info("Bot pipeline runner cancelled")
-                raise
+            # **FOLLOW REFERENCE IMPLEMENTATION**: Use await runner.run(task) directly
+            # This matches the reference implementation's blocking behavior exactly
+            # The runner will block until the task completes (typically when participant leaves)
+            await runner.run(task)
 
         except Exception as e:
             logger.error(f"Bot process error: {e}", exc_info=True)

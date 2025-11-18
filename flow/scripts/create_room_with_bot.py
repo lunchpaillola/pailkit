@@ -77,15 +77,24 @@ async def main():
         print(f"   Room URL: {room_url}\n")
 
         print(f"{'='*80}")
-        print("🔗 JOIN THE MEETING - Use this link:")
-        print(f"   {room_url}")
+        print("🔗 JOIN THE MEETING - Use this localhost URL:")
+        if hosted_url:
+            print(f"   {hosted_url}")
+        else:
+            # Fallback to room_url if hosted_url not available
+            print(f"   {room_url}")
         print(f"{'='*80}\n")
 
         if hosted_url and hosted_url.startswith("http://localhost"):
-            print("💡 NOTE: For the hosted meeting page (with custom branding),")
-            print("   start the server first:")
+            print("💡 NOTE: Make sure the server is running:")
             print("   cd flow && python main.py")
-            print(f"   Then visit: {hosted_url}\n")
+            print("   Then open the URL above in your browser\n")
+        elif not hosted_url:
+            print("💡 NOTE: To use the localhost hosted page, start the server:")
+            print("   cd flow && python main.py")
+            print(
+                f"   Then visit: http://localhost:8001/meet/{room_name}?autoRecord=true&autoTranscribe=true&bot=true\n"
+            )
 
         print(f"{'='*80}")
         print("🤖 Bot Status:")

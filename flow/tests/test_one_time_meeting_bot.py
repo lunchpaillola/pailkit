@@ -147,7 +147,6 @@ async def test_url_with_bot_disabled():
 @pytest.mark.asyncio
 async def test_create_real_room_with_bot():
     """Create a real room with bot enabled for testing."""
-    from flow.steps.interview.bot_service import bot_service
 
     workflow = OneTimeMeetingWorkflow()
 
@@ -187,12 +186,24 @@ async def test_create_real_room_with_bot():
     assert "autoTranscribe=true" in hosted_url
     assert "bot=true" in hosted_url
 
-    # Cleanup: Stop the bot after test
-    try:
-        if room_name:
-            await bot_service.stop_bot(room_name)
-            print(f"✅ Bot stopped for room: {room_name}")
-    except Exception as e:
-        print(f"⚠️ Warning: Could not stop bot: {e}")
+    # IMPORTANT: Give the bot a moment to start connecting
+    # The bot task is created asynchronously and needs time to initialize
+    import asyncio
+
+    await asyncio.sleep(2)  # Give bot time to start connecting
+
+    # NOTE: In pytest, the bot task will be cancelled when the test completes.
+    # This is expected behavior - pytest cleans up all tasks when tests finish.
+    # For manual testing where you want the bot to keep running, use:
+    #   python flow/scripts/create_room_with_bot_for_testing.py
+    print(f"\n{'='*80}")
+    print("🤖 BOT STARTED - Ready for testing!")
+    print("   Bot has been started and is connecting to the room.")
+    print("   Join the room using the URL above to test the bot.")
+    print("   NOTE: In pytest, the bot will be cancelled when this test completes.")
+    print(
+        "   For long-running bot testing, use: python flow/scripts/create_room_with_bot_for_testing.py"
+    )
+    print(f"{'='*80}\n")
 
     return hosted_url
