@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 from langgraph.graph import END, StateGraph
 
-from flow.steps.interview import CreateRoomStep
+from flow.steps.interview import CallVAPIStep, CreateRoomStep
 from flow.steps.interview.join_bot import JoinBotStep
 
 logger = logging.getLogger(__name__)
@@ -30,11 +30,16 @@ class OneTimeMeetingState(TypedDict, total=False):
     hosted_url: str | None
     room_provider: str | None
     meeting_token: str | None
+    sip_uri: str | None  # Daily.co SIP URI endpoint for dial-in
+    vapi_call_id: str | None
+    vapi_call_created: bool
     processing_status: str
     error: str | None
 
 
-def create_step_wrapper(step_instance: CreateRoomStep):
+def create_step_wrapper(step_instance: Any):
+    """Create a wrapper function for a step instance to use in LangGraph."""
+
     async def step_wrapper(state: OneTimeMeetingState) -> OneTimeMeetingState:
         return await step_instance.execute(state)
 
@@ -48,16 +53,27 @@ class OneTimeMeetingWorkflow:
     description = "Create a one-time video meeting room with hosted page"
 
     def __init__(self):
-        self.steps = {"create_room": CreateRoomStep(), "join_bot": JoinBotStep()}
+        self.steps = {
+            "create_room": CreateRoomStep(),
+            "call_vapi": CallVAPIStep(),
+            "join_bot": JoinBotStep(),
+        }
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
         workflow = StateGraph(OneTimeMeetingState)
         workflow.add_node("create_room", create_step_wrapper(self.steps["create_room"]))
+        workflow.add_node("call_vapi", create_step_wrapper(self.steps["call_vapi"]))
         workflow.add_node("join_bot", create_step_wrapper(self.steps["join_bot"]))
         workflow.set_entry_point("create_room")
         workflow.add_edge("create_room", "join_bot")
-        workflow.add_edge("join_bot", END)
+        # IMPORTANT: Join bot BEFORE calling VAPI
+        # **Simple Explanation:** According to Daily.co docs, the SIP worker only starts
+        # after the meeting session begins (when someone joins). By joining the bot first,
+        # we start the meeting session, which starts the SIP worker and registers the SIP URI.
+        # Then VAPI can successfully dial the SIP URI to join the room.
+        workflow.add_edge("join_bot", "call_vapi")
+        workflow.add_edge("call_vapi", END)
         return workflow.compile()
 
     async def execute_async(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -81,22 +97,33 @@ class OneTimeMeetingWorkflow:
                 "room_url": None,
                 "hosted_url": None,
                 "room_provider": None,
+                "meeting_token": None,
+                "sip_uri": None,
+                "vapi_call_id": None,
+                "vapi_call_created": False,
                 "session_id": str(uuid.uuid4()),
                 "meet_base_url": base_url,
             }
 
             result = await self.graph.ainvoke(initial_state)
 
-            if result.get("error"):
+            room_name = result.get("room_name")
+
+            # If room was created, return room info even if later steps failed
+            # **Simple Explanation:** Room creation is the main goal - VAPI can be retried
+            if room_name:
+                # Room was created successfully - return room info even if VAPI failed
+                pass  # Continue to build response with room info
+            elif result.get("error"):
+                # Room creation failed - return error
                 return {
                     "success": False,
                     "error": result["error"],
                     "processing_status": result.get("processing_status"),
                     "workflow": self.name,
                 }
-
-            room_name = result.get("room_name")
-            if not room_name:
+            else:
+                # No room name and no error - something went wrong
                 return {
                     "success": False,
                     "error": "Room created but no room_name returned",
@@ -150,7 +177,7 @@ class OneTimeMeetingWorkflow:
             else:
                 hosted_url = f"{base_url}/meet/{room_name}"
 
-            return {
+            response = {
                 "success": True,
                 "room_url": room_url,
                 "hosted_url": hosted_url,
@@ -159,6 +186,21 @@ class OneTimeMeetingWorkflow:
                 "processing_status": result.get("processing_status"),
                 "workflow": self.name,
             }
+
+            # Include VAPI info if available (even if call failed)
+            if "sip_uri" in result:
+                response["sip_uri"] = result.get("sip_uri")
+            if "vapi_call_created" in result:
+                response["vapi_call_created"] = result.get("vapi_call_created")
+            if "vapi_call_id" in result:
+                response["vapi_call_id"] = result.get("vapi_call_id")
+            if "vapi_call_error" in result:
+                response["vapi_call_error"] = result.get("vapi_call_error")
+            if result.get("error"):
+                # Include error as warning if room was still created
+                response["warning"] = result.get("error")
+
+            return response
         except Exception as e:
             logger.error(f"Error in One-Time Meeting workflow: {e}", exc_info=True)
             return {"success": False, "error": str(e), "workflow": self.name}

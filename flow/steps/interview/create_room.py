@@ -27,7 +27,14 @@ class CreateRoomStep(InterviewStep):
         )
 
     def _build_daily_config(self, interview_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Build Daily.co API configuration for interview room."""
+        """
+        Build Daily.co API configuration for interview room.
+
+        **Simple Explanation:**
+        This method creates the configuration that tells Daily.co how to set up the room.
+        It includes basic settings like recording and transcription. If VAPI calling is enabled,
+        we'll enable SIP dial-in after room creation so VAPI can join the room via SIP URI.
+        """
         daily_properties: Dict[str, Any] = {
             "enable_recording": "cloud",
             "enable_transcription_storage": True,
@@ -35,6 +42,11 @@ class CreateRoomStep(InterviewStep):
             "enable_chat": True,
             "enable_screenshare": True,
         }
+
+        # Note: We don't set SIP properties during room creation
+        # **Simple Explanation:** According to Daily.co docs, SIP properties should be set
+        # by updating the room AFTER creation, not during initial creation
+        # We'll enable SIP dial-in after the room is created (in execute method)
 
         config: Dict[str, Any] = {
             "properties": daily_properties,
@@ -86,6 +98,85 @@ class CreateRoomStep(InterviewStep):
             return None
         except Exception as e:
             logger.warning(f"Failed to create meeting token: {e}")
+            return None
+
+    async def _update_room_for_sip_dialin(
+        self, api_key: str, room_name: str, display_name: str = "SIP Participant"
+    ) -> Dict[str, Any] | None:
+        """
+        Update room properties to enable SIP dial-in (following Daily.co guide).
+
+        **Simple Explanation:**
+        According to Daily.co docs, we update the room properties directly with a POST request.
+        This enables SIP dial-in and returns the SIP URI endpoint. Daily.co will:
+        1. Configure the room for SIP dial-in mode
+        2. Generate a SIP URI endpoint (like sip:123456780@example.sip.daily.co)
+        3. Return the SIP URI so we can use it for VAPI calling
+
+        Args:
+            api_key: Daily.co API key
+            room_name: Name of the room to enable dial-in for
+            display_name: Display name for SIP participants
+
+        Returns:
+            Dictionary with sip_uri endpoint, or None if failed
+        """
+        headers = self._get_daily_headers(api_key)
+
+        # Build the request payload following Daily.co guide format
+        # **Simple Explanation:** This matches the curl example from Daily.co docs
+        # We set sip_mode to "dial-in" which enables SIP dial-in functionality
+        properties = {
+            "sip": {
+                "sip_mode": "dial-in",
+                "display_name": display_name,
+            },
+        }
+
+        payload = {
+            "properties": properties,
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # Update room using POST to /v1/rooms/{room_name} as per Daily.co guide
+                # **Simple Explanation:** We POST to update the room properties with SIP settings
+                response = await client.post(
+                    f"https://api.daily.co/v1/rooms/{room_name}",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                # Extract SIP URI from the response
+                # **Simple Explanation:** Daily.co returns the SIP URI endpoint in config.sip_uri.endpoint
+                # This is the URI that VAPI (or any SIP client) will use to dial into the room
+                config = result.get("config", {})
+                sip_uri_obj = config.get("sip_uri", {})
+                sip_uri_endpoint = sip_uri_obj.get("endpoint")
+
+                if sip_uri_endpoint:
+                    logger.info(f"✅ SIP dial-in enabled: {sip_uri_endpoint}")
+                    return {
+                        "sip_uri": sip_uri_endpoint,
+                    }
+                else:
+                    logger.warning(
+                        f"SIP dial-in enabled but sip_uri endpoint missing. "
+                        f"Response: {result}"
+                    )
+                    return None
+
+        except httpx.HTTPStatusError as e:
+            try:
+                error_data = e.response.json()
+                logger.warning(f"Failed to enable SIP dial-in: {error_data}")
+            except Exception:
+                logger.warning(f"Failed to enable SIP dial-in: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to enable SIP dial-in: {e}")
             return None
 
     async def _create_daily_room(
@@ -197,6 +288,36 @@ class CreateRoomStep(InterviewStep):
                 logger.warning(
                     "⚠️ Meeting token creation failed - transcription may not auto-start"
                 )
+
+            # Enable SIP dial-in if VAPI calling is enabled
+            # **Simple Explanation:** If VAPI is enabled, we need to enable SIP dial-in
+            # so that VAPI can join the room via SIP URI. This gives us a SIP URI endpoint
+            # that VAPI will use to dial into the room.
+            vapi_config = interview_config.get("vapi", {})
+            enable_vapi_calling = vapi_config.get("enabled", False)
+
+            if enable_vapi_calling:
+                # Get display name for SIP participants
+                display_name = (
+                    branding.get("display_name") if branding else "SIP Participant"
+                )
+
+                # Update room to enable SIP dial-in and get SIP URI endpoint
+                # **Simple Explanation:** We update the room properties after creation
+                # to enable SIP dial-in, following Daily.co's guide approach
+                sip_result = await self._update_room_for_sip_dialin(
+                    room_provider_key, room_name, display_name
+                )
+
+                if sip_result:
+                    # Store SIP URI endpoint in state for VAPI to use
+                    # **Simple Explanation:** VAPI needs the SIP URI to dial into the room
+                    state["sip_uri"] = sip_result.get("sip_uri")
+                    logger.info(f"✅ SIP dial-in enabled: {state['sip_uri']}")
+                else:
+                    logger.warning(
+                        "⚠️ Failed to enable SIP dial-in - VAPI calling may not work"
+                    )
 
             state["room_id"] = result.get("room_id")
             state["room_url"] = room_url

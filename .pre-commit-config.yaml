@@ -23,6 +23,13 @@ repos:
       - id: mypy
         files: ^api/
         args: [--explicit-package-bases]
+        additional_dependencies:
+          - fastapi>=0.104.1
+          - uvicorn>=0.24.0
+          - pydantic>=2.8.0
+          - python-dotenv>=1.0.0
+          - httpx>=0.25.0
+          - pytest>=7.4.0
 
   # General file quality checks
   - repo: https://github.com/pre-commit/pre-commit-hooks

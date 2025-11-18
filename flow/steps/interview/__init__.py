@@ -9,6 +9,7 @@ Each step is a self-contained, testable unit that can be developed and maintaine
 """
 
 from flow.steps.interview.base import InterviewStep
+from flow.steps.interview.call_vapi import CallVAPIStep
 from flow.steps.interview.configure_agent import ConfigureAgentStep
 from flow.steps.interview.conduct_interview import ConductInterviewStep
 from flow.steps.interview.create_room import CreateRoomStep
@@ -22,6 +23,7 @@ from flow.steps.interview.process_transcript import ProcessTranscriptStep
 __all__ = [
     "InterviewStep",
     "CreateRoomStep",
+    "CallVAPIStep",
     "ConfigureAgentStep",
     "GenerateQuestionsStep",
     "ConductInterviewStep",
