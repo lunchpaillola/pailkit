@@ -147,6 +147,8 @@ async def test_url_with_bot_disabled():
 @pytest.mark.asyncio
 async def test_create_real_room_with_bot():
     """Create a real room with bot enabled for testing."""
+    from flow.steps.interview.bot_service import bot_service
+
     workflow = OneTimeMeetingWorkflow()
 
     context = {
@@ -184,5 +186,13 @@ async def test_create_real_room_with_bot():
     assert "autoRecord=true" in hosted_url
     assert "autoTranscribe=true" in hosted_url
     assert "bot=true" in hosted_url
+
+    # Cleanup: Stop the bot after test
+    try:
+        if room_name:
+            await bot_service.stop_bot(room_name)
+            print(f"✅ Bot stopped for room: {room_name}")
+    except Exception as e:
+        print(f"⚠️ Warning: Could not stop bot: {e}")
 
     return hosted_url

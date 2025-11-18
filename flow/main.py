@@ -181,6 +181,79 @@ async def health_check() -> dict[str, str]:
     return {"status": "healthy", "service": "pailflow"}
 
 
+@app.get("/bots/status")
+async def get_bot_status() -> dict[str, Any]:
+    """
+    Get status of all active bots.
+
+    Useful for monitoring and detecting long-running bots.
+    """
+    from flow.steps.interview.bot_service import bot_service
+
+    active_bots = bot_service.list_active_bots()
+
+    # Calculate totals
+    total_bots = len(active_bots)
+    total_runtime_hours = sum(
+        bot.get("runtime_hours", 0) for bot in active_bots.values()
+    )
+
+    # Find long-running bots
+    long_running = [
+        {
+            "room_name": name,
+            "runtime_hours": bot.get("runtime_hours", 0),
+            "warning": bot.get("warning"),
+        }
+        for name, bot in active_bots.items()
+        if bot.get("runtime_hours", 0) > 1
+    ]
+
+    return {
+        "total_active_bots": total_bots,
+        "total_runtime_hours": round(total_runtime_hours, 2),
+        "long_running_bots": long_running,
+        "bots": active_bots,
+    }
+
+
+@app.post("/bots/cleanup")
+async def cleanup_bots(max_hours: float = 2.0) -> dict[str, Any]:
+    """
+    Manually trigger cleanup of long-running bots.
+
+    Args:
+        max_hours: Stop bots running longer than this (default: 2 hours)
+    """
+    from flow.steps.interview.bot_service import bot_service
+
+    stopped_count = await bot_service.cleanup_long_running_bots(max_hours)
+
+    return {"status": "success", "bots_stopped": stopped_count, "max_hours": max_hours}
+
+
+@app.post("/bots/stop/{room_name}")
+async def stop_bot_for_room(room_name: str) -> dict[str, Any]:
+    """
+    Stop all bots for a specific room.
+
+    Useful for cleaning up duplicate bots or stopping bots manually.
+    """
+    from flow.steps.interview.bot_service import bot_service
+
+    success = await bot_service.stop_bot(room_name)
+
+    return {
+        "status": "success" if success else "not_found",
+        "room_name": room_name,
+        "message": (
+            f"Bot stopped for room {room_name}"
+            if success
+            else f"No bot found for room {room_name}"
+        ),
+    }
+
+
 @app.get("/favicon.ico")
 async def favicon() -> Response:
     """Return empty favicon to prevent 401 errors."""

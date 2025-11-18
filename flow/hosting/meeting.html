@@ -158,12 +158,6 @@
                     joinOptions.token = meetingToken;
                 }
                 await dailyFrame.join(joinOptions);
-
-                // Bot functionality is handled entirely by the backend service
-                // The bot will join automatically when bot=true is in the URL
-                if (window.location.search.includes('bot=true')) {
-                    console.log('Bot mode enabled - backend bot will join automatically');
-                }
             });
         }
     </script>
