@@ -44,43 +44,107 @@ from pipecat.transports.daily.transport import DailyParams, DailyTransport
 
 logger = logging.getLogger(__name__)
 
-sprites = []
-script_dir = os.path.dirname(__file__)
-# Get the path to the sprites directory (it's in flow/hosting/sprites/)
-hosting_dir = os.path.join(os.path.dirname(os.path.dirname(script_dir)), "hosting")
-sprites_dir = os.path.join(hosting_dir, "sprites")
 
-# Load sequential animation frames
-# Automatically detect all frame files in the sprites directory
-frame_files = []
-if os.path.exists(sprites_dir):
-    for filename in os.listdir(sprites_dir):
-        if filename.startswith("frame_") and filename.endswith(".png"):
-            frame_files.append(filename)
+def load_bot_video_frames(
+    bot_config: Dict[str, Any],
+) -> tuple[Optional[OutputImageRawFrame], Optional[OutputImageRawFrame | SpriteFrame]]:
+    """
+    Load video frames for the bot based on configuration.
 
-    # Sort frames numerically to ensure correct order (frame_000.png, frame_001.png, etc.)
-    frame_files.sort(key=lambda x: int(x.replace("frame_", "").replace(".png", "")))
+    Supports two modes:
+    - "static": Load a single static image (e.g., robot01.png)
+    - "animated": Load all frame_*.png files for sprite animation
 
-    logger.info(f"Loading {len(frame_files)} sprite frames from {sprites_dir}")
+    Args:
+        bot_config: Bot configuration dictionary
 
-    for frame_filename in frame_files:
-        # Build the full path to the image file
-        full_path = os.path.join(sprites_dir, frame_filename)
-        # Open the image and convert it to bytes
-        # Note: Sprites should be pre-resized using resize_sprites.py script
-        with Image.open(full_path) as img:
-            sprites.append(
-                OutputImageRawFrame(image=img.tobytes(), size=img.size, format=img.mode)
+    Returns:
+        Tuple of (quiet_frame, talking_frame)
+        - For static mode: Both frames are the same single image
+        - For animated mode: quiet_frame is first frame, talking_frame is SpriteFrame with all frames
+    """
+    script_dir = os.path.dirname(__file__)
+    hosting_dir = os.path.join(os.path.dirname(os.path.dirname(script_dir)), "hosting")
+    sprites_dir = os.path.join(hosting_dir, "sprites")
+
+    # Get video mode from config (default to "static")
+    video_mode = bot_config.get("video_mode", "static")
+
+    if video_mode == "static":
+        # Load a single static image
+        static_image = bot_config.get("static_image", "robot01.png")
+        image_path = os.path.join(sprites_dir, static_image)
+
+        if os.path.exists(image_path):
+            with Image.open(image_path) as img:
+                single_frame = OutputImageRawFrame(
+                    image=img.tobytes(), size=img.size, format=img.mode
+                )
+            logger.info(f"Loaded static image from {image_path}")
+            return (single_frame, single_frame)
+        else:
+            logger.warning(f"Static image not found: {image_path}")
+            return (None, None)
+
+    elif video_mode == "animated":
+        # Load all frame_*.png files for animation
+        frame_files = []
+        if os.path.exists(sprites_dir):
+            for filename in os.listdir(sprites_dir):
+                if filename.startswith("frame_") and filename.endswith(".png"):
+                    frame_files.append(filename)
+
+            # Sort frames numerically
+            frame_files.sort(
+                key=lambda x: int(x.replace("frame_", "").replace(".png", ""))
             )
-else:
-    logger.warning(f"Sprites directory not found: {sprites_dir}")
 
+            if frame_files:
+                sprites = []
+                logger.info(
+                    f"Loading {len(frame_files)} sprite frames from {sprites_dir}"
+                )
 
-# Define static and animated states
-quiet_frame = sprites[0]  # Static frame for when bot is listening
-talking_frame = SpriteFrame(
-    images=sprites
-)  # Animation sequence for when bot is talking
+                for frame_filename in frame_files:
+                    full_path = os.path.join(sprites_dir, frame_filename)
+                    with Image.open(full_path) as img:
+                        sprites.append(
+                            OutputImageRawFrame(
+                                image=img.tobytes(), size=img.size, format=img.mode
+                            )
+                        )
+
+                # Duplicate each frame to slow down the animation
+                # This makes each frame display longer, creating a smoother, slower animation
+                frames_per_sprite = bot_config.get(
+                    "animation_frames_per_sprite", 3
+                )  # Default: show each frame 3 times
+                slowed_sprites = []
+                for sprite in sprites:
+                    for _ in range(frames_per_sprite):
+                        slowed_sprites.append(sprite)
+
+                logger.info(
+                    f"Created animation with {len(slowed_sprites)} frames (slowed by {frames_per_sprite}x)"
+                )
+
+                # First frame for quiet state, animated SpriteFrame for talking
+                quiet_frame = sprites[0] if sprites else None
+                talking_frame = (
+                    SpriteFrame(images=slowed_sprites) if slowed_sprites else None
+                )
+
+                return (quiet_frame, talking_frame)
+            else:
+                logger.warning(f"No frame files found in {sprites_dir}")
+                return (None, None)
+        else:
+            logger.warning(f"Sprites directory not found: {sprites_dir}")
+            return (None, None)
+
+    else:
+        logger.warning(f"Unknown video_mode: {video_mode}. Using static mode.")
+        return (None, None)
 
 
 class TalkingAnimation(FrameProcessor):
@@ -90,9 +154,15 @@ class TalkingAnimation(FrameProcessor):
     the bot's current speaking status.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        quiet_frame: Optional[OutputImageRawFrame] = None,
+        talking_frame: Optional[OutputImageRawFrame | SpriteFrame] = None,
+    ):
         super().__init__()
         self._is_talking = False
+        self.quiet_frame = quiet_frame
+        self.talking_frame = talking_frame
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         """Process incoming frames and update animation state.
@@ -103,14 +173,15 @@ class TalkingAnimation(FrameProcessor):
         """
         await super().process_frame(frame, direction)
 
-        # Switch to talking animation when bot starts speaking
+        # Switch to talking frame when bot starts speaking
         if isinstance(frame, BotStartedSpeakingFrame):
-            if not self._is_talking:
-                await self.push_frame(talking_frame)
+            if not self._is_talking and self.talking_frame is not None:
+                await self.push_frame(self.talking_frame)
                 self._is_talking = True
         # Return to static frame when bot stops speaking
         elif isinstance(frame, BotStoppedSpeakingFrame):
-            await self.push_frame(quiet_frame)
+            if self.quiet_frame is not None:
+                await self.push_frame(self.quiet_frame)
             self._is_talking = False
 
         await self.push_frame(frame, direction)
@@ -217,7 +288,7 @@ class BotService:
                 DailyParams(
                     audio_in_enabled=True,
                     audio_out_enabled=True,
-                    video_out_enabled=False,
+                    video_out_enabled=True,  # Enable video output (static or animated based on config)
                     video_out_width=1280,
                     video_out_height=720,
                     transcription_enabled=True,
@@ -249,7 +320,9 @@ class BotService:
             context = LLMContext(messages)
             context_aggregator = LLMContextAggregatorPair(context)
 
-            ta = TalkingAnimation()
+            # Load video frames based on bot configuration
+            quiet_frame, talking_frame = load_bot_video_frames(bot_config)
+            ta = TalkingAnimation(quiet_frame=quiet_frame, talking_frame=talking_frame)
 
             pipeline = Pipeline(
                 [
@@ -270,7 +343,9 @@ class BotService:
                     enable_usage_metrics=True,
                 ),
             )
-            await task.queue_frame(quiet_frame)
+            # Queue the initial frame if available
+            if ta.quiet_frame is not None:
+                await task.queue_frame(ta.quiet_frame)
 
             @transport.event_handler("on_participant_joined")
             async def on_participant_joined(transport, participant):

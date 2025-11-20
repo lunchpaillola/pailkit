@@ -45,6 +45,8 @@ async def main():
             "autoTranscribe": True,
             "bot": {
                 "enabled": True,
+                "video_mode": "animated",  # Use animated sprite mode
+                "animation_frames_per_sprite": 10,  # Slower animation - each frame shows 5 times
             },
         },
         "provider_keys": {
