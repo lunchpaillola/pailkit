@@ -67,6 +67,7 @@ if os.path.exists(sprites_dir):
         # Build the full path to the image file
         full_path = os.path.join(sprites_dir, frame_filename)
         # Open the image and convert it to bytes
+        # Note: Sprites should be pre-resized using resize_sprites.py script
         with Image.open(full_path) as img:
             sprites.append(
                 OutputImageRawFrame(image=img.tobytes(), size=img.size, format=img.mode)
@@ -74,9 +75,6 @@ if os.path.exists(sprites_dir):
 else:
     logger.warning(f"Sprites directory not found: {sprites_dir}")
 
-# Create a smooth animation by adding reversed frames
-flipped = sprites[::-1]
-sprites.extend(flipped)
 
 # Define static and animated states
 quiet_frame = sprites[0]  # Static frame for when bot is listening
@@ -219,9 +217,9 @@ class BotService:
                 DailyParams(
                     audio_in_enabled=True,
                     audio_out_enabled=True,
-                    video_out_enabled=True,
-                    video_out_width=1024,
-                    video_out_height=576,
+                    video_out_enabled=False,
+                    video_out_width=1280,
+                    video_out_height=720,
                     transcription_enabled=True,
                     vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
                     turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
