@@ -119,6 +119,9 @@ class CallVAPIStep(InterviewStep):
             "metadata": {
                 "dialin_code": dialin_code_with_pound,  # PIN code + # for DTMF dialing
             },
+            # Note: Check VAPI IVR navigation docs for automated DTMF:
+            # https://docs.vapi.ai/ivr-navigation
+            # May need additional IVR configuration fields for deterministic DTMF dialing
         }
 
         # Add customer name if available

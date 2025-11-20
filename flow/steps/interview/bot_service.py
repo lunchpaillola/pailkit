@@ -11,6 +11,9 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 
+from pipecat.audio.interruptions.min_words_interruption_strategy import (
+    MinWordsInterruptionStrategy,
+)
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
     LocalSmartTurnAnalyzerV3,
@@ -145,7 +148,12 @@ class BotService:
 
             # Use OpenAI for both LLM and TTS
             llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
-            tts = OpenAITTSService(api_key=os.getenv("OPENAI_API_KEY"), voice="alloy")
+            tts = OpenAITTSService(
+                api_key=os.getenv("OPENAI_API_KEY"),
+                voice="alloy",
+                interruptions_allowed=True,
+                interruption_strategies=[MinWordsInterruptionStrategy(min_words=3)],
+            )
 
             messages = [
                 {

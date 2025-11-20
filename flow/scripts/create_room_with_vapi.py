@@ -6,6 +6,7 @@ Create a room with VAPI enabled for manual testing.
 
 This script creates a real room, enables PIN dial-in, and creates a VAPI call.
 It prints all the information you need to join the call and waits so you can join.
+It also updates the static values in test_vapi_static_dial.py.
 
 Run with: python flow/scripts/create_room_with_vapi.py
 
@@ -23,6 +24,7 @@ after connecting to the phone number.
 
 import asyncio
 import os
+import re
 import sys
 from dotenv import load_dotenv
 
@@ -34,6 +36,45 @@ project_root = os.path.dirname(flow_dir)  # project root (pailkit/)
 sys.path.insert(0, project_root)
 
 from flow.workflows.one_time_meeting import OneTimeMeetingWorkflow  # noqa: E402
+
+
+def update_static_values(phone: str, pin: str):
+    """Update static values in test_vapi_static_dial.py."""
+    # Path to the test script
+    test_script_path = os.path.join(flow_dir, "scripts", "test_vapi_static_dial.py")
+
+    if not os.path.exists(test_script_path):
+        print(f"⚠️  Warning: {test_script_path} not found, skipping update")
+        return
+
+    # Read the file
+    with open(test_script_path, "r") as f:
+        content = f.read()
+
+    # Update STATIC_PHONE
+    content = re.sub(
+        r'STATIC_PHONE = "[^"]*"',
+        f'STATIC_PHONE = "{phone}"',
+        content,
+    )
+
+    # Update STATIC_PIN (make sure it includes #)
+    pin_with_pound = pin if pin.endswith("#") else f"{pin}#"
+    content = re.sub(
+        r'STATIC_PIN = "[^"]*"',
+        f'STATIC_PIN = "{pin_with_pound}"',
+        content,
+    )
+
+    # Write back
+    with open(test_script_path, "w") as f:
+        f.write(content)
+
+    print(f"\n{'='*80}")
+    print("📝 Updated static values in test_vapi_static_dial.py:")
+    print(f"   STATIC_PHONE = {phone}")
+    print(f"   STATIC_PIN = {pin_with_pound}")
+    print(f"{'='*80}\n")
 
 
 async def main():
@@ -105,16 +146,20 @@ async def main():
         print(f"   Room URL: {room_url}\n")
 
         if dialin_code:
-            print("📱 PIN Dial-in Information:")
-            print(f"   PIN Code: {dialin_code}")
-            print(f"   PIN with #: {dialin_code}#")
             daily_phone_number = os.getenv(
                 "DAILY_PHONE_NUMBER", "your-daily-phone-number"
             )
+            print("📱 PIN Dial-in Information:")
+            print(f"   PIN Code: {dialin_code}")
+            print(f"   PIN with #: {dialin_code}#")
             print(f"   Phone Number: {daily_phone_number}")
             print(
                 f"   VAPI will dial {daily_phone_number} and enter PIN {dialin_code}# via DTMF\n"
             )
+
+            # Update static values in test_vapi_static_dial.py
+            if daily_phone_number != "your-daily-phone-number":
+                update_static_values(daily_phone_number, dialin_code)
 
         print(f"{'='*80}")
         print("🔗 JOIN THE MEETING - Use this link:")
