@@ -11,6 +11,8 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 
+from PIL import Image
+
 from pipecat.audio.interruptions.min_words_interruption_strategy import (
     MinWordsInterruptionStrategy,
 )
@@ -20,7 +22,14 @@ from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
 )
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import LLMRunFrame
+from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
+    Frame,
+    LLMRunFrame,
+    OutputImageRawFrame,
+    SpriteFrame,
+)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -28,11 +37,85 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
 )
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.transports.daily.transport import DailyParams, DailyTransport
 
 logger = logging.getLogger(__name__)
+
+sprites = []
+script_dir = os.path.dirname(__file__)
+# Get the path to the sprites directory (it's in flow/hosting/sprites/)
+hosting_dir = os.path.join(os.path.dirname(os.path.dirname(script_dir)), "hosting")
+sprites_dir = os.path.join(hosting_dir, "sprites")
+
+# Load sequential animation frames
+# Automatically detect all frame files in the sprites directory
+frame_files = []
+if os.path.exists(sprites_dir):
+    for filename in os.listdir(sprites_dir):
+        if filename.startswith("frame_") and filename.endswith(".png"):
+            frame_files.append(filename)
+
+    # Sort frames numerically to ensure correct order (frame_000.png, frame_001.png, etc.)
+    frame_files.sort(key=lambda x: int(x.replace("frame_", "").replace(".png", "")))
+
+    logger.info(f"Loading {len(frame_files)} sprite frames from {sprites_dir}")
+
+    for frame_filename in frame_files:
+        # Build the full path to the image file
+        full_path = os.path.join(sprites_dir, frame_filename)
+        # Open the image and convert it to bytes
+        with Image.open(full_path) as img:
+            sprites.append(
+                OutputImageRawFrame(image=img.tobytes(), size=img.size, format=img.mode)
+            )
+else:
+    logger.warning(f"Sprites directory not found: {sprites_dir}")
+
+# Create a smooth animation by adding reversed frames
+flipped = sprites[::-1]
+sprites.extend(flipped)
+
+# Define static and animated states
+quiet_frame = sprites[0]  # Static frame for when bot is listening
+talking_frame = SpriteFrame(
+    images=sprites
+)  # Animation sequence for when bot is talking
+
+
+class TalkingAnimation(FrameProcessor):
+    """Manages the bot's visual animation states.
+
+    Switches between static (listening) and animated (talking) states based on
+    the bot's current speaking status.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._is_talking = False
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        """Process incoming frames and update animation state.
+
+        Args:
+            frame: The incoming frame to process
+            direction: The direction of frame flow in the pipeline
+        """
+        await super().process_frame(frame, direction)
+
+        # Switch to talking animation when bot starts speaking
+        if isinstance(frame, BotStartedSpeakingFrame):
+            if not self._is_talking:
+                await self.push_frame(talking_frame)
+                self._is_talking = True
+        # Return to static frame when bot stops speaking
+        elif isinstance(frame, BotStoppedSpeakingFrame):
+            await self.push_frame(quiet_frame)
+            self._is_talking = False
+
+        await self.push_frame(frame, direction)
 
 
 class BotProcess:
@@ -136,6 +219,9 @@ class BotService:
                 DailyParams(
                     audio_in_enabled=True,
                     audio_out_enabled=True,
+                    video_out_enabled=True,
+                    video_out_width=1024,
+                    video_out_height=576,
                     transcription_enabled=True,
                     vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
                     turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
@@ -165,14 +251,17 @@ class BotService:
             context = LLMContext(messages)
             context_aggregator = LLMContextAggregatorPair(context)
 
+            ta = TalkingAnimation()
+
             pipeline = Pipeline(
                 [
-                    transport.input(),  # Transport user input
-                    context_aggregator.user(),  # User responses
-                    llm,  # LLM
-                    tts,  # TTS
-                    transport.output(),  # Transport bot output
-                    context_aggregator.assistant(),  # Assistant spoken responses
+                    transport.input(),
+                    context_aggregator.user(),
+                    llm,
+                    tts,
+                    ta,
+                    transport.output(),
+                    context_aggregator.assistant(),
                 ]
             )
 
@@ -183,6 +272,7 @@ class BotService:
                     enable_usage_metrics=True,
                 ),
             )
+            await task.queue_frame(quiet_frame)
 
             @transport.event_handler("on_participant_joined")
             async def on_participant_joined(transport, participant):

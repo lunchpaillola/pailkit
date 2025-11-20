@@ -41,7 +41,7 @@ async def main():
 
     context = {
         "meeting_config": {
-            "autoRecord": True,
+            "autoRecord": False,
             "autoTranscribe": True,
             "bot": {
                 "enabled": True,
