@@ -46,7 +46,7 @@ async def main():
             "bot": {
                 "enabled": True,
                 "video_mode": "animated",  # Use animated sprite mode
-                "animation_frames_per_sprite": 10,  # Slower animation - each frame shows 5 times
+                "animation_frames_per_sprite": 1,  # Show each frame once (faster animation)
             },
         },
         "provider_keys": {

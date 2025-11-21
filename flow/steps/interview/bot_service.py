@@ -47,7 +47,10 @@ logger = logging.getLogger(__name__)
 
 def load_bot_video_frames(
     bot_config: Dict[str, Any],
-) -> tuple[Optional[OutputImageRawFrame], Optional[OutputImageRawFrame | SpriteFrame]]:
+) -> tuple[
+    Optional[OutputImageRawFrame],
+    Optional[OutputImageRawFrame | SpriteFrame | list[OutputImageRawFrame]],
+]:
     """
     Load video frames for the bot based on configuration.
 
@@ -65,7 +68,13 @@ def load_bot_video_frames(
     """
     script_dir = os.path.dirname(__file__)
     hosting_dir = os.path.join(os.path.dirname(os.path.dirname(script_dir)), "hosting")
-    sprites_dir = os.path.join(hosting_dir, "sprites")
+    # Try both lowercase and capitalized directory names (case-insensitive)
+    sprites_dir_lower = os.path.join(hosting_dir, "sprites")
+    sprites_dir_upper = os.path.join(hosting_dir, "Sprites")
+    if os.path.exists(sprites_dir_upper):
+        sprites_dir = sprites_dir_upper
+    else:
+        sprites_dir = sprites_dir_lower
 
     # Get video mode from config (default to "static")
     video_mode = bot_config.get("video_mode", "static")
@@ -77,6 +86,14 @@ def load_bot_video_frames(
 
         if os.path.exists(image_path):
             with Image.open(image_path) as img:
+                # Convert RGBA to RGB to remove alpha channel and prevent compositing
+                if img.mode == "RGBA":
+                    # Create a white background and paste the RGBA image on it
+                    rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+                    rgb_img.paste(img, mask=img.split()[3])  # Use alpha channel as mask
+                    img = rgb_img
+                elif img.mode != "RGB":
+                    img = img.convert("RGB")
                 single_frame = OutputImageRawFrame(
                     image=img.tobytes(), size=img.size, format=img.mode
                 )
@@ -87,16 +104,19 @@ def load_bot_video_frames(
             return (None, None)
 
     elif video_mode == "animated":
-        # Load all frame_*.png files for animation
+        # Load all frame_*.png files for animation (case-insensitive)
         frame_files = []
         if os.path.exists(sprites_dir):
             for filename in os.listdir(sprites_dir):
-                if filename.startswith("frame_") and filename.endswith(".png"):
+                # Case-insensitive matching for frame files
+                if filename.lower().startswith("frame_") and filename.lower().endswith(
+                    ".png"
+                ):
                     frame_files.append(filename)
 
-            # Sort frames numerically
+            # Sort frames numerically (case-insensitive)
             frame_files.sort(
-                key=lambda x: int(x.replace("frame_", "").replace(".png", ""))
+                key=lambda x: int(x.lower().replace("frame_", "").replace(".png", ""))
             )
 
             if frame_files:
@@ -108,13 +128,31 @@ def load_bot_video_frames(
                 for frame_filename in frame_files:
                     full_path = os.path.join(sprites_dir, frame_filename)
                     with Image.open(full_path) as img:
+                        # Convert RGBA to RGB to remove alpha channel and prevent compositing
+                        if img.mode == "RGBA":
+                            # Create a white background and paste the RGBA image on it
+                            rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+                            rgb_img.paste(
+                                img, mask=img.split()[3]
+                            )  # Use alpha channel as mask
+                            img = rgb_img
+                        elif img.mode != "RGB":
+                            img = img.convert("RGB")
                         sprites.append(
                             OutputImageRawFrame(
                                 image=img.tobytes(), size=img.size, format=img.mode
                             )
                         )
 
-                # Duplicate each frame to slow down the animation
+                # Create a smooth animation by adding reversed frames (like reference implementation)
+                # This makes the animation go forward then backward, creating a smooth loop
+                flipped = sprites[::-1]
+                sprites.extend(flipped)
+                logger.info(
+                    f"Added reversed frames: {len(sprites)} total frames (forward + backward)"
+                )
+
+                # Duplicate each frame to slow down the animation (like reference implementation)
                 # This makes each frame display longer, creating a smoother, slower animation
                 frames_per_sprite = bot_config.get(
                     "animation_frames_per_sprite", 3
@@ -129,6 +167,7 @@ def load_bot_video_frames(
                 )
 
                 # First frame for quiet state, animated SpriteFrame for talking
+                # SpriteFrame handles animation internally - we just push it once
                 quiet_frame = sprites[0] if sprites else None
                 talking_frame = (
                     SpriteFrame(images=slowed_sprites) if slowed_sprites else None
@@ -174,6 +213,7 @@ class TalkingAnimation(FrameProcessor):
         await super().process_frame(frame, direction)
 
         # Switch to talking frame when bot starts speaking
+        # SpriteFrame handles animation internally - we just push it once
         if isinstance(frame, BotStartedSpeakingFrame):
             if not self._is_talking and self.talking_frame is not None:
                 await self.push_frame(self.talking_frame)
@@ -289,8 +329,8 @@ class BotService:
                     audio_in_enabled=True,
                     audio_out_enabled=True,
                     video_out_enabled=True,  # Enable video output (static or animated based on config)
-                    video_out_width=1280,
-                    video_out_height=720,
+                    video_out_width=1280,  # Match reference implementation
+                    video_out_height=720,  # Match reference implementation
                     transcription_enabled=True,
                     vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
                     turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
