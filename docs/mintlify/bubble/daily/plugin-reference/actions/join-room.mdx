@@ -4,6 +4,7 @@ description: "Use this action to join a Daily video or audio room and overlay Da
 ---
 
 import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
+import dailyPlusFlag from "/snippets/dailyPlusFlag.mdx";
 
 ### Fields
 
@@ -28,5 +29,13 @@ import dailyBubbleFooter from "/snippets/dailyBubbleFooter.mdx";
 | **Main Area Background Accent** | Color    | Background color for video tiles. Default is rgba(43, 63, 86, 1).                                                                                                                                                                    |
 | **Main Area Text**              | Color    | Text color for text rendered inside the main call area (e.g., names). Default is rgba(255, 255, 255, 1).                                                                                                                             |
 | **Supportive Text**             | Color    | Text color for less emphasized, supportive text. Default is rgba(200, 209, 220, 1).                                                                                                                                                  |
+
+### Virtual background
+
+<dailyPlusFlag feature="feature" />
+
+| **Field**           | **Type** | **Description**                                                                                                                                      |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **User background** | Text     | Set a custom virtual background image for this participant. This applies only to their outgoing video stream. Enter a publicly accessible image URL. |
 
 <dailyBubbleFooter />
