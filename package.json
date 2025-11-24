@@ -8,7 +8,8 @@
     "api",
     "flow",
     "mcp",
-    "widgets"
+    "widgets",
+    "workers"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:flow\" \"npm run dev:mcp\" \"npm run dev:widgets\"",

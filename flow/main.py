@@ -375,6 +375,147 @@ async def execute_workflow(
         )
 
 
+# Webhook Handlers and Endpoints
+# **Simple Explanation:**
+# These functions handle webhooks from Daily.co that are routed by the Cloudflare Worker.
+# The worker routes Daily.co webhooks here based on event type.
+
+
+async def handle_recording_ready_to_download(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Handle 'recording.ready-to-download' webhook event.
+
+    **Simple Explanation:**
+    This function is called when a Daily.co recording is ready to download.
+    According to Daily.co docs: https://docs.daily.co/reference/rest-api/webhooks/events/recording-ready-to-download
+
+    You can add logic here to:
+    - Download the recording from the provided URL
+    - Process the video
+    - Store metadata
+    - Send notifications
+    """
+    # Daily.co webhook format has nested payload structure
+    webhook_payload = payload.get("payload", payload)
+    room_name = webhook_payload.get("room_name")
+    recording_id = webhook_payload.get("recording_id")
+
+    logger.info(f"Recording ready to download for room: {room_name}")
+    logger.info(f"Recording ID: {recording_id}")
+
+    # Extract additional info
+    s3_key = webhook_payload.get("s3_key")
+    duration = webhook_payload.get("duration")
+
+    logger.info(f"S3 Key: {s3_key}")
+    logger.info(f"Duration: {duration} seconds")
+
+    # Add your custom logic here
+    # Example: Download the recording, process it, store it, etc.
+    # You can use the recording_id to fetch the download URL from Daily.co API if needed
+
+    return {
+        "status": "processed",
+        "event": "recording.ready-to-download",
+        "recording_id": recording_id,
+        "room_name": room_name,
+    }
+
+
+async def handle_transcript_ready_to_download(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Handle 'transcript.ready-to-download' webhook event.
+
+    **Simple Explanation:**
+    This function is called when a Daily.co transcript is ready to download.
+    According to Daily.co docs: https://docs.daily.co/reference/rest-api/webhooks/events/transcript-ready-to-download
+
+    You can add logic here to:
+    - Download the transcript from the provided URL
+    - Process the transcript text
+    - Store it in a database
+    - Send it to other services
+    """
+    # Daily.co webhook format has nested payload structure
+    webhook_payload = payload.get("payload", payload)
+    transcript_id = webhook_payload.get("id")
+    room_id = webhook_payload.get("room_id")
+
+    logger.info("Transcript ready to download")
+    logger.info(f"Transcript ID: {transcript_id}")
+    logger.info(f"Room ID: {room_id}")
+
+    # Extract additional info
+    out_params = webhook_payload.get("out_params", {})
+    s3_info = out_params.get("s3", {})
+    s3_key = s3_info.get("key")
+    s3_bucket = s3_info.get("bucket")
+    duration = webhook_payload.get("duration")
+
+    logger.info(f"S3 Bucket: {s3_bucket}")
+    logger.info(f"S3 Key: {s3_key}")
+    logger.info(f"Duration: {duration} seconds")
+
+    # Add your custom logic here
+    # Example: Download the transcript from S3, process it, store it, etc.
+    # You can use the transcript_id to fetch the download URL from Daily.co API if needed
+
+    return {
+        "status": "processed",
+        "event": "transcript.ready-to-download",
+        "transcript_id": transcript_id,
+        "room_id": room_id,
+    }
+
+
+@app.post("/webhooks/recording-ready-to-download")
+async def webhook_recording_ready_to_download(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Handle 'recording.ready-to-download' webhook from Daily.co.
+
+    **Simple Explanation:**
+    This endpoint receives webhooks when a Daily.co recording is ready to download.
+    The Cloudflare Worker routes 'recording.ready-to-download' events here.
+
+    See: https://docs.daily.co/reference/rest-api/webhooks/events/recording-ready-to-download
+    """
+    try:
+        result = await handle_recording_ready_to_download(payload)
+        return result
+    except Exception as e:
+        logger.error(
+            f"Error handling recording.ready-to-download webhook: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/webhooks/transcript-ready-to-download")
+async def webhook_transcript_ready_to_download(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Handle 'transcript.ready-to-download' webhook from Daily.co.
+
+    **Simple Explanation:**
+    This endpoint receives webhooks when a Daily.co transcript is ready to download.
+    The Cloudflare Worker routes 'transcript.ready-to-download' events here.
+
+    See: https://docs.daily.co/reference/rest-api/webhooks/events/transcript-ready-to-download
+    """
+    try:
+        result = await handle_transcript_ready_to_download(payload)
+        return result
+    except Exception as e:
+        logger.error(
+            f"Error handling transcript.ready-to-download webhook: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # MCP Tools
 
 
