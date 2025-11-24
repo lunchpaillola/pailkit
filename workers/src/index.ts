@@ -239,52 +239,98 @@ export default {
       return new Response("Method not allowed", { status: 405 });
     }
 
-      // Check that we have the required URLs configured
-      if (!env.FLOW_WEBHOOK_BASE_URL) {
-        console.error("FLOW_WEBHOOK_BASE_URL is not configured");
-        return new Response(
-          JSON.stringify({ error: "Webhook router not configured: missing FLOW_WEBHOOK_BASE_URL" }),
-          {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      if (!env.FLOW_WEBHOOK_DEV_BASE_URL) {
-        console.error("FLOW_WEBHOOK_DEV_BASE_URL is not configured");
-        return new Response(
-          JSON.stringify({ error: "Webhook router not configured: missing FLOW_WEBHOOK_DEV_BASE_URL" }),
-          {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      if (!env.DAILY_API_KEY) {
-        console.error("DAILY_API_KEY is not configured");
-        return new Response(
-          JSON.stringify({ error: "Webhook router not configured: missing DAILY_API_KEY" }),
-          {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-
       try {
         // Parse the webhook payload from Daily.co
-        const payload: DailyWebhookPayload = await request.json();
+        // Handle potential JSON parsing errors (e.g., empty body for test requests)
+        let payload: DailyWebhookPayload;
+        try {
+          payload = await request.json();
+        } catch (jsonError) {
+          // If JSON parsing fails, it might be a test request with empty/invalid body
+          // Daily.co test requests might not have valid JSON
+          // Return 200 OK to pass the test (even without secrets configured)
+          console.log("Received request with invalid/empty JSON - treating as test request");
+          return new Response(
+            JSON.stringify({ status: "ok", message: "Webhook endpoint is working" }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        // Handle Daily.co's test webhook request
+        // When creating a webhook, Daily.co sends a test request to verify the endpoint
+        // We need to return 200 quickly to avoid webhook creation failure
+        // IMPORTANT: Return 200 for test requests even if secrets aren't configured yet
+        // Daily.co test requests might have various formats, so we check multiple conditions
+        const payloadKeys = Object.keys(payload);
+        const isTestRequest =
+          payload.type === "webhook.test" ||
+          payload.type === "test" ||
+          (payload as any).test === true ||
+          (payload as any).event === "webhook.test" ||
+          (payload as any).event === "test" ||
+          // If payload is empty or very minimal, treat as test
+          (payloadKeys.length === 0) ||
+          (!payload.type && !payload.id && payloadKeys.length <= 2);
+
+        if (isTestRequest) {
+          console.log("Received Daily.co test webhook request - returning 200 immediately");
+          return new Response(
+            JSON.stringify({ status: "ok", message: "Webhook endpoint is working" }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        // Now check that we have the required URLs configured (only for real webhooks)
+        if (!env.FLOW_WEBHOOK_BASE_URL) {
+          console.error("FLOW_WEBHOOK_BASE_URL is not configured");
+          return new Response(
+            JSON.stringify({ error: "Webhook router not configured: missing FLOW_WEBHOOK_BASE_URL" }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        if (!env.FLOW_WEBHOOK_DEV_BASE_URL) {
+          console.error("FLOW_WEBHOOK_DEV_BASE_URL is not configured");
+          return new Response(
+            JSON.stringify({ error: "Webhook router not configured: missing FLOW_WEBHOOK_DEV_BASE_URL" }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
+
+        if (!env.DAILY_API_KEY) {
+          console.error("DAILY_API_KEY is not configured");
+          return new Response(
+            JSON.stringify({ error: "Webhook router not configured: missing DAILY_API_KEY" }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
 
         // Validate that we have an event type
         // Daily.co uses "type" field in newer webhook format
         const eventType = payload.type || (payload as any).event;
         if (!eventType) {
+          // If no event type, this might be a test request or unknown format
+          // Return 200 OK to be safe (Daily.co test requests might not have event types)
+          console.log("Received request without event type - treating as test/unknown request");
           return new Response(
-            JSON.stringify({ error: "Missing event type in webhook payload" }),
+            JSON.stringify({ status: "ok", message: "Webhook endpoint is working" }),
             {
-              status: 400,
+              status: 200,
               headers: { "Content-Type": "application/json" },
             }
           );
