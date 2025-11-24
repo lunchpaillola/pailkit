@@ -79,8 +79,13 @@ def list_webhooks(api_key: str) -> List[Dict[str, Any]]:
                 )
                 response.raise_for_status()
                 data = response.json()
-                # Daily.co returns webhooks in a 'data' array
-                return data.get("data", [])
+                # Daily.co returns webhooks in a 'data' array, or sometimes directly as a list
+                if isinstance(data, list):
+                    return data
+                elif isinstance(data, dict):
+                    return data.get("data", [])
+                else:
+                    return []
 
         import asyncio
         return asyncio.run(fetch())
@@ -300,7 +305,8 @@ def main():
             break
 
     if matching_webhook:
-        webhook_id = matching_webhook.get("id")
+        # Daily.co uses "uuid" as the ID field
+        webhook_id = matching_webhook.get("uuid") or matching_webhook.get("id")
         existing_events = matching_webhook.get("eventTypes", [])
 
         print(f"✅ Found existing webhook (ID: {webhook_id})")
@@ -322,7 +328,8 @@ def main():
             result = update_webhook(api_key, webhook_id, webhook_url, event_types)
             if result:
                 print("✅ Webhook updated successfully!")
-                print(f"   Webhook ID: {result.get('id', webhook_id)}")
+                webhook_result_id = result.get('uuid') or result.get('id', webhook_id)
+                print(f"   Webhook ID: {webhook_result_id}")
                 print(f"   Events: {', '.join(event_types)}")
             else:
                 print("❌ Failed to update webhook")
@@ -339,7 +346,8 @@ def main():
 
         result = create_webhook(api_key, webhook_url, event_types)
         if result:
-            webhook_id = result.get("id", "unknown")
+            # Daily.co uses "uuid" as the ID field
+            webhook_id = result.get("uuid") or result.get("id", "unknown")
             print("✅ Webhook created successfully!")
             print(f"   Webhook ID: {webhook_id}")
             print(f"   URL: {webhook_url}")

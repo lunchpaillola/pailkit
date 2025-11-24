@@ -26,9 +26,9 @@ export interface Env {
   // Example: http://localhost:8001 or the Wrangler tunnel URL
   FLOW_WEBHOOK_DEV_BASE_URL: string;
 
-  // Daily.co API key (required for transcript webhooks to look up room names)
+  // Daily.co API key (optional - no longer needed since room_name is in payload)
   // Get this from: https://dashboard.daily.co/developers
-  DAILY_API_KEY: string;
+  DAILY_API_KEY?: string;
 
   // Optional: Secret for verifying Daily.co webhook signatures
   // Set this if you want to verify webhook authenticity
@@ -82,62 +82,20 @@ function getWebhookRoute(event: DailyWebhookEvent): string {
  * Get room name from Daily.co API for transcript webhooks
  *
  * **Simple Explanation:**
- * For transcript webhooks, we need to look up the room name by calling
- * Daily.co's API. We use the transcript ID to get transcript info, which
- * includes the room_id, then we get the room info to get the room_name.
+ * This function is kept for backwards compatibility, but room_name is now
+ * included directly in the transcript webhook payload, so we don't need
+ * to make API calls anymore.
+ *
+ * @deprecated Room name is now available directly in the payload
  */
 async function getRoomNameFromTranscript(
   transcriptId: string,
   apiKey: string
 ): Promise<string | null> {
-  try {
-    // Step 1: Get transcript information (includes room_id)
-    const transcriptResponse = await fetch(
-      `https://api.daily.co/v1/transcript/${transcriptId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!transcriptResponse.ok) {
-      console.error(
-        `Failed to get transcript info: ${transcriptResponse.status} ${transcriptResponse.statusText}`
-      );
-      return null;
-    }
-
-    const transcriptData = await transcriptResponse.json();
-    const roomId = transcriptData.room_id;
-
-    if (!roomId) {
-      console.error("No room_id found in transcript data");
-      return null;
-    }
-
-    // Step 2: Get room information (includes room_name)
-    const roomResponse = await fetch(`https://api.daily.co/v1/rooms/${roomId}`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!roomResponse.ok) {
-      console.error(
-        `Failed to get room info: ${roomResponse.status} ${roomResponse.statusText}`
-      );
-      return null;
-    }
-
-    const roomData = await roomResponse.json();
-    return roomData.name || null;
-  } catch (error) {
-    console.error(`Error getting room name from transcript: ${error}`);
-    return null;
-  }
+  // This function is no longer needed since room_name is in the payload
+  // Keeping it for backwards compatibility but it shouldn't be called
+  console.warn("getRoomNameFromTranscript called but room_name should be in payload");
+  return null;
 }
 
 /**
@@ -145,37 +103,21 @@ async function getRoomNameFromTranscript(
  *
  * **Simple Explanation:**
  * Checks if the room name starts with "dev" to determine routing.
- * For recordings, we can check directly. For transcripts, we need to
- * look up the room name via API.
+ * Both recording and transcript webhooks now include room_name directly
+ * in the payload, so we can check it without making API calls.
  */
-async function isDevEnvironment(
-  payload: DailyWebhookPayload,
-  apiKey: string
-): Promise<boolean> {
-  // For recording webhooks, room_name is directly available
-  if (payload.type === "recording.ready-to-download") {
-    const roomName = payload.payload?.room_name;
-    if (roomName) {
-      return roomName.toLowerCase().startsWith("dev");
-    }
+function isDevEnvironment(payload: DailyWebhookPayload): boolean {
+  // Both recording and transcript webhooks include room_name in the payload
+  const roomName = payload.payload?.room_name;
+
+  if (roomName) {
+    return roomName.toLowerCase().startsWith("dev");
   }
 
-  // For transcript webhooks, we need to look up the room name
-  if (payload.type === "transcript.ready-to-download") {
-    // Get transcript ID from payload
-    const transcriptId = payload.payload?.id;
-    if (!transcriptId) {
-      console.error("No transcript ID found in payload");
-      return false; // Default to production if we can't determine
-    }
-
-    const roomName = await getRoomNameFromTranscript(transcriptId, apiKey);
-    if (roomName) {
-      return roomName.toLowerCase().startsWith("dev");
-    }
-  }
-
-  // Default to production if we can't determine
+  // If room_name is missing, log a warning and default to production
+  console.warn(
+    `No room_name found in ${payload.type} webhook payload. Defaulting to production.`
+  );
   return false;
 }
 
@@ -192,6 +134,8 @@ async function forwardWebhook(
   originalRequest: Request
 ): Promise<Response> {
   try {
+    console.log(`Attempting to forward webhook to: ${url}`);
+
     // Forward the webhook with the same headers and body
     const response = await fetch(url, {
       method: "POST",
@@ -205,13 +149,19 @@ async function forwardWebhook(
       body: JSON.stringify(payload),
     });
 
+    console.log(`Response from ${url}: ${response.status} ${response.statusText}`);
     return response;
   } catch (error) {
     console.error(`Error forwarding webhook to ${url}:`, error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`Error details: ${errorMessage}`);
+
     return new Response(
       JSON.stringify({
         error: "Failed to forward webhook",
-        message: error instanceof Error ? error.message : "Unknown error",
+        message: errorMessage,
+        target_url: url,
+        event_type: payload.type,
       }),
       {
         status: 500,
@@ -309,15 +259,10 @@ export default {
           );
         }
 
+        // DAILY_API_KEY is no longer required since room_name is in the payload
+        // Keeping this check for backwards compatibility but it's optional now
         if (!env.DAILY_API_KEY) {
-          console.error("DAILY_API_KEY is not configured");
-          return new Response(
-            JSON.stringify({ error: "Webhook router not configured: missing DAILY_API_KEY" }),
-            {
-              status: 500,
-              headers: { "Content-Type": "application/json" },
-            }
-          );
+          console.warn("DAILY_API_KEY is not configured (optional - room_name is now in payload)");
         }
 
         // Validate that we have an event type
@@ -364,12 +309,34 @@ export default {
         }
 
         // Determine if this is a dev or production webhook based on room name
-        const isDev = await isDevEnvironment(payload, env.DAILY_API_KEY);
+        // room_name is now included directly in the payload, no API call needed
+        const isDev = isDevEnvironment(payload);
 
         // Simple routing: dev rooms → dev URL, everything else → production URL
         const baseUrl = isDev
           ? env.FLOW_WEBHOOK_DEV_BASE_URL.replace(/\/$/, "")
           : env.FLOW_WEBHOOK_BASE_URL.replace(/\/$/, "");
+
+        // Check if baseUrl is localhost (which won't work from Cloudflare Workers)
+        if (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")) {
+          console.error(
+            `ERROR: ${isDev ? "FLOW_WEBHOOK_DEV_BASE_URL" : "FLOW_WEBHOOK_BASE_URL"} is set to localhost: ${baseUrl}`
+          );
+          console.error(
+            "Cloudflare Workers cannot reach localhost. Use a public URL or tunnel (e.g., ngrok, wrangler dev tunnel)."
+          );
+          return new Response(
+            JSON.stringify({
+              error: "Invalid webhook URL configuration",
+              message: `Cannot use localhost URL: ${baseUrl}. Cloudflare Workers need a publicly accessible URL.`,
+              hint: "Use a public URL, ngrok tunnel, or wrangler dev tunnel URL instead.",
+            }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
 
         // Get the route for this event type
         const route = getWebhookRoute(payload.type);
@@ -391,9 +358,19 @@ export default {
           `Successfully forwarded ${payload.type} webhook to ${targetUrl}`
         );
       } else {
+        // Get response body for better error debugging
+        let responseText = "";
+        try {
+          responseText = await response.clone().text();
+        } catch (e) {
+          responseText = "Could not read response body";
+        }
+
         console.error(
           `Failed to forward ${payload.type} webhook: ${response.status} ${response.statusText}`
         );
+        console.error(`Target URL: ${targetUrl}`);
+        console.error(`Response body: ${responseText}`);
       }
 
       return response;
