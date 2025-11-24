@@ -8,7 +8,9 @@ Creates a Daily.co video room for the interview with recording and transcription
 """
 
 import logging
+import os
 import time
+from datetime import datetime
 from typing import Any, Dict
 
 import httpx
@@ -36,6 +38,10 @@ class CreateRoomStep(InterviewStep):
         It includes basic settings like recording and transcription. If VAPI calling is enabled,
         we'll enable PIN dial-in after room creation so VAPI can join the room by dialing
         the phone number and entering the PIN via DTMF.
+
+        If STAGING_ENVIRONMENT is set to "DEVELOPMENT", it will add a unique room name
+        in the format DEV-DDMMYYYYHHMMSSFFFFFF (e.g., DEV-15012025143022123456 for Jan 15, 2025 at 14:30:22.123456).
+        The microseconds ensure uniqueness even with multiple requests per second.
         """
         daily_properties: Dict[str, Any] = {
             "enable_recording": "cloud",
@@ -54,6 +60,22 @@ class CreateRoomStep(InterviewStep):
             "properties": daily_properties,
             "privacy": "public",
         }
+
+        # **Simple Explanation:** If we're in development mode, we need to set a unique room name.
+        # Daily.co requires room names to be unique. We generate a name based on the current
+        # date and time in the format DEV-DDMMYYYYHHMMSSFFFFFF (e.g., DEV-15012025143022123456).
+        # The microseconds (FFFFFF) ensure uniqueness even if multiple rooms are created in the same second.
+        # This ensures each room has a unique name that starts with "dev" so the webhook router
+        # knows to route it to the development endpoint.
+        staging_environment = os.getenv("STAGING_ENVIRONMENT", "").upper()
+        if staging_environment == "DEVELOPMENT":
+            # Generate unique name: DEV-DDMMYYYYHHMMSSFFFFFF (24-hour format + microseconds)
+            # Example: DEV-15012025143022123456 = Jan 15, 2025 at 14:30:22.123456
+            # Microseconds (6 digits) allow up to 1 million unique rooms per second
+            now = datetime.now()
+            room_name = now.strftime("DEV-%d%m%Y%H%M%S%f")
+            config["name"] = room_name
+            logger.info(f"🔧 Development mode: Setting unique room name to {room_name}")
 
         return config
 

@@ -1,0 +1,19 @@
+# Local development environment variables for Wrangler
+# Copy this file to .dev.vars and fill in your actual values
+# .dev.vars is automatically loaded by `wrangler dev`
+# DO NOT commit .dev.vars to git (it should be in .gitignore)
+
+# Production webhook URL (used for non-dev rooms)
+# This is where the worker forwards webhooks TO (your flow app)
+# For local testing, set this to where your flow app is running
+FLOW_WEBHOOK_BASE_URL=http://localhost:8001
+
+# Development webhook URL (used for rooms starting with "dev")
+# This is where the worker forwards webhooks TO (your flow app)
+# When running locally, set this to where your flow app is running
+# The worker itself doesn't run on a port - it runs on Cloudflare's edge
+FLOW_WEBHOOK_DEV_BASE_URL=http://localhost:8001
+
+# Daily.co API key
+# Get this from: https://dashboard.daily.co/developers
+DAILY_API_KEY=your_daily_api_key_here
