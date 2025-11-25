@@ -32,6 +32,7 @@ async def main():
     load_dotenv()
 
     daily_api_key = os.getenv("DAILY_API_KEY")
+    test_candidate_email = os.getenv("TEST_CANDIDATE_EMAIL", "test@example.com")
 
     if not daily_api_key:
         print("❌ Missing required API key: DAILY_API_KEY")
@@ -39,16 +40,30 @@ async def main():
 
     workflow = OneTimeMeetingWorkflow()
 
+    # **Simple Explanation:** We're adding test session data here so that when
+    # the room is created, it will have meaningful context data that gets passed
+    # through to webhooks and can be used for testing the full interview flow.
     context = {
         "meeting_config": {
             "autoRecord": False,
             "autoTranscribe": True,
+            "webhook_callback_url": "https://webhook.site/test-interview",  # Test webhook endpoint
+            "email_results_to": test_candidate_email,  # From .env file
+            "interview_type": "technical",
+            "difficulty_level": "intermediate",
+            "interviewer_context": "This is a test interview for a Senior Software Engineer position focusing on Python and backend development.",
             "bot": {
                 "enabled": True,
                 "video_mode": "animated",  # Use animated sprite mode
                 "animation_frames_per_sprite": 1,  # Show each frame once (faster animation)
             },
         },
+        "candidate_info": {
+            "name": "Test Candidate",
+            "email": test_candidate_email,  # From .env file
+            "role": "Senior Software Engineer",
+        },
+        "session_id": f"test-session-{int(asyncio.get_event_loop().time())}",  # Unique session ID
         "provider_keys": {
             "room_provider_key": daily_api_key,
         },
