@@ -84,6 +84,7 @@ class OneTimeMeetingWorkflow:
 
             meeting_config = context.get("meeting_config", {})
             provider_keys = context.get("provider_keys", {})
+            candidate_info = context.get("candidate_info", {})
             base_url = os.getenv("MEET_BASE_URL", "http://localhost:8001")
             daily_domain = os.getenv(
                 "DAILY_DOMAIN", "https://your-domain.daily.co"
@@ -103,9 +104,13 @@ class OneTimeMeetingWorkflow:
                 "dialin_code": None,
                 "vapi_call_id": None,
                 "vapi_call_created": False,
-                "session_id": str(uuid.uuid4()),
+                "session_id": context.get("session_id", str(uuid.uuid4())),
                 "meet_base_url": base_url,
             }
+
+            # Add candidate_info to state if provided (not in TypedDict but allowed)
+            if candidate_info:
+                initial_state["candidate_info"] = candidate_info  # type: ignore
 
             result = await self.graph.ainvoke(initial_state)
 

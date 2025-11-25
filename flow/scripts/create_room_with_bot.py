@@ -33,6 +33,9 @@ async def main():
 
     daily_api_key = os.getenv("DAILY_API_KEY")
     test_candidate_email = os.getenv("TEST_CANDIDATE_EMAIL", "test@example.com")
+    test_webhook_site = os.getenv(
+        "TEST_WEBHOOK_SITE", "https://webhook.site/38c8fcd9-00e6-48d2-a169-32856a7e76fe"
+    )
 
     if not daily_api_key:
         print("❌ Missing required API key: DAILY_API_KEY")
@@ -47,7 +50,7 @@ async def main():
         "meeting_config": {
             "autoRecord": False,
             "autoTranscribe": True,
-            "webhook_callback_url": "https://webhook.site/test-interview",  # Test webhook endpoint
+            "webhook_callback_url": test_webhook_site,  # Test webhook endpoint from .env
             "email_results_to": test_candidate_email,  # From .env file
             "interview_type": "technical",
             "difficulty_level": "intermediate",

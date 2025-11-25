@@ -12,12 +12,14 @@ This step handles the complete transcript processing pipeline:
 5. Sends results via webhook/email
 """
 
+import asyncio
 import logging
 import os
 import re
 from typing import Any, Dict
 
 import httpx
+import resend
 
 from flow.steps.interview.base import InterviewStep
 from flow.steps.interview.generate_summary import GenerateSummaryStep
@@ -152,12 +154,60 @@ async def send_webhook(url: str, payload: dict[str, Any]) -> bool:
 
 
 async def send_email(to_email: str, subject: str, body: str) -> bool:
-    """Send results via email (placeholder - needs email service integration)."""
-    logger.info("📧 Email notification (not sent - placeholder):")
-    logger.info(f"   To: {to_email}")
-    logger.info(f"   Subject: {subject}")
-    logger.warning("⚠️ Email sending not implemented yet")
-    return False
+    """
+    Send results via email using Resend.
+
+    **Simple Explanation:**
+    This function uses the Resend email service to send emails. It:
+    1. Gets the API key from environment variables
+    2. Gets the verified email domain from environment variables
+    3. Constructs the email with a "from" address using that domain
+    4. Sends the email with the provided subject and body (as HTML)
+    """
+    try:
+        # Get Resend API key from environment
+        api_key = os.getenv("RESEND_API_KEY")
+        if not api_key:
+            logger.error("❌ RESEND_API_KEY environment variable is not set")
+            return False
+
+        # Get the verified email domain from environment
+        email_domain = os.getenv("RESEND_EMAIL_DOMAIN")
+        if not email_domain:
+            logger.error("❌ RESEND_EMAIL_DOMAIN environment variable is not set")
+            return False
+
+        # Set the API key for Resend
+        resend.api_key = api_key
+
+        # Construct the "from" address using the verified domain
+        # Using "noreply@" as a common pattern, but you can customize this
+        from_email = f"PailKit <noreply@{email_domain}>"
+
+        # Prepare email parameters
+        # Convert body text to HTML (simple conversion - just wrap in <p> tags)
+        html_body = body.replace("\n\n", "</p><p>").replace("\n", "<br>")
+        html_body = f"<p>{html_body}</p>"
+
+        params: resend.Emails.SendParams = {
+            "from": from_email,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_body,
+            "reply_to": f"noreply@{email_domain}",
+        }
+
+        # Send the email (Resend's send() is synchronous, so we run it in an executor)
+        # This prevents blocking the async event loop
+        loop = asyncio.get_event_loop()
+        email = await loop.run_in_executor(None, resend.Emails.send, params)
+        logger.info(f"✅ Email sent successfully to {to_email}")
+        logger.info(f"   Email ID: {email.get('id', 'N/A')}")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Error sending email to {to_email}: {e}", exc_info=True)
+        return False
 
 
 class ProcessTranscriptStep(InterviewStep):

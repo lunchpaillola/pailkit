@@ -16,6 +16,9 @@ pipecat-ai[daily,openai,local-smart-turn-v3]>=0.0.94
 # Image processing for sprite animation
 Pillow>=10.0.0
 
+# Email service
+resend>=2.0.0
+
 # Development dependencies
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
