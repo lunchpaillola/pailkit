@@ -19,6 +19,9 @@ Pillow>=10.0.0
 # Email service
 resend>=2.0.0
 
+# Field-level encryption
+cryptography>=42.0.0
+
 # Development dependencies
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
