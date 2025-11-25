@@ -209,26 +209,6 @@ class CreateRoomStep(InterviewStep):
             logger.warning(f"Failed to enable PIN dial-in: {e}")
             return None
 
-    async def _set_session_data(
-        self, api_key: str, room_name: str, session_data: Dict[str, Any]
-    ) -> bool:
-        """Set session data for webhook processing."""
-        headers = self._get_daily_headers(api_key)
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"https://api.daily.co/v1/rooms/{room_name}/set-session-data",
-                    headers=headers,
-                    json={"data": session_data, "mergeStrategy": "replace"},
-                )
-                response.raise_for_status()
-                logger.info(f"✅ Session data set for room {room_name}")
-                return True
-        except Exception as e:
-            logger.warning(f"Failed to set session data: {e}")
-            return False
-
     async def _create_daily_room(
         self, api_key: str, daily_config: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -384,10 +364,10 @@ class CreateRoomStep(InterviewStep):
             state = self.update_status(state, "room_created")
             logger.info(f"✅ Video room created: {room_url}")
 
-            # Prepare session data but don't set it yet
-            # **Simple Explanation:** We prepare session data here but DON'T set it immediately.
-            # Daily.co's session data API works better when called AFTER someone joins the room.
-            # We'll store this in state and pass it to the frontend via URL, which will set it on join.
+            # Save session data to SQLite database
+            # **Simple Explanation:** We store session data (candidate info, webhook URLs, etc.)
+            # in our local SQLite database. This data will be retrieved later by the webhook
+            # handler when the transcript is ready, so it knows where to send results.
             candidate_info = state.get("candidate_info", {})
 
             # Get interviewer_context from state (if configure_agent already ran) or from interview_config
@@ -414,15 +394,24 @@ class CreateRoomStep(InterviewStep):
                 k: v for k, v in session_data.items() if v is not None and v != ""
             }
 
-            # Store session data in state for later (will be set on join by frontend)
-            # **Simple Explanation:** Instead of setting session data now, we store it in state.
-            # It will be base64-encoded in the meeting URL, and the frontend (meeting.html)
-            # will set it via API call when the user joins the room.
+            # Save session data to SQLite database
+            # **Simple Explanation:** We save the session data to our database using the room_name
+            # as the key. Later, when Daily.co sends a webhook, we'll use the room_name to look up
+            # this data and know where to send the results.
             if session_data:
-                state["session_data_to_set"] = session_data
-                logger.info("📦 Session data prepared (will be set on join)")
+                from flow.db import save_session_data
+
+                success = save_session_data(room_name, session_data)
+                if success:
+                    logger.info(
+                        f"✅ Session data saved to database for room {room_name}"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ Failed to save session data to database for room {room_name}"
+                    )
             else:
-                logger.debug("No session data to prepare")
+                logger.debug("No session data to save")
 
         except Exception as e:
             error_msg = f"Failed to create video room: {str(e)}"

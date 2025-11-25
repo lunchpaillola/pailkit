@@ -118,23 +118,18 @@ async def download_transcript_vtt(download_link: str) -> str | None:
         return None
 
 
-async def get_room_session_data(room_name: str) -> dict[str, Any] | None:
-    """Get session data from Daily.co room."""
-    try:
-        headers = await get_daily_headers()
+def get_room_session_data(room_name: str) -> dict[str, Any] | None:
+    """
+    Get session data from SQLite database.
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://api.daily.co/v1/rooms/{room_name}/get-session-data",
-                headers=headers,
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result.get("data", {})
+    **Simple Explanation:**
+    This function retrieves session data from our local SQLite database
+    using the room_name as the key. The session data was saved when the
+    room was created and includes candidate info, webhook URLs, etc.
+    """
+    from flow.db import get_session_data
 
-    except Exception as e:
-        logger.error(f"❌ Error getting room session data: {e}", exc_info=True)
-        return None
+    return get_session_data(room_name)
 
 
 async def send_webhook(url: str, payload: dict[str, Any]) -> bool:
@@ -241,9 +236,9 @@ class ProcessTranscriptStep(InterviewStep):
 
             state["interview_transcript"] = transcript_text
 
-            # Step 4: Retrieve session data
-            logger.info("\n📦 STEP 4: Retrieving session data")
-            session_data = await get_room_session_data(room_name) if room_name else None
+            # Step 4: Retrieve session data from SQLite database
+            logger.info("\n📦 STEP 4: Retrieving session data from database")
+            session_data = get_room_session_data(room_name) if room_name else None
 
             if not session_data:
                 logger.warning("⚠️ No session data found")

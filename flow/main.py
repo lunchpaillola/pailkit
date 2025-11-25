@@ -272,9 +272,6 @@ async def serve_meeting_page(
     interviewerContext: str | None = Query(
         None, description="Interviewer context for AI interviews"
     ),
-    sessionData: str | None = Query(
-        None, description="Base64-encoded JSON session data to set on join"
-    ),
 ) -> HTMLResponse:
     """
     Serve the hosted meeting page for a room.
@@ -531,58 +528,6 @@ async def webhook_transcript_ready_to_download(
             f"Error handling transcript.ready-to-download webhook: {e}", exc_info=True
         )
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/rooms/{room_name}/set-session-data")
-async def set_room_session_data(
-    room_name: str,
-    session_data: dict[str, Any],
-) -> dict[str, Any]:
-    """
-    Set session data for a Daily.co room (called from frontend on join).
-
-    **Simple Explanation:**
-    This endpoint allows the frontend (meeting.html) to set session data
-    after a participant joins the room. This is needed because Daily.co's
-    session data API works best when called after someone has joined.
-
-    The session data is stored in Daily.co and will be available to webhooks
-    (like transcript-ready) so they know where to send results, candidate info, etc.
-    """
-    import httpx
-
-    api_key = os.getenv("DAILY_API_KEY", "")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="DAILY_API_KEY not configured")
-
-    auth_header = api_key.strip()
-    if not auth_header.startswith("Bearer "):
-        auth_header = f"Bearer {auth_header}"
-
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "Authorization": auth_header,
-    }
-
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"https://api.daily.co/v1/rooms/{room_name}/set-session-data",
-                headers=headers,
-                json={
-                    "data": session_data,
-                    "mergeStrategy": "replace",
-                },
-            )
-            response.raise_for_status()
-            logger.info(f"✅ Session data set for room {room_name} (via frontend)")
-            return {"status": "success", "room_name": room_name}
-    except Exception as e:
-        logger.error(f"Failed to set session data for {room_name}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to set session data: {str(e)}"
-        )
 
 
 # MCP Tools
