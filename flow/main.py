@@ -272,6 +272,9 @@ async def serve_meeting_page(
     interviewerContext: str | None = Query(
         None, description="Interviewer context for AI interviews"
     ),
+    sessionData: str | None = Query(
+        None, description="Base64-encoded JSON session data to set on join"
+    ),
 ) -> HTMLResponse:
     """
     Serve the hosted meeting page for a room.
@@ -430,44 +433,58 @@ async def handle_transcript_ready_to_download(
 
     **Simple Explanation:**
     This function is called when a Daily.co transcript is ready to download.
-    According to Daily.co docs: https://docs.daily.co/reference/rest-api/webhooks/events/transcript-ready-to-download
+    It extracts the webhook data and triggers the ProcessTranscriptStep,
+    which will fetch the download link via the Daily.co API.
 
-    You can add logic here to:
-    - Download the transcript from the provided URL
-    - Process the transcript text
-    - Store it in a database
-    - Send it to other services
+    According to Daily.co docs: https://docs.daily.co/reference/rest-api/webhooks/events/transcript-ready-to-download
     """
-    # Daily.co webhook format has nested payload structure
     webhook_payload = payload.get("payload", payload)
     transcript_id = webhook_payload.get("id")
     room_id = webhook_payload.get("room_id")
-
-    logger.info("Transcript ready to download")
-    logger.info(f"Transcript ID: {transcript_id}")
-    logger.info(f"Room ID: {room_id}")
-
-    # Extract additional info
-    out_params = webhook_payload.get("out_params", {})
-    s3_info = out_params.get("s3", {})
-    s3_key = s3_info.get("key")
-    s3_bucket = s3_info.get("bucket")
+    room_name = webhook_payload.get("room_name")
     duration = webhook_payload.get("duration")
 
-    logger.info(f"S3 Bucket: {s3_bucket}")
-    logger.info(f"S3 Key: {s3_key}")
-    logger.info(f"Duration: {duration} seconds")
+    logger.info(f"📨 Transcript webhook received: {transcript_id}")
 
-    # Add your custom logic here
-    # Example: Download the transcript from S3, process it, store it, etc.
-    # You can use the transcript_id to fetch the download URL from Daily.co API if needed
+    try:
+        from flow.steps.interview.process_transcript import ProcessTranscriptStep
 
-    return {
-        "status": "processed",
-        "event": "transcript.ready-to-download",
-        "transcript_id": transcript_id,
-        "room_id": room_id,
-    }
+        # Create state from webhook payload
+        state = {
+            "transcript_id": transcript_id,
+            "room_id": room_id,
+            "room_name": room_name,
+            "duration": duration,
+        }
+
+        # Execute the processing step
+        step = ProcessTranscriptStep()
+        result = await step.execute(state)
+
+        # Check for errors
+        if result.get("error"):
+            return {
+                "status": "error",
+                "transcript_id": transcript_id,
+                "error": result.get("error"),
+            }
+
+        # Return success response
+        return {
+            "status": "success",
+            "transcript_id": transcript_id,
+            "candidate_name": result.get("candidate_info", {}).get("name"),
+            "webhook_sent": result.get("webhook_sent", False),
+            "email_sent": result.get("email_sent", False),
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Transcript webhook error: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "transcript_id": transcript_id,
+            "error": str(e),
+        }
 
 
 @app.post("/webhooks/recording-ready-to-download")
@@ -514,6 +531,58 @@ async def webhook_transcript_ready_to_download(
             f"Error handling transcript.ready-to-download webhook: {e}", exc_info=True
         )
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/rooms/{room_name}/set-session-data")
+async def set_room_session_data(
+    room_name: str,
+    session_data: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Set session data for a Daily.co room (called from frontend on join).
+
+    **Simple Explanation:**
+    This endpoint allows the frontend (meeting.html) to set session data
+    after a participant joins the room. This is needed because Daily.co's
+    session data API works best when called after someone has joined.
+
+    The session data is stored in Daily.co and will be available to webhooks
+    (like transcript-ready) so they know where to send results, candidate info, etc.
+    """
+    import httpx
+
+    api_key = os.getenv("DAILY_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="DAILY_API_KEY not configured")
+
+    auth_header = api_key.strip()
+    if not auth_header.startswith("Bearer "):
+        auth_header = f"Bearer {auth_header}"
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": auth_header,
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.daily.co/v1/rooms/{room_name}/set-session-data",
+                headers=headers,
+                json={
+                    "data": session_data,
+                    "mergeStrategy": "replace",
+                },
+            )
+            response.raise_for_status()
+            logger.info(f"✅ Session data set for room {room_name} (via frontend)")
+            return {"status": "success", "room_name": room_name}
+    except Exception as e:
+        logger.error(f"Failed to set session data for {room_name}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to set session data: {str(e)}"
+        )
 
 
 # MCP Tools

@@ -209,6 +209,26 @@ class CreateRoomStep(InterviewStep):
             logger.warning(f"Failed to enable PIN dial-in: {e}")
             return None
 
+    async def _set_session_data(
+        self, api_key: str, room_name: str, session_data: Dict[str, Any]
+    ) -> bool:
+        """Set session data for webhook processing."""
+        headers = self._get_daily_headers(api_key)
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://api.daily.co/v1/rooms/{room_name}/set-session-data",
+                    headers=headers,
+                    json={"data": session_data, "mergeStrategy": "replace"},
+                )
+                response.raise_for_status()
+                logger.info(f"✅ Session data set for room {room_name}")
+                return True
+        except Exception as e:
+            logger.warning(f"Failed to set session data: {e}")
+            return False
+
     async def _create_daily_room(
         self, api_key: str, daily_config: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -363,6 +383,46 @@ class CreateRoomStep(InterviewStep):
 
             state = self.update_status(state, "room_created")
             logger.info(f"✅ Video room created: {room_url}")
+
+            # Prepare session data but don't set it yet
+            # **Simple Explanation:** We prepare session data here but DON'T set it immediately.
+            # Daily.co's session data API works better when called AFTER someone joins the room.
+            # We'll store this in state and pass it to the frontend via URL, which will set it on join.
+            candidate_info = state.get("candidate_info", {})
+
+            # Get interviewer_context from state (if configure_agent already ran) or from interview_config
+            interviewer_context = (
+                state.get("interviewer_context")
+                or interview_config.get("interviewer_context")
+                or ""
+            )
+
+            session_data = {
+                "webhook_callback_url": interview_config.get("webhook_callback_url"),
+                "email_results_to": interview_config.get("email_results_to"),
+                "candidate_name": candidate_info.get("name"),
+                "candidate_email": candidate_info.get("email"),
+                "position": candidate_info.get("role"),
+                "interviewer_context": interviewer_context,
+                "session_id": state.get("session_id"),
+                "interview_type": interview_config.get("interview_type"),
+                "difficulty_level": interview_config.get("difficulty_level"),
+            }
+
+            # Remove None values and empty strings to keep session data clean
+            session_data = {
+                k: v for k, v in session_data.items() if v is not None and v != ""
+            }
+
+            # Store session data in state for later (will be set on join by frontend)
+            # **Simple Explanation:** Instead of setting session data now, we store it in state.
+            # It will be base64-encoded in the meeting URL, and the frontend (meeting.html)
+            # will set it via API call when the user joins the room.
+            if session_data:
+                state["session_data_to_set"] = session_data
+                logger.info("📦 Session data prepared (will be set on join)")
+            else:
+                logger.debug("No session data to prepare")
 
         except Exception as e:
             error_msg = f"Failed to create video room: {str(e)}"

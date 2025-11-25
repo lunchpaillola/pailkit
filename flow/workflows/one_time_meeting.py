@@ -3,6 +3,7 @@
 
 """One-Time Meeting Workflow - Creates a video meeting room and returns URLs."""
 
+import base64
 import json
 import logging
 import os
@@ -33,6 +34,7 @@ class OneTimeMeetingState(TypedDict, total=False):
     dialin_code: str | None  # Daily.co PIN code for dial-in
     vapi_call_id: str | None
     vapi_call_created: bool
+    session_data_to_set: Dict[str, Any] | None  # Session data to set on join
     processing_status: str
     error: str | None
 
@@ -171,6 +173,23 @@ class OneTimeMeetingWorkflow:
                 query_params["logoText"] = meeting_config.get(
                     "logoText"
                 ) or meeting_config.get("logo_text")
+
+            # Add session data if available (for setting on join)
+            # **Simple Explanation:** If the create_room step prepared session data,
+            # we encode it as base64 JSON and add it to the URL. The frontend will
+            # decode it and call our API to set it in Daily.co when someone joins.
+            session_data_to_set = result.get("session_data_to_set")
+            if session_data_to_set:
+                try:
+                    # Encode session data as base64 JSON
+                    session_json = json.dumps(session_data_to_set)
+                    session_b64 = base64.b64encode(session_json.encode()).decode()
+                    query_params["sessionData"] = session_b64
+                    logger.info(
+                        f"📦 Added session data to meeting URL ({len(session_json)} chars)"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to encode session data for URL: {e}")
 
             if query_params:
                 hosted_url = f"{base_url}/meet/{room_name}?{urlencode(query_params)}"

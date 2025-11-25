@@ -152,6 +152,9 @@
 
         const meetingToken = urlParams.get('token');
 
+        // Session data to set on join (base64-encoded JSON)
+        const sessionDataParam = urlParams.get('sessionData');
+
         // UI Setup
         if (logoText) {
             document.getElementById('logo-text').textContent = logoText;
@@ -261,10 +264,32 @@
                         }
                     }
 
-                    if (autoRecord || autoTranscribe) {
-                        dailyFrame.on('joined-meeting', () => {
+                    if (autoRecord || autoTranscribe || sessionDataParam) {
+                        dailyFrame.on('joined-meeting', async () => {
                             if (autoRecord) startFeature('recording', () => dailyFrame.startRecording());
                             if (autoTranscribe) startFeature('transcription', () => dailyFrame.startTranscription());
+
+                            // Set session data after joining
+                            // **Simple Explanation:** If session data was passed via URL,
+                            // we call our API to set it in Daily.co now that we've joined.
+                            // This ensures the data is available for webhooks.
+                            if (sessionDataParam) {
+                                try {
+                                    const sessionData = JSON.parse(atob(sessionDataParam));
+                                    const response = await fetch(`/api/rooms/${roomName}/set-session-data`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(sessionData)
+                                    });
+                                    if (response.ok) {
+                                        console.log('Session data set successfully');
+                                    } else {
+                                        console.warn('Failed to set session data:', await response.text());
+                                    }
+                                } catch (error) {
+                                    console.error('Error setting session data:', error);
+                                }
+                            }
                         });
                     }
 
