@@ -43,6 +43,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Note: Sentry is initialized in api/main.py (the entry point)
+# Since this flow module is imported by api/main.py, all errors from flow
+# will be automatically captured by Sentry if it's configured in the main app.
+
 app = FastAPI(
     title="PailFlow API",
     description="Workflow orchestration system with MCP integration",
