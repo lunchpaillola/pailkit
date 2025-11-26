@@ -8,6 +8,8 @@ This is the main entry point for the PailKit API server.
 """
 
 import os
+import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -42,6 +44,23 @@ app.add_middleware(UnkeyAuthMiddleware)
 # Include routers
 app.include_router(rooms_router, prefix="/api/rooms", tags=["Rooms"])
 app.include_router(transcribe_router, prefix="/api/transcribe", tags=["Transcription"])
+
+# Include flow endpoints (workflows, webhooks, etc.)
+# Import flow app and include its routes
+# Add project root to path to import flow module
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+# Import flow app and include its routes
+# Flow has routes like /api/flows/*, /workflows, /webhooks/*, /meet/*, /bots/*
+# These won't conflict with /api/rooms/* and /api/transcribe/*
+from flow.main import app as flow_app  # noqa: E402
+
+# Include all flow routes into the main app
+# FastAPI routes are matched in order, so api routes (defined above) take precedence
+for route in flow_app.routes:
+    app.routes.append(route)
 
 
 @app.get("/")

@@ -57,6 +57,7 @@ class UnkeyAuthMiddleware:
             or path.startswith("/webhooks/")
             or path.startswith("/api/rooms/")
             or path == "/favicon.ico"
+            or path == "/health"
         ):
             # Public route - allow access without authentication
             await self.app(scope, receive, send)

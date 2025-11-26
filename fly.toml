@@ -1,0 +1,62 @@
+# fly.toml app configuration file for PailKit (monorepo: API + Flow)
+#
+# This configuration deploys both the API and Flow services together as a single application.
+# The API (api/main.py) imports and includes all Flow routes, so everything runs in one process.
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "pailkit-api"
+primary_region = "iad"
+
+[build]
+  # Dockerfile is at project root - builds both API and Flow together
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+
+# VM configuration - increase memory to handle heavy dependencies (pipecat-ai, ML models, etc.)
+# shared-cpu-2x = 2GB RAM, shared-cpu-4x = 4GB RAM
+# Using 2GB should be enough, but you can upgrade to 4GB if needed
+[vm]
+  memory_mb = 2048
+  cpu_kind = "shared"
+  cpus = 2
+
+# Persistent volume for SQLite database (flow/pailflow.db)
+# The database will be stored at /data/pailflow.db and persist across deployments
+# Note: 1GB is the minimum size for Fly.io volumes, but it's very cheap (~$0.15/month)
+# For a SQLite database storing session data, 1GB is plenty and you can resize later if needed
+# To create the volume: fly volumes create pailflow_data --size 1
+[[mounts]]
+  source = "pailflow_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+  # No automatic health checks - you can manually check /health when needed
