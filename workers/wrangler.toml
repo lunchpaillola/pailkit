@@ -1,0 +1,28 @@
+# Cloudflare Worker configuration for Daily.co webhook router
+# This worker receives webhooks from Daily.co and routes them to different endpoints
+
+name = "pailkit-webhook-router"
+main = "src/index.ts"
+compatibility_date = "2024-11-06"
+
+# Cloudflare Worker Configuration for Daily.co Webhook Router
+#
+# **Simple Routing Logic:**
+# - Rooms starting with "dev" → Routes to FLOW_WEBHOOK_DEV_BASE_URL
+# - All other rooms → Routes to FLOW_WEBHOOK_BASE_URL
+#
+# **Setting environment variables:**
+# wrangler secret put FLOW_WEBHOOK_BASE_URL        # Production URL
+# wrangler secret put FLOW_WEBHOOK_DEV_BASE_URL    # Dev URL (can be localhost or Wrangler tunnel)
+# wrangler secret put DAILY_API_KEY                # Daily.co API key
+#
+# **Local Development:**
+# When running `wrangler dev`, Wrangler automatically creates a tunnel to your local server.
+# Set FLOW_WEBHOOK_DEV_BASE_URL to your local server (e.g., http://localhost:8001)
+# or use the Wrangler tunnel URL that's shown when you run `wrangler dev`.
+
+[env.production]
+name = "pailkit-webhook-router"
+
+[env.staging]
+name = "pailkit-webhook-router-staging"

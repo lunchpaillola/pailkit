@@ -8,6 +8,19 @@ uvicorn>=0.24.0
 pydantic>=2.8.0
 python-dotenv>=1.0.0
 unkey-py>=0.3.0
+langgraph==0.2.40
+
+# Pipecat for AI bot functionality
+pipecat-ai[daily,openai,local-smart-turn-v3]>=0.0.94
+
+# Image processing for sprite animation
+Pillow>=10.0.0
+
+# Email service
+resend>=2.0.0
+
+# Field-level encryption
+cryptography>=42.0.0
 
 # Development dependencies
 pytest>=7.4.0

@@ -22,7 +22,21 @@ repos:
     hooks:
       - id: mypy
         files: ^api/
-        args: [--explicit-package-bases]
+        args: [--explicit-package-bases, --config-file=api/mypy.ini, --follow-imports=silent]
+        additional_dependencies:
+          - fastapi>=0.104.1
+          - uvicorn>=0.24.0
+          - pydantic>=2.8.0
+          - python-dotenv>=1.0.0
+          - httpx>=0.25.0
+          - pytest>=7.4.0
+          # Flow dependencies needed because api/main.py imports from flow
+          - mcp>=0.1.0
+          - langgraph==0.2.40
+          - pipecat-ai[daily,openai,local-smart-turn-v3]>=0.0.94
+          - Pillow>=10.0.0
+          - resend>=2.0.0
+          - cryptography>=42.0.0
 
   # General file quality checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
