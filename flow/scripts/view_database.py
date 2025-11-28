@@ -70,11 +70,24 @@ def view_database():
                 session_data = json.loads(session_data_json)
                 print("\n📦 Session Data:")
                 for key, value in session_data.items():
-                    # Truncate long values for readability
-                    display_value = str(value)
-                    if len(display_value) > 100:
-                        display_value = display_value[:100] + "..."
-                    print(f"   {key}: {display_value}")
+                    # Special handling for transcript_text - show it fully
+                    if key == "transcript_text" and value:
+                        print(f"\n   📝 {key}:")
+                        print("   " + "=" * 76)
+                        # Show transcript with proper formatting
+                        transcript_lines = str(value).split("\n")
+                        for line in transcript_lines[:50]:  # Show first 50 lines
+                            if line.strip():
+                                print(f"   {line}")
+                        if len(transcript_lines) > 50:
+                            print(f"   ... ({len(transcript_lines) - 50} more lines)")
+                        print("   " + "=" * 76)
+                    else:
+                        # Truncate long values for readability
+                        display_value = str(value)
+                        if len(display_value) > 100:
+                            display_value = display_value[:100] + "..."
+                        print(f"   {key}: {display_value}")
             except json.JSONDecodeError as e:
                 print(f"   ⚠️ Error parsing JSON: {e}")
                 print(f"   Raw data: {session_data_json[:200]}...")

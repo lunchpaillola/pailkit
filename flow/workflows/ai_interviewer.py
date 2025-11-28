@@ -259,6 +259,16 @@ async def one_time_meeting_subgraph_wrapper(
             "autoTranscribe", meeting_config.get("auto_transcribe", True)
         )
 
+        # If bot is enabled, disable client-side autoTranscribe
+        # because TranscriptProcessor handles transcription automatically (both user and bot)
+        bot_enabled = meeting_config.get("bot", {}).get("enabled", False)
+        if bot_enabled:
+            auto_transcribe = False
+            logger.info(
+                "🤖 Bot enabled - disabling client-side autoTranscribe "
+                "(TranscriptProcessor will handle transcription)"
+            )
+
         if auto_record:
             query_params["autoRecord"] = "true"
         if auto_transcribe:

@@ -270,17 +270,27 @@ def decrypt_sensitive_data(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def get_db_connection():
     """
-    Get a regular SQLite database connection.
+    Get a regular SQLite database connection with WAL mode enabled.
 
     **Simple Explanation:**
     Since we're using field-level encryption instead of full database encryption,
     we use a regular SQLite connection. The encryption happens at the field level
     before storing data.
 
+    WAL (Write-Ahead Logging) mode is enabled for better concurrent access:
+    - Allows multiple readers while one writer is active
+    - Better performance for concurrent transcript updates
+    - Reduces write contention
+
     Returns:
-        sqlite3.Connection object
+        sqlite3.Connection object with WAL mode enabled
     """
-    return sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH))
+    # Enable WAL mode for better concurrency (especially important for transcript updates)
+    # **Simple Explanation:** WAL mode allows multiple readers and one writer simultaneously,
+    # which is perfect for our use case where transcripts are updated frequently
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
 def init_db() -> None:

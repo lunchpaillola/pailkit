@@ -679,7 +679,29 @@ async def handle_transcript_ready_to_download(
         workflow_paused = session_data and session_data.get("workflow_paused", False)
         thread_id = session_data.get("workflow_thread_id") if session_data else None
 
+        # Check if we're waiting for this webhook based on configuration
+        waiting_for_transcript_webhook = session_data and session_data.get(
+            "waiting_for_transcript_webhook", False
+        )
+
         if workflow_paused and thread_id:
+            # Only resume if we're actually waiting for this webhook
+            # (or if no explicit waiting flag is set, for backward compatibility)
+            if not waiting_for_transcript_webhook and session_data:
+                # Check if we should be waiting for meeting.ended instead
+                waiting_for_meeting_ended = session_data.get(
+                    "waiting_for_meeting_ended", False
+                )
+                if waiting_for_meeting_ended:
+                    logger.info(
+                        "⏸️  Waiting for meeting.ended webhook, not transcript webhook"
+                    )
+                    return {
+                        "status": "waiting_for_meeting",
+                        "transcript_id": transcript_id,
+                        "room_name": room_name,
+                        "message": "Workflow is waiting for meeting.ended webhook, not transcript webhook",
+                    }
             # Resume the paused workflow using thread_id
             logger.info(f"🔄 Resuming paused workflow with thread_id: {thread_id}")
 
@@ -840,6 +862,264 @@ async def webhook_transcript_ready_to_download(
         logger.error(
             f"Error handling transcript.ready-to-download webhook: {e}", exc_info=True
         )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def handle_meeting_ended_webhook(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Handle 'meeting.ended' webhook event from Daily.co.
+
+    **Simple Explanation:**
+    This function is called when a Daily.co meeting ends. It:
+    1. Checks if there's a paused workflow waiting for the meeting to end
+    2. Checks if bot was enabled (transcript in DB) or not (needs Daily.co transcript)
+    3. Resumes the workflow to process the transcript
+
+    This is more robust than processing immediately because it ensures:
+    - Meeting is actually finished (not partial transcript)
+    - Complete transcript is available (especially when bot is enabled)
+
+    According to Daily.co docs: https://docs.daily.co/reference/rest-api/webhooks/events/meeting-ended
+    """
+    webhook_payload = payload.get("payload", payload)
+    # Note: meeting.ended payload uses "room" (room_name) and "meeting_id" (not room_id)
+    # See: https://docs.daily.co/reference/rest-api/webhooks/events/meeting-ended
+    room_name = webhook_payload.get("room")  # This is the room name (not room_id)
+    meeting_id = webhook_payload.get("meeting_id")  # This is the meeting UUID
+    start_ts = webhook_payload.get("start_ts")
+    end_ts = webhook_payload.get("end_ts")
+    duration = (
+        end_ts - start_ts if (end_ts and start_ts) else None
+    )  # Calculate duration
+
+    logger.info(f"🏁 Meeting ended webhook received for room: {room_name}")
+    logger.info(f"   Meeting ID: {meeting_id}, Duration: {duration}s")
+
+    try:
+        from flow.db import get_session_data, save_session_data
+        from flow.workflows.ai_interviewer import AIInterviewerWorkflow
+
+        # Check if there's a paused workflow for this room
+        session_data = get_session_data(room_name) if room_name else None
+        workflow_paused = session_data and session_data.get("workflow_paused", False)
+        thread_id = session_data.get("workflow_thread_id") if session_data else None
+        waiting_for_meeting_ended = session_data and session_data.get(
+            "waiting_for_meeting_ended", False
+        )
+
+        # Update meeting status in session data
+        if session_data:
+            session_data["meeting_status"] = "ended"
+            session_data["meeting_end_time"] = end_ts
+            session_data["meeting_start_time"] = start_ts
+            save_session_data(room_name, session_data)
+            logger.info(f"📝 Updated meeting status to 'ended' for room {room_name}")
+
+        # Check what we're waiting for based on configuration flags
+        waiting_for_transcript_webhook = session_data and session_data.get(
+            "waiting_for_transcript_webhook", False
+        )
+
+        # Resume workflow if it was paused, OR if bot was enabled (waiting_for_meeting_ended)
+        if (workflow_paused and thread_id) or waiting_for_meeting_ended:
+            # If we have a thread_id, try to resume from checkpoint
+            if workflow_paused and thread_id:
+                logger.info(f"🔄 Resuming paused workflow with thread_id: {thread_id}")
+            elif waiting_for_meeting_ended:
+                logger.info("🤖 Bot was enabled - meeting ended, processing transcript")
+                if thread_id:
+                    logger.info(f"   Using thread_id: {thread_id} to resume workflow")
+                else:
+                    logger.info(
+                        "   No thread_id found - will process transcript directly"
+                    )
+
+            # Create workflow instance (must use same instance to access same checkpointer)
+            workflow = AIInterviewerWorkflow()
+
+            # Config with thread_id to resume from checkpoint (if available)
+            config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+
+            # Get the latest checkpoint state (only if we have a thread_id)
+            if config:
+                try:
+                    # Get the latest checkpoint for this thread
+                    checkpoints = list(workflow.checkpointer.list(config))
+                    if checkpoints:
+                        # Get the latest checkpoint
+                        latest_checkpoint_id = checkpoints[-1]["checkpoint_id"]
+                        checkpoint = workflow.checkpointer.get(
+                            config, {"checkpoint_id": latest_checkpoint_id}
+                        )
+
+                        if checkpoint and checkpoint.get("channel_values"):
+                            # Get current state from checkpoint
+                            current_state = checkpoint["channel_values"]
+
+                            if waiting_for_meeting_ended:
+                                # Bot was enabled - transcript is in DB, resume workflow now
+                                logger.info(
+                                    "🤖 Bot was enabled - using transcript from database"
+                                )
+                                logger.info(
+                                    "   ✅ Meeting ended - resuming workflow with DB transcript"
+                                )
+                                # Don't set transcript_id - process_transcript will use DB transcript
+                            elif waiting_for_transcript_webhook:
+                                # Frontend transcription enabled - need to wait for transcript.ready-to-download webhook
+                                logger.info(
+                                    "📥 Frontend transcription enabled - waiting for transcript.ready-to-download webhook"
+                                )
+                                logger.info(
+                                    "   ⏸️  Not resuming workflow yet - will resume when transcript webhook arrives"
+                                )
+                                return {
+                                    "status": "waiting_for_transcript",
+                                    "room_name": room_name,
+                                    "message": "Meeting ended - waiting for transcript.ready-to-download webhook",
+                                }
+                            else:
+                                # Neither flag set - shouldn't happen, but handle gracefully
+                                logger.warning(
+                                    "⚠️ No waiting flags set - checking for transcript in DB as fallback"
+                                )
+                                transcript_in_db = session_data and session_data.get(
+                                    "transcript_text"
+                                )
+                                if transcript_in_db:
+                                    logger.info(
+                                        "   ✅ Found transcript in DB - resuming workflow"
+                                    )
+                                    # Don't set transcript_id - process_transcript will use DB transcript
+                                else:
+                                    logger.warning(
+                                        "   ⚠️ No transcript in DB - waiting for transcript webhook"
+                                    )
+                                    return {
+                                        "status": "waiting_for_transcript",
+                                        "room_name": room_name,
+                                        "message": "Meeting ended - waiting for transcript.ready-to-download webhook",
+                                    }
+
+                            # Update state with meeting end info
+                            current_state["room_id"] = (
+                                meeting_id  # Use meeting_id as room_id
+                            )
+                            current_state["duration"] = duration
+                            current_state["meeting_ended"] = True
+
+                            # Resume the workflow from where it paused
+                            # LangGraph will continue from the interrupt point
+                            result = await workflow.graph.ainvoke(
+                                current_state, config=config
+                            )
+                        else:
+                            raise ValueError("Checkpoint state not found")
+                    else:
+                        raise ValueError("No checkpoints found for thread")
+                except Exception as e:
+                    # Fallback: if checkpoint retrieval fails, process transcript directly
+                    logger.warning(
+                        f"⚠️ Could not resume workflow from checkpoint: {e}, processing transcript directly"
+                    )
+                    # Fall through to process transcript directly
+            else:
+                # No thread_id - process transcript directly
+                logger.info(
+                    "   No thread_id available - processing transcript directly"
+                )
+                from flow.steps.interview.process_transcript import (
+                    ProcessTranscriptStep,
+                )
+
+                # Check what we're waiting for
+                waiting_for_meeting_ended = session_data and session_data.get(
+                    "waiting_for_meeting_ended", False
+                )
+                if waiting_for_meeting_ended:
+                    # Bot was enabled - transcript is in DB
+                    logger.info("🤖 Bot was enabled - using transcript from database")
+                    transcript_id = None  # Will be None if using DB transcript
+                else:
+                    # Frontend transcription - use transcript_id from webhook
+                    logger.info(
+                        "📥 Frontend transcription - using transcript_id from webhook"
+                    )
+
+                state = {
+                    "transcript_id": transcript_id,  # May be None if using DB transcript
+                    "room_id": meeting_id,  # Use meeting_id as room_id
+                    "room_name": room_name,
+                    "duration": duration,
+                    "meeting_ended": True,
+                }
+                step = ProcessTranscriptStep()
+                result = await step.execute(state)
+
+            # Check for errors
+            if result.get("error"):
+                return {
+                    "status": "error",
+                    "room_name": room_name,
+                    "error": result.get("error"),
+                }
+
+            # Return success response
+            candidate_name = result.get("candidate_info", {}).get("name", "Unknown")
+            return {
+                "status": "success",
+                "room_name": room_name,
+                "candidate_name": candidate_name,
+                "webhook_sent": result.get("webhook_sent", False),
+                "email_sent": result.get("email_sent", False),
+                "workflow_resumed": True,
+            }
+        else:
+            # No paused workflow - just log the meeting end
+            logger.info(
+                f"📝 Meeting ended for room {room_name} (no paused workflow to resume)"
+            )
+            return {
+                "status": "success",
+                "room_name": room_name,
+                "message": "Meeting ended - no workflow to resume",
+            }
+
+    except Exception as e:
+        logger.error(f"❌ Meeting ended webhook error: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "room_name": room_name,
+            "error": str(e),
+        }
+
+
+@app.post("/webhooks/meeting-ended")
+async def webhook_meeting_ended(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Handle 'meeting.ended' webhook from Daily.co.
+
+    **Simple Explanation:**
+    This endpoint is called when a Daily.co meeting ends. It:
+    1. Checks if there's a paused workflow waiting for the meeting to end
+    2. Checks if bot was enabled (transcript in DB) or not (needs Daily.co transcript)
+    3. Resumes the workflow to process the transcript
+
+    This is more robust than processing immediately because it ensures:
+    - Meeting is actually finished (not partial transcript)
+    - Complete transcript is available (especially when bot is enabled)
+
+    See: https://docs.daily.co/reference/rest-api/webhooks/events/meeting-ended
+    """
+    try:
+        result = await handle_meeting_ended_webhook(payload)
+        return result
+    except Exception as e:
+        logger.error(f"Error handling meeting.ended webhook: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

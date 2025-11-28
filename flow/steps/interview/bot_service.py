@@ -29,6 +29,8 @@ from pipecat.frames.frames import (
     LLMRunFrame,
     OutputImageRawFrame,
     SpriteFrame,
+    TranscriptionMessage,
+    TranscriptionUpdateFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -38,11 +40,146 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.processors.transcript_processor import TranscriptProcessor
+from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.transports.daily.transport import DailyParams, DailyTransport
 
 logger = logging.getLogger(__name__)
+
+
+class TranscriptHandler:
+    """
+    Handles real-time transcript processing and saves to database.
+
+    **Simple Explanation:**
+    This class processes transcripts from TranscriptProcessor, which captures:
+    1. User speech - via Deepgram STT in the pipeline
+    2. Bot speech - from TTS input text
+
+    It formats them with timestamps and role labels, then stores them in
+    the session data for the room.
+
+    Attributes:
+        messages: List of all processed transcript messages
+        room_name: Room name for saving to database
+        transcript_text: Accumulated transcript text
+    """
+
+    def __init__(self, room_name: str):
+        """
+        Initialize handler with database storage.
+
+        Args:
+            room_name: Room name for saving transcript to database
+        """
+        self.messages: list[TranscriptionMessage] = []
+        self.room_name: str = room_name
+        self.transcript_text: str = ""
+        logger.info(f"TranscriptHandler initialized for room: {room_name}")
+
+    def _format_transcript_line(
+        self, role: str, content: str, timestamp: Optional[str] = None
+    ) -> str:
+        """
+        Format a transcript message as a line of text.
+
+        **Simple Explanation:**
+        Converts transcript content into a formatted string with
+        timestamp and role (user/assistant).
+
+        Args:
+            role: Role of speaker (user/assistant)
+            content: The transcript text
+            timestamp: Optional timestamp string
+
+        Returns:
+            Formatted line string
+        """
+        timestamp_str = f"[{timestamp}] " if timestamp else ""
+        return f"{timestamp_str}{role}: {content}"
+
+    def add_daily_transcript(
+        self, participant_id: str, text: str, is_final: bool = False
+    ):
+        """
+        Legacy method for Daily.co transcription (not used with Deepgram STT).
+
+        **Simple Explanation:**
+        This method is kept for backward compatibility but is not used
+        when using Deepgram STT in the pipeline. All transcripts come
+        through on_transcript_update() from TranscriptProcessor.
+
+        Args:
+            participant_id: Participant ID from Daily.co
+            text: The transcribed text
+            is_final: Whether this is a final transcript (vs interim)
+        """
+        # This method is deprecated - transcripts come from TranscriptProcessor via on_transcript_update
+        logger.debug(
+            "add_daily_transcript called but not used (using Deepgram STT instead)"
+        )
+
+    async def _save_to_database(self):
+        """
+        Save accumulated transcript to database.
+
+        **Simple Explanation:**
+        Updates the session data in the database with the current
+        transcript text. This is called periodically as new messages
+        are received, so the transcript is always up-to-date.
+        """
+        try:
+            from flow.db import get_session_data, save_session_data
+
+            # Get existing session data
+            session_data = get_session_data(self.room_name) or {}
+
+            # Update transcript text
+            session_data["transcript_text"] = self.transcript_text
+
+            # Save back to database
+            save_session_data(self.room_name, session_data)
+            logger.debug(f"✅ Transcript saved to database for room: {self.room_name}")
+        except Exception as e:
+            logger.error(f"Error saving transcript to database: {e}", exc_info=True)
+
+    async def on_transcript_update(
+        self, processor: TranscriptProcessor, frame: TranscriptionUpdateFrame
+    ):
+        """
+        Handle new transcript messages from the TranscriptProcessor.
+
+        **Simple Explanation:**
+        This is called automatically when the TranscriptProcessor detects
+        new speech. It captures both:
+        - User speech: from Deepgram STT in the pipeline
+        - Bot speech: from TTS input text
+
+        Args:
+            processor: The TranscriptProcessor that emitted the update
+            frame: TranscriptionUpdateFrame containing new messages
+        """
+        logger.debug(
+            f"Received transcript update with {len(frame.messages)} new messages"
+        )
+
+        for msg in frame.messages:
+            # Capture both user and assistant messages from TranscriptProcessor
+            # User messages come from Deepgram STT, assistant messages from TTS
+            self.messages.append(msg)
+
+            # Format and add to transcript text
+            role_label = "user" if msg.role == "user" else "assistant"
+            line = self._format_transcript_line(role_label, msg.content, msg.timestamp)
+            self.transcript_text += line + "\n"
+
+            # Log the message
+            logger.info(f"Transcript ({role_label.capitalize()}): {line}")
+
+            # Save to database (updates session data with latest transcript)
+            await self._save_to_database()
 
 
 def load_bot_video_frames(
@@ -258,11 +395,24 @@ class BotService:
         )  # Lock to prevent race conditions when starting bots
 
     async def start_bot(
-        self, room_url: str, token: str, bot_config: Dict[str, Any]
+        self,
+        room_url: str,
+        token: str,
+        bot_config: Dict[str, Any],
+        room_name: Optional[str] = None,
     ) -> bool:
-        """Start a bot instance for the given room."""
+        """
+        Start a bot instance for the given room.
+
+        Args:
+            room_url: Full Daily.co room URL
+            token: Meeting token for authentication
+            bot_config: Bot configuration dictionary
+            room_name: Optional room name (extracted from URL if not provided)
+        """
         try:
-            room_name = room_url.split("/")[-1]
+            if not room_name:
+                room_name = room_url.split("/")[-1]
 
             # Use a lock to prevent race conditions - ensure only one bot starts per room
             async with self._start_lock:
@@ -276,7 +426,7 @@ class BotService:
 
                 # Create bot task
                 bot_task = asyncio.create_task(
-                    self._run_bot(room_url, token, bot_config)
+                    self._run_bot(room_url, token, bot_config, room_name)
                 )
 
                 # Track the bot BEFORE it starts running (so concurrent requests see it)
@@ -296,9 +446,25 @@ class BotService:
             return False
 
     async def _run_bot(
-        self, room_url: str, token: str, bot_config: Dict[str, Any]
+        self, room_url: str, token: str, bot_config: Dict[str, Any], room_name: str
     ) -> None:
-        """Run the Pipecat bot directly without subprocess."""
+        """
+        Run the Pipecat bot directly without subprocess.
+
+        **Simple Explanation:**
+        This sets up the bot's pipeline including:
+        - Deepgram STT (Speech-to-Text) for converting user speech to text
+        - LLM for generating responses
+        - Text-to-speech (TTS) for bot output
+        - TranscriptProcessor to capture both user and bot speech
+        - TranscriptHandler to save transcripts to database
+
+        Args:
+            room_url: Full Daily.co room URL
+            token: Meeting token for authentication
+            bot_config: Bot configuration dictionary
+            room_name: Room name for saving transcript to database
+        """
         try:
 
             system_message = bot_config.get(
@@ -331,7 +497,7 @@ class BotService:
                     video_out_enabled=True,  # Enable video output (static or animated based on config)
                     video_out_width=1280,  # Match reference implementation
                     video_out_height=720,  # Match reference implementation
-                    transcription_enabled=True,
+                    transcription_enabled=False,  # We use Deepgram STT instead of Daily.co transcription
                     vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
                     turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
                 ),
@@ -350,6 +516,13 @@ class BotService:
                 interruption_strategies=[MinWordsInterruptionStrategy(min_words=3)],
             )
 
+            # Use Deepgram for Speech-to-Text (STT) to transcribe user speech
+            # **Simple Explanation:**
+            # Deepgram converts the user's spoken words into text so the bot can understand them.
+            # This is different from Daily.co transcription - Deepgram STT is used in the pipeline
+            # to process audio in real-time and feed it to the LLM.
+            stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+
             messages = [
                 {
                     "role": "system",
@@ -360,21 +533,57 @@ class BotService:
             context = LLMContext(messages)
             context_aggregator = LLMContextAggregatorPair(context)
 
+            # Create transcript processor and handler
+            # **Simple Explanation:**
+            # We use TranscriptProcessor to capture both user and bot speech:
+            # 1. User speech: Captured via Deepgram STT in the pipeline
+            # 2. Bot speech: Captured from TTS input text (what the bot says)
+            # The TranscriptProcessor automatically formats these with timestamps and roles.
+            transcript = TranscriptProcessor()
+
+            # Create transcript handler that saves to database
+            # **Simple Explanation:**
+            # Instead of saving to files (which would get messy with many users),
+            # we save transcripts to the database. Each room's transcript is stored
+            # in the session data, which is encrypted and can be retrieved later.
+            transcript_handler = TranscriptHandler(room_name=room_name)
+            logger.info(
+                f"📝 Transcript will be saved to database for room: {room_name}\n"
+                "   - User speech: Deepgram STT (from pipeline)\n"
+                "   - Bot speech: TranscriptProcessor (from TTS input)"
+            )
+
             # Load video frames based on bot configuration
             quiet_frame, talking_frame = load_bot_video_frames(bot_config)
             ta = TalkingAnimation(quiet_frame=quiet_frame, talking_frame=talking_frame)
 
-            pipeline = Pipeline(
-                [
-                    transport.input(),
-                    context_aggregator.user(),
-                    llm,
-                    tts,
-                    ta,
-                    transport.output(),
-                    context_aggregator.assistant(),
-                ]
-            )
+            # Build pipeline with Deepgram STT and TranscriptProcessor
+            # **Simple Explanation:**
+            # The pipeline processes audio in this order:
+            # 1. transport.input() - Receives user audio from Daily
+            # 2. stt - Converts user speech to text using Deepgram
+            # 3. transcript.user() - Captures user speech for transcript (from STT)
+            # 4. context_aggregator.user() - Adds user message to conversation context
+            # 5. llm - Generates bot response
+            # 6. tts - Converts bot response to speech
+            # 7. ta - Updates bot animation (talking/quiet) - for video output
+            # 8. transport.output() - Sends bot audio/video to Daily
+            # 9. transcript.assistant() - Captures bot speech for transcript (MUST be after transport.output())
+            # 10. context_aggregator.assistant() - Adds bot response to conversation context
+            pipeline_components = [
+                transport.input(),  # Transport user input
+                stt,  # Deepgram STT - converts user speech to text
+                transcript.user(),  # User transcripts (from STT)
+                context_aggregator.user(),  # User responses
+                llm,  # LLM
+                tts,  # TTS
+                ta,  # Talking animation (for video output)
+                transport.output(),  # Transport bot output
+                transcript.assistant(),  # Assistant transcripts (after transport.output())
+                context_aggregator.assistant(),  # Assistant spoken responses
+            ]
+
+            pipeline = Pipeline(pipeline_components)
 
             task = PipelineTask(
                 pipeline,
@@ -397,14 +606,20 @@ class BotService:
                     f"🔵 Participant joined - ID: {participant_id}, Name: {participant_name}, Local: {is_local}"
                 )
 
+            # Register event handler for transcript updates from TranscriptProcessor
+            # **Simple Explanation:**
+            # When TranscriptProcessor detects new speech (user or bot),
+            # it emits a TranscriptionUpdateFrame. This handler saves it to file.
+            @transcript.event_handler("on_transcript_update")
+            async def on_transcript_update(processor, frame):
+                await transcript_handler.on_transcript_update(processor, frame)
+
             @transport.event_handler("on_first_participant_joined")
             async def on_first_participant_joined(transport, participant):
                 participant_id = participant.get("id", "unknown")
                 logger.info(f"🟢 FIRST participant joined: {participant_id}")
-                await transport.capture_participant_transcription(participant["id"])
-                logger.info(
-                    f"✅ Started capturing transcription for participant: {participant_id}"
-                )
+                # Note: We no longer use capture_participant_transcription here
+                # because TranscriptProcessor handles transcription automatically
                 # Kick off the conversation with a greeting first
                 # This tells the LLM to introduce itself before starting the interview
                 messages.append(
@@ -416,22 +631,6 @@ class BotService:
                 logger.info("📤 Queuing LLMRunFrame to start conversation...")
                 await task.queue_frames([LLMRunFrame()])
                 logger.info("✅ LLMRunFrame queued successfully")
-
-            @transport.event_handler("on_transcription_message")
-            async def on_transcription_message(transport, message):
-                """Log when transcription messages are received from users."""
-                participant_id = message.get("participant_id", "unknown")
-                text = message.get("text", "")
-                is_final = message.get("is_final", False)
-                logger.info(
-                    f"Transcription received - Participant: {participant_id}, "
-                    f"Text: '{text}', Final: {is_final}"
-                )
-
-            @transport.event_handler("on_transcription_error")
-            async def on_transcription_error(transport, error):
-                """Log transcription errors."""
-                logger.error(f"Transcription error: {error}")
 
             @transport.event_handler("on_participant_left")
             async def on_participant_left(transport, participant, reason):

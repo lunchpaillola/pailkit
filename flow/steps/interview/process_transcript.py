@@ -234,10 +234,15 @@ class ProcessTranscriptStep(InterviewStep):
         """
         Execute complete transcript processing pipeline.
 
+        **Simple Explanation:**
+        This step processes the transcript from either:
+        1. Database (when bot is enabled - transcript saved in real-time)
+        2. Daily.co API (when bot is NOT enabled - downloads VTT file)
+
         Args:
             state: Current workflow state containing:
-                - transcript_id: ID from Daily.co webhook
-                - room_name: Room name for session data
+                - transcript_id: ID from Daily.co webhook (optional if transcript_text in DB)
+                - room_name: Room name for session data (required)
                 - room_id: Room ID (optional)
                 - duration: Duration in seconds (optional)
 
@@ -248,47 +253,80 @@ class ProcessTranscriptStep(InterviewStep):
         logger.info("🎬 Starting transcript processing pipeline")
         logger.info("=" * 80)
 
-        # Validate required state
-        if not self.validate_state(state, ["transcript_id"]):
-            return self.set_error(state, "Missing required field: transcript_id")
+        # Validate required state - room_name is required, transcript_id is optional
+        if not self.validate_state(state, ["room_name"]):
+            return self.set_error(state, "Missing required field: room_name")
 
         transcript_id = state.get("transcript_id")
         room_name = state.get("room_name")
         room_id = state.get("room_id")
         duration = state.get("duration")
 
-        logger.info(f"📋 Transcript ID: {transcript_id}")
+        logger.info(f"📋 Transcript ID: {transcript_id or 'N/A (using DB transcript)'}")
         logger.info(f"🏠 Room Name: {room_name}")
 
         try:
-            # Step 1: Get transcript download link from Daily.co API
-            logger.info("\n📥 STEP 1: Getting transcript download link")
-            download_link = await get_transcript_download_link(transcript_id)
+            # Step 1: Check if transcript exists in database (bot-enabled case)
+            logger.info("\n📦 STEP 1: Checking database for transcript")
+            session_data = get_room_session_data(room_name) if room_name else None
+            transcript_text = None
 
-            if not download_link:
-                return self.set_error(state, "Failed to get transcript download link")
+            if session_data and session_data.get("transcript_text"):
+                # Transcript exists in DB (bot was enabled)
+                transcript_text = session_data.get("transcript_text")
+                logger.info(
+                    f"✅ Found transcript in database ({len(transcript_text)} chars)"
+                )
+                logger.info(
+                    "   🤖 Using bot-generated transcript (includes both user and bot)"
+                )
+            else:
+                # No transcript in DB - need to download from Daily.co
+                logger.info(
+                    "   📥 No transcript in database, will download from Daily.co"
+                )
 
-            logger.info("✅ Got download link")
+                if not transcript_id:
+                    return self.set_error(
+                        state,
+                        "Missing transcript_id and no transcript_text in database. "
+                        "Either bot must be enabled (saves to DB) or transcript_id must be provided.",
+                    )
 
-            # Step 2: Download VTT file
-            logger.info("\n📄 STEP 2: Downloading VTT file")
-            vtt_content = await download_transcript_vtt(download_link)
+                # Step 2: Get transcript download link from Daily.co API
+                logger.info(
+                    "\n📥 STEP 2: Getting transcript download link from Daily.co"
+                )
+                download_link = await get_transcript_download_link(transcript_id)
 
-            if not vtt_content:
-                return self.set_error(state, "Failed to download VTT file")
+                if not download_link:
+                    return self.set_error(
+                        state, "Failed to get transcript download link"
+                    )
 
-            logger.info(f"✅ Downloaded VTT ({len(vtt_content)} chars)")
+                logger.info("✅ Got download link")
 
-            # Step 3: Parse VTT to extract text
-            logger.info("\n🔤 STEP 3: Extracting text from VTT")
-            transcript_text = parse_vtt_to_text(vtt_content)
-            logger.info(f"✅ Extracted text ({len(transcript_text)} chars)")
+                # Step 3: Download VTT file
+                logger.info("\n📄 STEP 3: Downloading VTT file")
+                vtt_content = await download_transcript_vtt(download_link)
 
+                if not vtt_content:
+                    return self.set_error(state, "Failed to download VTT file")
+
+                logger.info(f"✅ Downloaded VTT ({len(vtt_content)} chars)")
+
+                # Step 4: Parse VTT to extract text
+                logger.info("\n🔤 STEP 4: Extracting text from VTT")
+                transcript_text = parse_vtt_to_text(vtt_content)
+                logger.info(f"✅ Extracted text ({len(transcript_text)} chars)")
+
+            # Store transcript in state
             state["interview_transcript"] = transcript_text
 
-            # Step 4: Retrieve session data from SQLite database
-            logger.info("\n📦 STEP 4: Retrieving session data from database")
-            session_data = get_room_session_data(room_name) if room_name else None
+            # Step 5: Retrieve session data from SQLite database (if not already retrieved)
+            logger.info("\n📦 STEP 5: Retrieving session data from database")
+            if not session_data:
+                session_data = get_room_session_data(room_name) if room_name else None
 
             if not session_data:
                 logger.warning("⚠️ No session data found")
@@ -308,8 +346,8 @@ class ProcessTranscriptStep(InterviewStep):
                 "email": session_data.get("candidate_email"),
             }
 
-            # Step 5: Generate AI summary
-            logger.info("\n🤖 STEP 5: Generating AI summary")
+            # Step 6: Generate AI summary
+            logger.info("\n🤖 STEP 6: Generating AI summary")
 
             # Add required fields for summary generation
             state["insights"] = {
@@ -334,8 +372,8 @@ class ProcessTranscriptStep(InterviewStep):
             candidate_summary = state.get("candidate_summary", "")
             logger.info(f"✅ Summary generated ({len(candidate_summary)} chars)")
 
-            # Step 6: Send results
-            logger.info("\n📤 STEP 6: Sending results")
+            # Step 7: Send results
+            logger.info("\n📤 STEP 7: Sending results")
 
             results_payload = {
                 "event": "interview_complete",

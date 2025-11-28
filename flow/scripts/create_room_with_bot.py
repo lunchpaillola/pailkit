@@ -49,7 +49,9 @@ async def main():
     context = {
         "meeting_config": {
             "autoRecord": False,
-            "autoTranscribe": True,
+            # When bot is enabled, TranscriptProcessor handles transcription automatically
+            # So we don't need client-side autoTranscribe (which only transcribes the user)
+            "autoTranscribe": False,
             "webhook_callback_url": test_webhook_site,  # Test webhook endpoint from .env
             "email_results_to": test_candidate_email,  # From .env file
             "interview_type": "technical",
@@ -112,9 +114,7 @@ async def main():
         elif not hosted_url:
             print("💡 NOTE: To use the localhost hosted page, start the server:")
             print("   cd flow && python main.py")
-            print(
-                f"   Then visit: http://localhost:8001/meet/{room_name}?autoRecord=true&autoTranscribe=true&bot=true\n"
-            )
+            print(f"   Then visit: http://localhost:8001/meet/{room_name}?bot=true\n")
 
         print(f"{'='*80}")
         print("🤖 Bot Status:")
