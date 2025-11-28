@@ -39,22 +39,29 @@ export interface Env {
  * Daily.co webhook event types
  * Based on: https://docs.daily.co/reference/rest-api/webhooks
  *
- * We only handle these two events:
+ * We handle these events:
  * - recording.ready-to-download: When a recording is ready to download
  * - transcript.ready-to-download: When a transcript is ready to download
+ * - meeting.ended: When a meeting ends (for bot-enabled workflows)
  */
 type DailyWebhookEvent =
   | "recording.ready-to-download"
-  | "transcript.ready-to-download";
+  | "transcript.ready-to-download"
+  | "meeting.ended";
 
 interface DailyWebhookPayload {
   version?: string;
   type: DailyWebhookEvent;
   id: string;
   payload: {
-    room_name?: string;
+    // Common fields
+    room_name?: string; // Used by recording and transcript webhooks
+    room?: string; // Used by meeting.ended (this is the room name)
     room_id?: string;
+    meeting_id?: string; // Used by meeting.ended
     recording_id?: string;
+    start_ts?: number; // Used by meeting.ended
+    end_ts?: number; // Used by meeting.ended
     [key: string]: unknown;
   };
   event_ts?: number;
@@ -103,20 +110,29 @@ async function getRoomNameFromTranscript(
  *
  * **Simple Explanation:**
  * Checks if the room name starts with "dev" to determine routing.
- * Both recording and transcript webhooks now include room_name directly
- * in the payload, so we can check it without making API calls.
+ * Different webhook types use different field names:
+ * - recording.ready-to-download and transcript.ready-to-download use "room_name"
+ * - meeting.ended uses "room" (which is the room name)
  */
 function isDevEnvironment(payload: DailyWebhookPayload): boolean {
-  // Both recording and transcript webhooks include room_name in the payload
-  const roomName = payload.payload?.room_name;
+  let roomName: string | undefined;
+
+  // Different webhook types use different field names for the room
+  if (payload.type === "meeting.ended") {
+    // meeting.ended uses "room" field (which is the room name)
+    roomName = payload.payload?.room as string | undefined;
+  } else {
+    // recording and transcript webhooks use "room_name"
+    roomName = payload.payload?.room_name as string | undefined;
+  }
 
   if (roomName) {
     return roomName.toLowerCase().startsWith("dev");
   }
 
-  // If room_name is missing, log a warning and default to production
+  // If room name is missing, log a warning and default to production
   console.warn(
-    `No room_name found in ${payload.type} webhook payload. Defaulting to production.`
+    `No room name found in ${payload.type} webhook payload. Defaulting to production.`
   );
   return false;
 }
@@ -288,6 +304,7 @@ export default {
         const supportedEvents = [
           "recording.ready-to-download",
           "transcript.ready-to-download",
+          "meeting.ended",
         ];
 
         if (!supportedEvents.includes(payload.type)) {

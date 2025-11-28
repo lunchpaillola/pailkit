@@ -40,9 +40,11 @@ class JoinBotStep:
                     return state
 
                 # Start the actual bot service
+                # Note: When bot is enabled, TranscriptProcessor in bot_service.py
+                # will handle transcription of both user and bot automatically
                 logger.info("📞 Calling bot_service.start_bot()...")
                 success = await bot_service.start_bot(
-                    room_url, meeting_token, bot_config
+                    room_url, meeting_token, bot_config, room_name
                 )
                 logger.info(f"   bot_service.start_bot() returned: {success}")
 

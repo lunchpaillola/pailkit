@@ -377,6 +377,26 @@ class CreateRoomStep(InterviewStep):
                 or ""
             )
 
+            # Check if bot is enabled in meeting_config
+            bot_enabled = False
+            if "bot" in interview_config and isinstance(interview_config["bot"], dict):
+                bot_enabled = interview_config["bot"].get("enabled", False)
+            elif "bot_enabled" in interview_config:
+                bot_enabled = interview_config.get("bot_enabled", False)
+
+            # Check if frontend transcription is enabled (autoTranscribe)
+            auto_transcribe = interview_config.get(
+                "autoTranscribe", interview_config.get("auto_transcribe", False)
+            )
+
+            # Determine what webhook we're waiting for based on configuration
+            # **Simple Explanation:**
+            # - If bot is enabled: Bot saves transcript to DB, so we wait for meeting.ended
+            # - If frontend transcription is enabled: Daily.co transcribes, so we wait for transcript.ready-to-download
+            # - These flags tell the webhook handlers what to do
+            waiting_for_meeting_ended = bot_enabled
+            waiting_for_transcript_webhook = auto_transcribe and not bot_enabled
+
             session_data = {
                 "webhook_callback_url": interview_config.get("webhook_callback_url"),
                 "email_results_to": interview_config.get("email_results_to"),
@@ -387,12 +407,28 @@ class CreateRoomStep(InterviewStep):
                 "session_id": state.get("session_id"),
                 "interview_type": interview_config.get("interview_type"),
                 "difficulty_level": interview_config.get("difficulty_level"),
+                "bot_enabled": bot_enabled,  # Track if bot is enabled
+                "waiting_for_meeting_ended": waiting_for_meeting_ended,  # Bot enabled → wait for meeting.ended
+                "waiting_for_transcript_webhook": waiting_for_transcript_webhook,  # Frontend transcription → wait for transcript webhook
+                "meeting_status": "in_progress",  # Track meeting status
             }
 
             # Remove None values and empty strings to keep session data clean
-            session_data = {
-                k: v for k, v in session_data.items() if v is not None and v != ""
-            }
+            # But keep boolean flags and meeting_status even if False/empty string
+            filtered_data = {}
+            for k, v in session_data.items():
+                if v is not None:
+                    # Keep boolean flags and meeting_status even if False/empty string
+                    if k in [
+                        "bot_enabled",
+                        "waiting_for_meeting_ended",
+                        "waiting_for_transcript_webhook",
+                        "meeting_status",
+                    ]:
+                        filtered_data[k] = v
+                    elif v != "":
+                        filtered_data[k] = v
+            session_data = filtered_data
 
             # Save session data to SQLite database
             # **Simple Explanation:** We save the session data to our database using the room_name
