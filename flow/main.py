@@ -265,6 +265,102 @@ async def favicon() -> Response:
     return Response(status_code=204)  # No Content
 
 
+@app.get("/test-embed", response_class=HTMLResponse)
+async def test_embed() -> HTMLResponse:
+    """
+    Serve a test page for the embeddable widget.
+
+    **Simple Explanation:**
+    This endpoint serves a simple test page where you can test the embeddable
+    widget by entering a room name. Useful for development and testing.
+    """
+    try:
+        test_file = Path(__file__).parent / "hosting" / "test-embed.html"
+        if not test_file.exists():
+            raise HTTPException(status_code=404, detail="Test page not found")
+        with open(test_file, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except Exception as e:
+        logger.error(f"Error serving test page: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to serve test page: {str(e)}"
+        )
+
+
+@app.get("/embed.js")
+async def serve_embed_script() -> Response:
+    """
+    Serve the embeddable JavaScript widget for video meetings.
+
+    **Simple Explanation:**
+    This endpoint serves a JavaScript file that creates a video meeting widget
+    that can be embedded in any website. The DAILY_DOMAIN is automatically
+    injected into the script so users don't need to provide it.
+
+    **Usage:**
+    ```html
+    <div id="meeting-container" style="width: 100%; height: 600px;"></div>
+    <script src="https://your-domain.com/embed.js"></script>
+    <script>
+      PailFlow.init({
+        container: '#meeting-container',
+        roomName: 'my-room-123'
+      });
+    </script>
+    ```
+
+    **Note:** The Daily.co SDK is automatically loaded by the embed script, so you don't need to include it separately.
+
+    **Configuration Options:**
+    - `container` (required): CSS selector or DOM element for the widget
+    - `roomName` (required): Daily.co room name
+    - `token` (optional): Meeting token for authenticated rooms
+    - `accentColor` (optional): Accent color hex code (default: '#1f2de6')
+    - `logoText` (optional): Logo text (default: 'PailFlow')
+    - `showHeader` (optional): Show header (default: true)
+    - `showBrandLine` (optional): Show top brand line (default: true)
+    - `autoRecord` (optional): Auto-start recording (default: false)
+    - `autoTranscribe` (optional): Auto-start transcription (default: false)
+    - `onLoaded`, `onJoined`, `onLeft`, `onError`, etc.: Event callbacks
+    """
+    try:
+        # Get the path to the JavaScript file
+        hosting_dir = Path(__file__).parent / "hosting"
+        js_file = hosting_dir / "embed.js"
+
+        if not js_file.exists():
+            logger.error(f"Embed script not found: {js_file}")
+            raise HTTPException(status_code=500, detail="Embed script not found")
+
+        # Read the JavaScript file
+        with open(js_file, "r", encoding="utf-8") as f:
+            js_content = f.read()
+
+        # Inject DAILY_DOMAIN into the JavaScript file
+        daily_domain = os.getenv("DAILY_DOMAIN", "https://your-domain.daily.co").rstrip(
+            "/"
+        )
+        js_content = js_content.replace(
+            "const DAILY_DOMAIN = null; // Will be replaced by server",
+            f'const DAILY_DOMAIN = "{daily_domain}";',
+        )
+
+        # Return as JavaScript with proper content type
+        return Response(
+            content=js_content,
+            media_type="application/javascript",
+            headers={
+                "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error serving embed script: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to serve embed script: {str(e)}"
+        )
+
+
 @app.get("/meet/{room_name}", response_class=HTMLResponse)
 async def serve_meeting_page(
     room_name: str,
