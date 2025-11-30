@@ -22,7 +22,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from dotenv import load_dotenv  # noqa: E402
-from fastapi import FastAPI, HTTPException, Query  # noqa: E402
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from mcp.server import FastMCP  # noqa: E402
@@ -1022,6 +1022,7 @@ async def webhook_transcript_ready_to_download(
 
 async def handle_meeting_ended_webhook(
     payload: dict[str, Any],
+    background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
     """
     Handle 'meeting.ended' webhook event from Daily.co.
@@ -1058,6 +1059,38 @@ async def handle_meeting_ended_webhook(
 
         # Check if there's a paused workflow for this room
         session_data = get_session_data(room_name) if room_name else None
+
+        # CRITICAL: Check if transcript was already processed or is currently processing
+        # This prevents multiple webhooks from all trying to process the same transcript
+        transcript_already_processed = session_data and session_data.get(
+            "transcript_processed", False
+        )
+        transcript_processing = session_data and session_data.get(
+            "transcript_processing", False
+        )
+
+        if transcript_already_processed:
+            logger.info(
+                f"✅ Transcript already processed for room {room_name} - returning 200 OK immediately"
+            )
+            return {
+                "status": "success",
+                "room_name": room_name,
+                "message": "Transcript already processed",
+                "already_processed": True,
+            }
+
+        if transcript_processing:
+            logger.info(
+                f"⏳ Transcript is currently processing for room {room_name} - returning 200 OK immediately"
+            )
+            return {
+                "status": "success",
+                "room_name": room_name,
+                "message": "Transcript is currently being processed",
+                "already_processing": True,
+            }
+
         workflow_paused = session_data and session_data.get("workflow_paused", False)
         thread_id = session_data.get("workflow_thread_id") if session_data else None
         waiting_for_meeting_ended = session_data and session_data.get(
@@ -1076,6 +1109,9 @@ async def handle_meeting_ended_webhook(
         waiting_for_transcript_webhook = session_data and session_data.get(
             "waiting_for_transcript_webhook", False
         )
+
+        # Check if this is a OneTimeMeetingWorkflow (no checkpoints) or AIInterviewerWorkflow (with checkpoints)
+        # OneTimeMeetingWorkflow rooms won't have workflow_paused or thread_id, but will have waiting_for_meeting_ended
 
         # Resume workflow if it was paused, OR if bot was enabled (waiting_for_meeting_ended)
         if (workflow_paused and thread_id) or waiting_for_meeting_ended:
@@ -1165,11 +1201,30 @@ async def handle_meeting_ended_webhook(
                             current_state["duration"] = duration
                             current_state["meeting_ended"] = True
 
-                            # Resume the workflow from where it paused
+                            # Mark as processing immediately to prevent duplicate webhooks
+                            if session_data and room_name:
+                                session_data["transcript_processing"] = True
+                                save_session_data(room_name, session_data)
+
+                            # Resume the workflow from where it paused in background
                             # LangGraph will continue from the interrupt point
-                            result = await workflow.graph.ainvoke(
-                                current_state, config=config
+                            async def resume_workflow():
+                                await workflow.graph.ainvoke(
+                                    current_state, config=config
+                                )
+
+                            background_tasks.add_task(resume_workflow)
+
+                            # Return 200 OK immediately so webhook doesn't timeout
+                            # Processing will happen in background
+                            logger.info(
+                                "🚀 Added workflow resume to background tasks - returning 200 OK immediately"
                             )
+                            return {
+                                "status": "success",
+                                "room_name": room_name,
+                                "message": "Workflow resumed in background",
+                            }
                         else:
                             raise ValueError("Checkpoint state not found")
                     else:
@@ -1181,7 +1236,7 @@ async def handle_meeting_ended_webhook(
                     )
                     # Fall through to process transcript directly
             else:
-                # No thread_id - process transcript directly
+                # No thread_id - process transcript directly (OneTimeMeetingWorkflow or direct processing)
                 logger.info(
                     "   No thread_id available - processing transcript directly"
                 )
@@ -1210,27 +1265,26 @@ async def handle_meeting_ended_webhook(
                     "duration": duration,
                     "meeting_ended": True,
                 }
+
+                # Mark as processing immediately to prevent duplicate webhooks
+                if session_data and room_name:
+                    session_data["transcript_processing"] = True
+                    save_session_data(room_name, session_data)
+
+                # Add processing to background tasks - return 200 OK immediately
                 step = ProcessTranscriptStep()
-                result = await step.execute(state)
+                background_tasks.add_task(step.execute, state)
 
-            # Check for errors
-            if result.get("error"):
+                # Return 200 OK immediately so webhook doesn't timeout
+                # Processing will happen in background
+                logger.info(
+                    "🚀 Added transcript processing to background tasks - returning 200 OK immediately"
+                )
                 return {
-                    "status": "error",
+                    "status": "success",
                     "room_name": room_name,
-                    "error": result.get("error"),
+                    "message": "Transcript processing started in background",
                 }
-
-            # Return success response
-            candidate_name = result.get("candidate_info", {}).get("name", "Unknown")
-            return {
-                "status": "success",
-                "room_name": room_name,
-                "candidate_name": candidate_name,
-                "webhook_sent": result.get("webhook_sent", False),
-                "email_sent": result.get("email_sent", False),
-                "workflow_resumed": True,
-            }
         else:
             # No paused workflow - just log the meeting end
             logger.info(
@@ -1254,24 +1308,32 @@ async def handle_meeting_ended_webhook(
 @app.post("/webhooks/meeting-ended")
 async def webhook_meeting_ended(
     payload: dict[str, Any],
+    background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
     """
     Handle 'meeting.ended' webhook from Daily.co.
 
+    **Important:** This is a webhook endpoint that returns 200 OK immediately
+    and processes in the background. This prevents timeouts from Daily.co.
+    Unlike regular API endpoints, webhooks don't validate input strictly -
+    they're fire-and-forget notifications from Daily.co.
+
     **Simple Explanation:**
     This endpoint is called when a Daily.co meeting ends. It:
-    1. Checks if there's a paused workflow waiting for the meeting to end
-    2. Checks if bot was enabled (transcript in DB) or not (needs Daily.co transcript)
-    3. Resumes the workflow to process the transcript
+    1. Checks if transcript was already processed (prevents duplicates)
+    2. Checks if there's a paused workflow waiting for the meeting to end
+    3. Checks if bot was enabled (transcript in DB) or not (needs Daily.co transcript)
+    4. Returns 200 OK immediately and processes transcript in background
 
     This is more robust than processing immediately because it ensures:
     - Meeting is actually finished (not partial transcript)
     - Complete transcript is available (especially when bot is enabled)
+    - No timeouts from Daily.co webhook retries
 
     See: https://docs.daily.co/reference/rest-api/webhooks/events/meeting-ended
     """
     try:
-        result = await handle_meeting_ended_webhook(payload)
+        result = await handle_meeting_ended_webhook(payload, background_tasks)
         return result
     except Exception as e:
         logger.error(f"Error handling meeting.ended webhook: {e}", exc_info=True)

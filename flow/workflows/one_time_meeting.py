@@ -37,6 +37,9 @@ class OneTimeMeetingState(TypedDict, total=False):
     session_data_to_set: Dict[str, Any] | None  # Session data to set on join
     processing_status: str
     error: str | None
+    participant_info: Dict[
+        str, Any
+    ]  # Participant information (name, email, role, etc.)
 
 
 def create_step_wrapper(step_instance: Any):
@@ -84,7 +87,8 @@ class OneTimeMeetingWorkflow:
 
             meeting_config = context.get("meeting_config", {})
             provider_keys = context.get("provider_keys", {})
-            candidate_info = context.get("candidate_info", {})
+            # Get participant_info from context
+            participant_info = context.get("participant_info", {})
             base_url = os.getenv("MEET_BASE_URL", "http://localhost:8001")
             daily_domain = os.getenv(
                 "DAILY_DOMAIN", "https://your-domain.daily.co"
@@ -108,9 +112,9 @@ class OneTimeMeetingWorkflow:
                 "meet_base_url": base_url,
             }
 
-            # Add candidate_info to state if provided (not in TypedDict but allowed)
-            if candidate_info:
-                initial_state["candidate_info"] = candidate_info  # type: ignore
+            # Add participant_info to state if provided
+            if participant_info:
+                initial_state["participant_info"] = participant_info
 
             result = await self.graph.ainvoke(initial_state)
 

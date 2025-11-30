@@ -365,10 +365,10 @@ class CreateRoomStep(InterviewStep):
             logger.info(f"✅ Video room created: {room_url}")
 
             # Save session data to SQLite database
-            # **Simple Explanation:** We store session data (candidate info, webhook URLs, etc.)
+            # **Simple Explanation:** We store session data (participant info, webhook URLs, etc.)
             # in our local SQLite database. This data will be retrieved later by the webhook
             # handler when the transcript is ready, so it knows where to send results.
-            candidate_info = state.get("candidate_info", {})
+            participant_info = state.get("participant_info", {})
 
             # Get interviewer_context from state (if configure_agent already ran) or from interview_config
             interviewer_context = (
@@ -401,12 +401,34 @@ class CreateRoomStep(InterviewStep):
             analysis_prompt = interview_config.get("analysis_prompt")
             summary_format_prompt = interview_config.get("summary_format_prompt")
 
+            # Extract name - check multiple possible keys
+            participant_name = (
+                participant_info.get("name")
+                or participant_info.get("participant_name")
+                or None
+            )
+            # Extract role/position - check multiple possible keys
+            position = (
+                participant_info.get("role") or participant_info.get("position") or None
+            )
+
+            # If we didn't find the data, try to get it from meeting_config as fallback
+            if not participant_name or not position:
+                meeting_config = state.get("meeting_config", {})
+                if not participant_name:
+                    participant_name = meeting_config.get("participant_name")
+                if not position:
+                    position = meeting_config.get("role") or meeting_config.get(
+                        "position"
+                    )
+
             session_data = {
                 "webhook_callback_url": interview_config.get("webhook_callback_url"),
                 "email_results_to": interview_config.get("email_results_to"),
-                "candidate_name": candidate_info.get("name"),
-                "candidate_email": candidate_info.get("email"),
-                "position": candidate_info.get("role"),
+                "candidate_name": participant_name
+                or "Unknown",  # Keep as candidate_name for DB compatibility
+                "candidate_email": participant_info.get("email"),
+                "position": position or "Unknown",
                 "interviewer_context": interviewer_context,
                 "session_id": state.get("session_id"),
                 "interview_type": interview_config.get(

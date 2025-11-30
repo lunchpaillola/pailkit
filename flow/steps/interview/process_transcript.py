@@ -429,6 +429,20 @@ class ProcessTranscriptStep(InterviewStep):
                 logger.warning("⚠️ No session data found")
                 session_data = {}
 
+            # Check if transcript was already processed to prevent duplicate processing
+            transcript_already_processed = session_data.get(
+                "transcript_processed", False
+            )
+            if transcript_already_processed:
+                logger.warning(
+                    "⚠️ Transcript was already processed for this room - skipping duplicate processing"
+                )
+                logger.info(
+                    "   If you need to reprocess, clear the transcript_processed flag in session_data"
+                )
+                state = self.update_status(state, "already_completed")
+                return state
+
             webhook_callback_url = session_data.get("webhook_callback_url")
             email_results_to = session_data.get("email_results_to")
             candidate_name = session_data.get("candidate_name", "Unknown")
@@ -440,14 +454,21 @@ class ProcessTranscriptStep(InterviewStep):
             logger.info(f"   💼 Position: {position}")
             logger.info(f"   📋 Interview Type: {interview_type}")
 
-            # Support both candidate_info (old) and participant_info (new)
+            # Check if we already sent email to prevent duplicates
+            email_already_sent = session_data.get("email_sent", False)
+            if email_already_sent:
+                logger.warning(
+                    "⚠️ Email was already sent for this room - skipping duplicate send"
+                )
+
+            # Build participant_info from session_data
+            # Note: session_data uses "candidate_name" for backwards compatibility with existing DB records
             participant_info = {
                 "name": candidate_name,
                 "role": position,
                 "email": session_data.get("candidate_email"),
             }
-            state["candidate_info"] = participant_info  # For backwards compatibility
-            state["participant_info"] = participant_info  # New generic field
+            state["participant_info"] = participant_info
 
             # Store interview metadata for summary
             state["interview_type"] = interview_type
@@ -541,15 +562,39 @@ class ProcessTranscriptStep(InterviewStep):
 
             state["webhook_sent"] = webhook_sent
 
-            # Send email
+            # Send email (only if not already sent)
             email_sent = False
-            if email_results_to:
+            if email_results_to and not email_already_sent:
                 logger.info(f"📧 Sending email to: {email_results_to}")
+                logger.info(
+                    f"   Subject: Interview Complete: {candidate_name} - {position}"
+                )
                 subject = f"Interview Complete: {candidate_name} - {position}"
                 body = f"{candidate_summary}\n\nFull Transcript:\n{transcript_text}"
                 email_sent = await send_email(email_results_to, subject, body)
 
+                # Mark as sent in session_data to prevent duplicates
+                if email_sent and room_name:
+                    from flow.db import get_session_data, save_session_data
+
+                    current_session = get_session_data(room_name) or {}
+                    current_session["email_sent"] = True
+                    save_session_data(room_name, current_session)
+            elif email_already_sent:
+                logger.info("📧 Email already sent - skipping duplicate")
+            elif not email_results_to:
+                logger.info("📧 No email address configured - skipping email")
+
             state["email_sent"] = email_sent
+
+            # Mark transcript as processed to prevent duplicate processing
+            if room_name:
+                from flow.db import get_session_data, save_session_data
+
+                current_session = get_session_data(room_name) or {}
+                current_session["transcript_processed"] = True
+                save_session_data(room_name, current_session)
+                logger.info("✅ Marked transcript as processed to prevent duplicates")
 
             state = self.update_status(state, "completed")
 

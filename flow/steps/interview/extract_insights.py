@@ -160,7 +160,7 @@ Return ONLY valid JSON, no additional text."""
                         "role": "system",
                         "content": "You are an expert interview evaluator. Always respond with valid JSON only.",
                     },
-                    {"role": "user", "content": analysis_prompt},
+                    {"role": "user", "content": final_prompt},
                 ],
                 temperature=0.3,  # Lower temperature for more consistent analysis
                 response_format={"type": "json_object"},
@@ -243,12 +243,14 @@ Return ONLY valid JSON, no additional text."""
                     )
                     validated["question_assessments"].append(matching)
                 else:
+                    # Only create placeholder if we truly don't have an assessment
+                    # Otherwise, try to extract from existing assessments
                     validated["question_assessments"].append(
                         {
                             "question": qa.get("question", ""),
                             "answer": qa.get("answer", ""),
                             "score": 0.0,
-                            "notes": "Assessment pending",
+                            "notes": "",  # Empty notes instead of "Assessment pending"
                         }
                     )
 

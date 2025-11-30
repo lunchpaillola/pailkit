@@ -3,9 +3,16 @@
 # Licensed under the Apache License, Version 2.0
 
 """
-Create a room with bot enabled for manual testing.
+Create a room with bot enabled for manual testing and demos.
 
 This script creates a real room, enables the bot, and waits so you can join.
+Perfect for end-to-end testing and demos!
+
+**Demo Features:**
+- Pre-configured with realistic candidate information (Alex Johnson, Senior Software Engineer)
+- AI-powered summary generation using custom prompts
+- Proper participant name and role that will appear in summaries (not "Unknown")
+- Clean summary format without "Assessment pending" messages
 
 Run with: python flow/scripts/create_room_with_bot.py
 
@@ -115,13 +122,31 @@ Be constructive and specific. Focus on what was actually said in the transcript.
 
     # Summary Format Prompt: Defines how to format the results
     # **Simple Explanation:** This describes how you want the final summary/email to look.
-    # (Currently used as documentation - AI formatting will be added later)
-    summary_format_prompt = """Format as a professional interview scorecard with:
-- Overall score and assessment
-- Competency scores with visual indicators
-- Strengths and areas for improvement
-- Detailed Q&A with individual scores
-- Full transcript reference"""
+    # The AI will use this prompt to generate a natural, less structured summary.
+    summary_format_prompt = """Create a conversational summary of this interview.
+
+Include:
+- Participant information ({participant_name}, {role}, {conversation_type}, {conversation_date})
+- Overall assessment and score
+- Key competencies demonstrated (with scores if available)
+- Main strengths and areas for improvement
+- Summary of the Q&A discussion (only include scores if they are meaningful and non-zero)
+- Brief reference to the full transcript
+
+Write in a natural, professional tone. Focus on insights and observations rather than rigid formatting.
+Do not include placeholder text like "Assessment pending" or show scores of 0/10 unless they are meaningful.
+Make it readable and useful for understanding the candidate's performance."""
+
+    # **Simple Explanation:** We're setting up the context that will be passed to the workflow.
+    # This includes meeting_config (for room settings) and participant_info (for candidate data).
+    # The participant_info will be used to populate the email subject and summary.
+    participant_info = {
+        "name": "Alex Johnson",  # This will appear in the summary
+        "email": test_candidate_email,  # From .env file
+        "role": "Senior Software Engineer",  # This will appear in the summary
+        "position": "Senior Software Engineer",  # Alternative key name (for compatibility)
+        "company": "TechCorp Inc.",  # Optional: company they're applying from
+    }
 
     context = {
         "meeting_config": {
@@ -144,12 +169,14 @@ Be constructive and specific. Focus on what was actually said in the transcript.
             "analysis_prompt": analysis_prompt,
             # Summary format prompt - controls how results are formatted
             "summary_format_prompt": summary_format_prompt,
+            # Also include participant info in meeting_config for easier access
+            "participant_name": participant_info["name"],
+            "role": participant_info["role"],
         },
-        "participant_info": {
-            "name": "Test Candidate",
-            "email": test_candidate_email,  # From .env file
-            "role": "Senior Software Engineer",  # This becomes "position" in the summary
-        },
+        # **Simple Explanation:** This is the candidate/participant information that will
+        # appear in the summary. Make sure to include name and role so they show up
+        # properly instead of "Unknown".
+        "participant_info": participant_info,  # Use the participant_info we defined above
         "session_id": f"test-session-{int(asyncio.get_event_loop().time())}",  # Unique session ID
         "provider_keys": {
             "room_provider_key": daily_api_key,
@@ -162,6 +189,16 @@ Be constructive and specific. Focus on what was actually said in the transcript.
     print(f"\n{'='*80}")
     print("🚀 Creating room with bot enabled...")
     print(f"{'='*80}\n")
+
+    # Show demo candidate info
+    participant_info = context.get("participant_info", {})
+    print("👤 Demo Candidate Information:")
+    print(f"   Name: {participant_info.get('name', 'N/A')}")
+    print(f"   Role: {participant_info.get('role', 'N/A')}")
+    print(f"   Email: {participant_info.get('email', 'N/A')}")
+    print(
+        f"   Interview Type: {context.get('meeting_config', {}).get('interview_type', 'N/A')}\n"
+    )
 
     result = await workflow.execute_async(context)
 
