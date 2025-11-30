@@ -397,6 +397,10 @@ class CreateRoomStep(InterviewStep):
             waiting_for_meeting_ended = bot_enabled
             waiting_for_transcript_webhook = auto_transcribe and not bot_enabled
 
+            # Get prompts from meeting_config
+            analysis_prompt = interview_config.get("analysis_prompt")
+            summary_format_prompt = interview_config.get("summary_format_prompt")
+
             session_data = {
                 "webhook_callback_url": interview_config.get("webhook_callback_url"),
                 "email_results_to": interview_config.get("email_results_to"),
@@ -405,8 +409,12 @@ class CreateRoomStep(InterviewStep):
                 "position": candidate_info.get("role"),
                 "interviewer_context": interviewer_context,
                 "session_id": state.get("session_id"),
-                "interview_type": interview_config.get("interview_type"),
+                "interview_type": interview_config.get(
+                    "interview_type", "Conversation"
+                ),
                 "difficulty_level": interview_config.get("difficulty_level"),
+                "analysis_prompt": analysis_prompt,  # Save analysis prompt for transcript processing
+                "summary_format_prompt": summary_format_prompt,  # Save summary format prompt
                 "bot_enabled": bot_enabled,  # Track if bot is enabled
                 "waiting_for_meeting_ended": waiting_for_meeting_ended,  # Bot enabled → wait for meeting.ended
                 "waiting_for_transcript_webhook": waiting_for_transcript_webhook,  # Frontend transcription → wait for transcript webhook
@@ -414,16 +422,18 @@ class CreateRoomStep(InterviewStep):
             }
 
             # Remove None values and empty strings to keep session data clean
-            # But keep boolean flags and meeting_status even if False/empty string
+            # But keep boolean flags, meeting_status, and analysis_config even if False/empty string/dict
             filtered_data = {}
             for k, v in session_data.items():
                 if v is not None:
-                    # Keep boolean flags and meeting_status even if False/empty string
+                    # Keep boolean flags, meeting_status, and analysis_config even if False/empty string/dict
                     if k in [
                         "bot_enabled",
                         "waiting_for_meeting_ended",
                         "waiting_for_transcript_webhook",
                         "meeting_status",
+                        "analysis_prompt",  # Keep prompts even if None
+                        "summary_format_prompt",  # Keep prompts even if None
                     ]:
                         filtered_data[k] = v
                     elif v != "":

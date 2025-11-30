@@ -467,23 +467,28 @@ class BotService:
         """
         try:
 
-            system_message = bot_config.get(
-                "system_message",
-                "You are an AI interview host conducting a structured behavioral interview. "
-                "Your output will be spoken aloud, so keep language natural and easy to say. "
-                "Do not use special characters. Ask one question at a time. "
-                "After asking a question, wait for the candidate's response before continuing. "
-                "When the candidate finishes speaking, acknowledge their answer briefly, offer light positive reinforcement, and then move on. "
-                "Keep your tone warm, steady, and professional. "
-                "Follow these questions in order and do not add new ones unless the candidate asks for clarification.\n\n"
-                "Questions:\n\n"
-                "Tell me about a time you had to solve a difficult problem. What was the situation and what did you do.\n\n"
-                "Describe a moment when you made a mistake at work. How did you handle it.\n\n"
-                "Give an example of a time you had to work with a challenging teammate or stakeholder. What did you do to make it successful.\n\n"
-                "Tell me about a goal you set that you had to work hard to achieve. How did you approach it.\n\n"
-                "Describe a situation where you had to make a decision with incomplete information. How did you think through it.\n\n"
-                "Guide the interview smoothly, keep the pacing natural, and help the candidate stay on track.",
+            # Get bot prompt from config - this defines what the bot should do/say
+            # If not provided, use a generic default
+            bot_prompt = bot_config.get(
+                "bot_prompt",
+                bot_config.get(
+                    "system_message",  # Fallback to old field name for backwards compatibility
+                    "You are a helpful AI assistant. "
+                    "Your output will be spoken aloud, so keep language natural and easy to say. "
+                    "Do not use special characters. "
+                    "Have a natural conversation with the participant.",
+                ),
             )
+
+            # Add voice-specific instructions to any prompt
+            system_message = f"""{bot_prompt}
+
+IMPORTANT: Your output will be spoken aloud, so:
+- Keep language natural and conversational
+- Do not use special characters, markdown, or formatting
+- Speak in complete sentences
+- Wait for the participant to finish speaking before responding
+- Keep responses concise and clear"""
 
             bot_name = bot_config.get("name", "PailBot")
 

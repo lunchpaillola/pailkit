@@ -9,8 +9,20 @@ This script creates a real room, enables the bot, and waits so you can join.
 
 Run with: python flow/scripts/create_room_with_bot.py
 
-Note: This requires valid API keys in your .env file:
-- DAILY_API_KEY
+Required environment variables in your .env file:
+- DAILY_API_KEY: Daily.co API key for room creation
+- OPENAI_API_KEY: OpenAI API key for AI-powered transcript analysis (optional but recommended)
+- DEEPGRAM_API_KEY: Deepgram API key for speech-to-text transcription
+- RESEND_API_KEY: Resend API key for sending email results (optional)
+- RESEND_EMAIL_DOMAIN: Verified email domain in Resend (optional, required if using email)
+- ENCRYPTION_KEY: Encryption key for database (required, at least 32 characters)
+
+Optional environment variables:
+- TEST_CANDIDATE_EMAIL: Email to send results to (defaults to test@example.com)
+- TEST_WEBHOOK_SITE: Webhook URL for testing (defaults to webhook.site URL)
+- MEET_BASE_URL: Base URL for hosted meeting page (defaults to http://localhost:8001)
+
+Note: If OPENAI_API_KEY is not set, the analysis will use placeholder values.
 """
 
 import asyncio
@@ -46,6 +58,71 @@ async def main():
     # **Simple Explanation:** We're adding test session data here so that when
     # the room is created, it will have meaningful context data that gets passed
     # through to webhooks and can be used for testing the full interview flow.
+    # We include interview_type, interviewer_context, and analysis parameters
+    # so they appear in the summary and control how the AI analyzes the transcript.
+
+    # ============================================================================
+    # CONFIGURATION: Customize these prompts to control bot behavior and analysis
+    # ============================================================================
+    # These prompts are passed through to control:
+    # 1. What the bot says/does (bot_prompt)
+    # 2. How the conversation is analyzed (analysis_prompt)
+    # 3. How results are formatted (summary_format_prompt)
+
+    # Bot Prompt: Defines what the bot should do and say
+    # **Simple Explanation:** This is the system message for the bot.
+    # It tells the bot its role, what questions to ask, and how to behave.
+    bot_prompt = """You are conducting a technical interview for a Senior Software Engineer position.
+Your role is to assess the candidate's technical skills, problem-solving abilities, and communication.
+
+Ask questions about:
+- Python programming and best practices
+- Backend development and API design
+- System design and architecture
+- Problem-solving approaches
+- Database design
+
+Guidelines:
+- Ask one question at a time
+- Wait for the candidate to finish answering before moving on
+- Provide brief, encouraging feedback when appropriate
+- Keep the tone professional but warm
+- If the candidate asks for clarification, provide it
+- After 5-7 questions, wrap up the interview politely"""
+
+    # Analysis Prompt: Defines how to analyze the conversation
+    # **Simple Explanation:** This tells the AI how to evaluate the transcript.
+    # Use {transcript} as a placeholder - it will be replaced with the actual conversation.
+    analysis_prompt = """Analyze this technical interview transcript and provide a comprehensive assessment.
+
+Focus on evaluating:
+- Technical Skills: Depth of knowledge, relevant experience, ability to explain concepts
+- Problem Solving: Approach to problems, logical thinking, ability to break down complex issues
+- Communication: Clarity of explanations, articulation, listening skills
+- Code Quality: Understanding of best practices, code organization, attention to detail
+- System Design: Ability to design scalable systems, consider trade-offs, discuss architecture
+
+Transcript: {transcript}
+
+Provide a JSON response with:
+- overall_score (0-10)
+- competency_scores for each area above (0-10 each)
+- strengths (2-4 specific points)
+- weaknesses (2-4 areas for improvement)
+- question_assessments (score and notes for each Q&A pair)
+
+Be constructive and specific. Focus on what was actually said in the transcript."""
+
+    # Summary Format Prompt: Defines how to format the results
+    # **Simple Explanation:** This describes how you want the final summary/email to look.
+    # (Currently used as documentation - AI formatting will be added later)
+    summary_format_prompt = """Format as a professional interview scorecard with:
+- Overall score and assessment
+- Competency scores with visual indicators
+- Strengths and areas for improvement
+- Detailed Q&A with individual scores
+- Full transcript reference"""
+
     context = {
         "meeting_config": {
             "autoRecord": False,
@@ -54,19 +131,24 @@ async def main():
             "autoTranscribe": False,
             "webhook_callback_url": test_webhook_site,  # Test webhook endpoint from .env
             "email_results_to": test_candidate_email,  # From .env file
-            "interview_type": "technical",
+            "interview_type": "Technical Interview",  # This will appear in the summary
             "difficulty_level": "intermediate",
-            "interviewer_context": "This is a test interview for a Senior Software Engineer position focusing on Python and backend development.",
+            # Bot configuration with prompt-driven behavior
             "bot": {
                 "enabled": True,
+                "bot_prompt": bot_prompt,  # This controls what the bot says/does
                 "video_mode": "animated",  # Use animated sprite mode
                 "animation_frames_per_sprite": 1,  # Show each frame once (faster animation)
             },
+            # Analysis prompt - controls how the conversation is analyzed
+            "analysis_prompt": analysis_prompt,
+            # Summary format prompt - controls how results are formatted
+            "summary_format_prompt": summary_format_prompt,
         },
-        "candidate_info": {
+        "participant_info": {
             "name": "Test Candidate",
             "email": test_candidate_email,  # From .env file
-            "role": "Senior Software Engineer",
+            "role": "Senior Software Engineer",  # This becomes "position" in the summary
         },
         "session_id": f"test-session-{int(asyncio.get_event_loop().time())}",  # Unique session ID
         "provider_keys": {

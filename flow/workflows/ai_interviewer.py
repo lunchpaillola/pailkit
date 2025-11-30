@@ -563,28 +563,34 @@ class AIInterviewerWorkflow:
             # Parse JSON message
             params = json.loads(message)
 
-            # Extract required parameters
-            candidate_info = params.get("candidate_info", {})
-            interview_config = params.get("interview_config", {})
+            # Extract required parameters - support both old and new field names
+            candidate_info = params.get("candidate_info") or params.get(
+                "participant_info", {}
+            )
+            interview_config = params.get("interview_config") or params.get(
+                "meeting_config", {}
+            )
             provider_keys = params.get("provider_keys", {})
 
             # Validate required parameters
             if not candidate_info:
                 return {
                     "success": False,
-                    "error": "Missing required parameter: candidate_info",
+                    "error": "Missing required parameter: candidate_info or participant_info",
                 }
 
             if not interview_config:
                 return {
                     "success": False,
-                    "error": "Missing required parameter: interview_config",
+                    "error": "Missing required parameter: interview_config or meeting_config",
                 }
 
-            # Prepare context
+            # Prepare context - include both old and new field names for compatibility
             context = {
-                "candidate_info": candidate_info,
-                "interview_config": interview_config,
+                "candidate_info": candidate_info,  # Old name for backwards compatibility
+                "participant_info": candidate_info,  # New generic name
+                "interview_config": interview_config,  # Old name for backwards compatibility
+                "meeting_config": interview_config,  # New generic name
                 "provider_keys": provider_keys,
             }
 

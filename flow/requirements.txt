@@ -14,6 +14,9 @@ langgraph==0.2.40
 # Includes: daily (Daily.co transport), openai (LLM/TTS), local-smart-turn-v3 (turn detection), deepgram (STT)
 pipecat-ai[daily,openai,local-smart-turn-v3,deepgram]>=0.0.94
 
+# OpenAI SDK for direct API access (used in ExtractInsightsStep)
+openai>=1.0.0
+
 # Image processing for sprite animation
 Pillow>=10.0.0
 

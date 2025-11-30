@@ -481,43 +481,53 @@ async def execute_workflow(
 # ============================================================================
 
 
-class AIInterviewerRequest(BaseModel):
-    """Request model for AI Interviewer workflow execution."""
+class StartBotRequest(BaseModel):
+    """Request model for starting a bot conversation."""
 
-    candidate_info: dict[str, Any] = Field(
+    participant_info: dict[str, Any] = Field(
         ...,
-        description="Candidate information (name, email, role, etc.)",
+        description="Participant information (name, email, role, etc.) - generic field for any use case",
     )
-    interview_config: dict[str, Any] = Field(
+    meeting_config: dict[str, Any] = Field(
         ...,
-        description="Interview configuration (type, duration, difficulty, etc.)",
+        description="Meeting configuration with prompts for bot behavior, analysis, and summary formatting",
     )
     webhook_callback_url: str | None = Field(
         None,
-        description="Optional webhook URL to receive interview results when complete",
+        description="Optional webhook URL to receive results when complete",
     )
     email_results_to: str | None = Field(
         None,
-        description="Optional email address to receive interview results",
+        description="Optional email address to receive results",
     )
 
-    @field_validator("candidate_info")
+    @field_validator("participant_info")
     @classmethod
-    def validate_candidate_info(cls, v: dict[str, Any]) -> dict[str, Any]:
-        """Validate candidate_info has required fields."""
+    def validate_participant_info(cls, v: dict[str, Any]) -> dict[str, Any]:
+        """Validate participant_info has required fields."""
         if not isinstance(v, dict):
-            raise ValueError("candidate_info must be a dictionary")
+            raise ValueError("participant_info must be a dictionary")
         if not v.get("name"):
-            raise ValueError("candidate_info must include 'name' field")
+            raise ValueError("participant_info must include 'name' field")
         return v
 
-    @field_validator("interview_config")
+    @field_validator("meeting_config")
     @classmethod
-    def validate_interview_config(cls, v: dict[str, Any]) -> dict[str, Any]:
-        """Validate interview_config is a dictionary."""
+    def validate_meeting_config(cls, v: dict[str, Any]) -> dict[str, Any]:
+        """Validate meeting_config is a dictionary."""
         if not isinstance(v, dict):
-            raise ValueError("interview_config must be a dictionary")
+            raise ValueError("meeting_config must be a dictionary")
+        # Ensure bot is enabled
+        bot_config = v.get("bot", {})
+        if not bot_config.get("enabled", False):
+            raise ValueError("meeting_config.bot.enabled must be true")
+        if not bot_config.get("bot_prompt"):
+            raise ValueError("meeting_config.bot.bot_prompt is required")
         return v
+
+
+# Keep old name for backwards compatibility
+AIInterviewerRequest = StartBotRequest
 
 
 def get_provider_keys() -> dict[str, str]:
@@ -545,21 +555,29 @@ def get_provider_keys() -> dict[str, str]:
     }
 
 
-@app.post("/api/flows/ai-interviewer")
-async def execute_ai_interviewer_workflow(
-    request: AIInterviewerRequest,
+@app.post("/api/flows/start-bot")
+async def start_bot_conversation(
+    request: StartBotRequest,
 ) -> dict[str, Any]:
     """
-    Execute the AI Interviewer workflow.
+    Start a bot conversation with customizable prompts.
 
     **Simple Explanation:**
-    This endpoint starts an AI-powered interview. You provide:
-    - Candidate information (name, email, etc.)
-    - Interview configuration (type, duration, etc.)
+    This endpoint creates a video room with an AI bot that can be configured for any purpose
+    (interviews, consultations, training, etc.). You provide:
+    - Participant information (name, email, etc.)
+    - Bot prompt (defines what the bot says/does)
+    - Analysis prompt (defines how to analyze the conversation)
+    - Summary format prompt (defines how to format results)
     - Optional webhook URL and email for results
 
-    The endpoint returns immediately with a room URL where the interview will take place.
-    Results (transcript, analysis, assessment) will be sent to your webhook URL when complete.
+    The endpoint returns immediately with a room URL where the conversation will take place.
+    Results (transcript, analysis, summary) will be sent to your webhook URL when complete.
+
+    **Key Features:**
+    - Fully prompt-driven: Control bot behavior, analysis, and output format via text prompts
+    - Generic: Not limited to interviews - use for any conversation scenario
+    - Flexible: Customize analysis and summary format for your use case
 
     **Authentication:**
     Provide your PailKit API key via the `Authorization` header:
@@ -569,39 +587,72 @@ async def execute_ai_interviewer_workflow(
     **Request Body:**
     ```json
     {
-      "candidate_info": {
+      "participant_info": {
         "name": "John Doe",
         "email": "john@example.com",
         "role": "Software Engineer"
       },
-      "interview_config": {
-        "type": "technical",
-        "duration": 30,
-        "difficulty": "medium"
+      "meeting_config": {
+        "bot": {
+          "enabled": true,
+          "bot_prompt": "You are a friendly AI assistant conducting a technical interview. Ask questions about Python, system design, and problem-solving. Wait for responses before asking the next question."
+        },
+        "analysis_prompt": "Analyze this conversation transcript. Provide scores, strengths, and areas for improvement. Use {transcript} as a placeholder for the transcript.",
+        "summary_format_prompt": "Format as a professional scorecard with overall score, competency breakdown, and detailed Q&A sections."
       },
-      "webhook_callback_url": "https://your-app.com/webhooks/interview-complete",
-      "email_results_to": "hr@example.com"
+      "webhook_callback_url": "https://your-app.com/webhooks/conversation-complete",
+      "email_results_to": "results@example.com"
     }
     ```
+
+    **Prompt Placeholders:**
+    - In `analysis_prompt`, use `{transcript}` or `{qa_text}` to inject the conversation transcript
+    - If no placeholder is used, the transcript will be appended automatically
 
     **Response:**
     Returns immediately with room URL and session info. Results sent via webhook when complete.
 
-    **Example:**
+    **Example - Technical Interview:**
     ```bash
-    curl -X POST https://api.pailkit.com/api/flows/ai-interviewer \\
+    curl -X POST https://api.pailkit.com/api/flows/start-bot \\
       -H "Authorization: Bearer <your-pailkit-key>" \\
       -H "Content-Type: application/json" \\
       -d '{
-        "candidate_info": {
+        "participant_info": {
           "name": "John Doe",
           "email": "john@example.com"
         },
-        "interview_config": {
-          "type": "technical",
-          "duration": 30
+        "meeting_config": {
+          "bot": {
+            "enabled": true,
+            "bot_prompt": "You are conducting a technical interview. Ask questions about Python, system design, and problem-solving."
+          },
+          "analysis_prompt": "Analyze this interview transcript. Provide scores, strengths, and areas for improvement. Transcript: {transcript}",
+          "summary_format_prompt": "Format as a scorecard with overall score, competency breakdown, and detailed Q&A."
         },
         "webhook_callback_url": "https://your-app.com/webhooks/interview-complete"
+      }'
+    ```
+
+    **Example - Customer Support:**
+    ```bash
+    curl -X POST https://api.pailkit.com/api/flows/start-bot \\
+      -H "Authorization: Bearer <your-pailkit-key>" \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "participant_info": {
+          "name": "Jane Smith",
+          "email": "jane@example.com"
+        },
+        "meeting_config": {
+          "bot": {
+            "enabled": true,
+            "bot_prompt": "You are a customer support agent. Help the customer with their issue. Be friendly and solution-oriented."
+          },
+          "analysis_prompt": "Analyze this support conversation. Identify the issue, resolution, and customer satisfaction. Transcript: {transcript}",
+          "summary_format_prompt": "Format as a support ticket summary with issue description, resolution steps, and customer feedback."
+        },
+        "webhook_callback_url": "https://your-app.com/webhooks/support-complete"
       }'
     ```
     """
@@ -610,20 +661,20 @@ async def execute_ai_interviewer_workflow(
         provider_keys = get_provider_keys()
 
         # Prepare workflow context
-        # Include webhook and email in interview_config so they're saved to session data
-        interview_config = request.interview_config.copy()
+        # Include webhook and email in meeting_config so they're saved to session data
+        meeting_config = request.meeting_config.copy()
         if request.webhook_callback_url:
-            interview_config["webhook_callback_url"] = request.webhook_callback_url
+            meeting_config["webhook_callback_url"] = request.webhook_callback_url
         if request.email_results_to:
-            interview_config["email_results_to"] = request.email_results_to
+            meeting_config["email_results_to"] = request.email_results_to
 
         context = {
-            "candidate_info": request.candidate_info,
-            "interview_config": interview_config,
+            "participant_info": request.participant_info,
+            "meeting_config": meeting_config,
             "provider_keys": provider_keys,
         }
 
-        # Get the AI Interviewer workflow
+        # Use AI Interviewer workflow (it's generic enough for any bot conversation)
         workflow = get_workflow("ai_interviewer")
 
         # Execute the workflow
@@ -664,7 +715,7 @@ async def execute_ai_interviewer_workflow(
         # Results will be sent via webhook when complete
         response = {
             "success": True,
-            "message": "Interview workflow started successfully",
+            "message": "Bot conversation started successfully",
             "session_id": workflow_results.get("session_id")
             or result.get("session_id"),
             "room_url": room_url,
@@ -686,16 +737,24 @@ async def execute_ai_interviewer_workflow(
         logger.error(f"Validation error: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     except WorkflowNotFoundError:
-        logger.error("AI Interviewer workflow not found")
-        raise HTTPException(
-            status_code=500, detail="AI Interviewer workflow is not available"
-        )
+        raise
     except Exception as e:
-        logger.error(f"Error executing AI Interviewer workflow: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error executing interview workflow: {str(e)}",
-        )
+        logger.error(f"Error starting bot conversation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# Keep old endpoint for backwards compatibility
+@app.post("/api/flows/ai-interviewer")
+async def execute_ai_interviewer_workflow(
+    request: AIInterviewerRequest,
+) -> dict[str, Any]:
+    """
+    Execute the AI Interviewer workflow (deprecated - use /api/flows/start-bot instead).
+
+    This endpoint is kept for backwards compatibility. New integrations should use /api/flows/start-bot.
+    """
+    # Delegate to the new endpoint
+    return await start_bot_conversation(request)
 
 
 # Webhook Handlers and Endpoints
