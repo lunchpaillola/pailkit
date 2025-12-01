@@ -400,13 +400,18 @@ def format_summary_html(summary_text: str) -> str:
         return "<p><em>No summary available</em></p>"
 
     # Check if summary is JSON and format it nicely
-    try:
-        summary_json = json.loads(summary_text.strip())
-        if isinstance(summary_json, dict):
-            return format_json_summary_html(summary_json)
-    except (json.JSONDecodeError, AttributeError, TypeError):
-        # Not JSON, continue with regular text formatting
-        pass
+    # Try to detect JSON by checking if it starts with { or [ and can be parsed
+    summary_text_stripped = summary_text.strip()
+    if summary_text_stripped.startswith("{") or summary_text_stripped.startswith("["):
+        try:
+            summary_json = json.loads(summary_text_stripped)
+            if isinstance(summary_json, dict):
+                logger.debug("Detected JSON summary, formatting as HTML")
+                return format_json_summary_html(summary_json)
+        except (json.JSONDecodeError, AttributeError, TypeError) as e:
+            # Not valid JSON, continue with regular text formatting
+            logger.debug(f"Summary is not valid JSON: {e}, using text formatting")
+            pass
 
     lines = summary_text.split("\n")
     html_parts = []
