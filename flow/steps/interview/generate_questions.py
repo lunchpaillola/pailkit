@@ -93,7 +93,6 @@ def get_questions_from_bank(
     """
     Select questions from the question bank based on criteria.
 
-    **Simple Explanation:**
     This function picks the right questions for the interview based on:
     - What type of interview it is (technical, behavioral, etc.)
     - How difficult it should be
@@ -155,7 +154,6 @@ class GenerateQuestionsStep(InterviewStep):
     """
     Generate interview questions from the question bank.
 
-    **Simple Explanation:**
     This step picks the right questions for this interview based on the
     interview type, difficulty, and what skills we want to test.
     """

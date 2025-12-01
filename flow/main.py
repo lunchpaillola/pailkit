@@ -269,7 +269,6 @@ async def test_embed() -> HTMLResponse:
     """
     Serve a test page for the embeddable widget.
 
-    **Simple Explanation:**
     This endpoint serves a simple test page where you can test the embeddable
     widget by entering a room name. Useful for development and testing.
     """
@@ -291,7 +290,6 @@ async def serve_embed_script() -> Response:
     """
     Serve the embeddable JavaScript widget for video meetings.
 
-    **Simple Explanation:**
     This endpoint serves a JavaScript file that creates a video meeting widget
     that can be embedded in any website. The DAILY_DOMAIN is automatically
     injected into the script so users don't need to provide it.
@@ -376,7 +374,6 @@ async def serve_meeting_page(
     """
     Serve the hosted meeting page for a room.
 
-    **Simple Explanation:**
     This endpoint serves a nice branded page where participants can join a video meeting.
     The room URL is automatically constructed from the room name using the DAILY_DOMAIN
     environment variable. You can customize the look and feel using query parameters.
@@ -533,7 +530,6 @@ def get_provider_keys() -> dict[str, str]:
     """
     Get provider API keys from environment variables.
 
-    **Simple Explanation:**
     This function retrieves the service's provider API keys from environment
     variables. Since this is a hosted service, the keys are managed by the
     service, not provided by users.
@@ -561,7 +557,6 @@ async def start_bot_conversation(
     """
     Start a bot conversation with customizable prompts.
 
-    **Simple Explanation:**
     This endpoint creates a video room with an AI bot that can be configured for any purpose
     (interviews, consultations, training, etc.). You provide:
     - Participant information (name, email, etc.)
@@ -677,7 +672,6 @@ async def start_bot_conversation(
         workflow = get_workflow("ai_interviewer")
 
         # Execute the workflow asynchronously
-        # **Simple Explanation:**
         # We use execute_async() directly instead of execute() because:
         # 1. execute() creates a new event loop in a thread and closes it when done
         # 2. This kills the bot task which runs in that loop
@@ -750,7 +744,6 @@ async def execute_ai_interviewer_workflow(
 
 
 # Webhook Handlers and Endpoints
-# **Simple Explanation:**
 # These functions handle webhooks from Daily.co that are routed by the Cloudflare Worker.
 # The worker routes Daily.co webhooks here based on event type.
 
@@ -759,7 +752,6 @@ async def handle_recording_ready_to_download(payload: dict[str, Any]) -> dict[st
     """
     Handle 'recording.ready-to-download' webhook event.
 
-    **Simple Explanation:**
     This function is called when a Daily.co recording is ready to download.
     According to Daily.co docs: https://docs.daily.co/reference/rest-api/webhooks/events/recording-ready-to-download
 
@@ -802,7 +794,6 @@ async def handle_transcript_ready_to_download(
     """
     Handle 'transcript.ready-to-download' webhook event.
 
-    **Simple Explanation:**
     This function is called when a Daily.co transcript is ready to download.
     It extracts the webhook data and triggers the ProcessTranscriptStep,
     which will fetch the download link via the Daily.co API.
@@ -984,7 +975,6 @@ async def webhook_recording_ready_to_download(
     """
     Handle 'recording.ready-to-download' webhook from Daily.co.
 
-    **Simple Explanation:**
     This endpoint receives webhooks when a Daily.co recording is ready to download.
     The Cloudflare Worker routes 'recording.ready-to-download' events here.
 
@@ -1021,7 +1011,6 @@ async def webhook_transcript_ready_to_download(
     """
     Handle 'transcript.ready-to-download' webhook from Daily.co.
 
-    **Simple Explanation:**
     This endpoint receives webhooks when a Daily.co transcript is ready to download.
     The Cloudflare Worker routes 'transcript.ready-to-download' events here.
 
@@ -1059,7 +1048,6 @@ async def handle_meeting_ended_webhook(
     """
     Handle 'meeting.ended' webhook event from Daily.co.
 
-    **Simple Explanation:**
     This function is called when a Daily.co meeting ends. It:
     1. Checks if there's a paused workflow waiting for the meeting to end
     2. Checks if bot was enabled (transcript in DB) or not (needs Daily.co transcript)
@@ -1410,7 +1398,6 @@ async def webhook_meeting_ended(
     Unlike regular API endpoints, webhooks don't validate input strictly -
     they're fire-and-forget notifications from Daily.co.
 
-    **Simple Explanation:**
     This endpoint is called when a Daily.co meeting ends. It:
     1. Checks if transcript was already processed (prevents duplicates)
     2. Checks if there's a paused workflow waiting for the meeting to end

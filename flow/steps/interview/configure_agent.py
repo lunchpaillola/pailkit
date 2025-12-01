@@ -19,7 +19,6 @@ class ConfigureAgentStep(InterviewStep):
     """
     Configure the AI interviewer persona and context.
 
-    **Simple Explanation:**
     This step sets up how the AI interviewer should behave - what tone to use,
     what context it should have about the role, etc. It's like giving the AI
     a job description and instructions on how to conduct the interview.

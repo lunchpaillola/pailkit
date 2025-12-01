@@ -3,6 +3,10 @@
 # This configuration deploys both the API and Flow services together as a single application.
 # The API (api/main.py) imports and includes all Flow routes, so everything runs in one process.
 #
+# This is the main HTTP service that handles API requests. When bots are enabled,
+# they can be spawned as separate Fly.io machines (see bot_service.py) for better
+# performance and isolation. Each bot gets its own dedicated resources.
+#
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
@@ -11,18 +15,21 @@ primary_region = "iad"
 
 [build]
   # Dockerfile is at project root - builds both API and Flow together
+  # Uses Python 3.12 as specified in Dockerfile
   dockerfile = "Dockerfile"
 
 [env]
   PORT = "8080"
+  # Set FLY_APP_NAME to match the app name for bot machine spawning
+  FLY_APP_NAME = "pailkit-api"
 
-# VM configuration - increase memory to handle heavy dependencies (pipecat-ai, ML models, etc.)
-# shared-cpu-2x = 2GB RAM, shared-cpu-4x = 4GB RAM
-# Using 2GB should be enough, but you can upgrade to 4GB if needed
+# VM configuration for the HTTP service (API server)
+# This configures the main API server machine. Bot machines are spawned separately
+# with their own resources (1GB RAM, 1 CPU) as configured in bot_service.py.
 [vm]
-  memory_mb = 2048
+  memory_mb = 512
   cpu_kind = "shared"
-  cpus = 2
+  cpus = 1
 
 # Persistent volume for SQLite database (flow/pailflow.db)
 # The database will be stored at /data/pailflow.db and persist across deployments

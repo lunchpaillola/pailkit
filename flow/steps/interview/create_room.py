@@ -9,7 +9,6 @@ Creates a Daily.co video room for the interview with recording and transcription
 
 import logging
 import os
-import time
 from datetime import datetime
 from typing import Any, Dict
 
@@ -33,11 +32,8 @@ class CreateRoomStep(InterviewStep):
         """
         Build Daily.co API configuration for interview room.
 
-        **Simple Explanation:**
         This method creates the configuration that tells Daily.co how to set up the room.
-        It includes basic settings like recording and transcription. If VAPI calling is enabled,
-        we'll enable PIN dial-in after room creation so VAPI can join the room by dialing
-        the phone number and entering the PIN via DTMF.
+        It includes basic settings like recording and transcription.
 
         If STAGING_ENVIRONMENT is set to "DEVELOPMENT", it will add a unique room name
         in the format DEV-DDMMYYYYHHMMSSFFFFFF (e.g., DEV-15012025143022123456 for Jan 15, 2025 at 14:30:22.123456).
@@ -52,16 +48,12 @@ class CreateRoomStep(InterviewStep):
         }
 
         # Note: We don't set SIP properties during room creation
-        # **Simple Explanation:** According to Daily.co docs, SIP properties should be set
-        # by updating the room AFTER creation, not during initial creation
-        # We'll enable SIP dial-in after the room is created (in execute method)
 
         config: Dict[str, Any] = {
             "properties": daily_properties,
             "privacy": "public",
         }
 
-        # **Simple Explanation:** If we're in development mode, we need to set a unique room name.
         # Daily.co requires room names to be unique. We generate a name based on the current
         # date and time in the format DEV-DDMMYYYYHHMMSSFFFFFF (e.g., DEV-15012025143022123456).
         # The microseconds (FFFFFF) ensure uniqueness even if multiple rooms are created in the same second.
@@ -122,91 +114,6 @@ class CreateRoomStep(InterviewStep):
             return None
         except Exception as e:
             logger.warning(f"Failed to create meeting token: {e}")
-            return None
-
-    async def _update_room_for_pin_dialin(
-        self, api_key: str, room_name: str, display_name: str = "Phone Caller"
-    ) -> Dict[str, Any] | None:
-        """
-        Update room properties to enable PIN dial-in (following Daily.co guide).
-
-        **Simple Explanation:**
-        According to Daily.co docs, we update the room properties directly with a POST request.
-        This enables PIN dial-in and returns the dial-in code (PIN). Daily.co will:
-        1. Configure the room for PIN dial-in mode
-        2. Generate a dial-in code (PIN) that callers need to enter
-        3. Return the PIN so we can use it for VAPI calling via DTMF
-
-        Args:
-            api_key: Daily.co API key
-            room_name: Name of the room to enable dial-in for
-            display_name: Display name for phone participants
-
-        Returns:
-            Dictionary with dialin_code (PIN), or None if failed
-        """
-        headers = self._get_daily_headers(api_key)
-
-        # Calculate expiration timestamp (1 year from now)
-        # **Simple Explanation:** Daily.co requires an expiration timestamp (exp) for PIN dial-in
-        # We set it to 1 year from now (365 days = 31536000 seconds)
-        exp_timestamp = int(time.time()) + 31536000  # 1 year from now
-
-        # Build the request payload following Daily.co guide format
-        # **Simple Explanation:** This matches the curl example from Daily.co docs
-        # We set dialin properties with display_name and wait_for_meeting_start
-        # The exp field sets when the dial-in will expire (required field)
-        properties = {
-            "dialin": {
-                "display_name": display_name,
-                "wait_for_meeting_start": True,
-            },
-            "exp": exp_timestamp,
-        }
-
-        payload = {
-            "properties": properties,
-        }
-
-        try:
-            async with httpx.AsyncClient() as client:
-                # Update room using POST to /v1/rooms/{room_name} as per Daily.co guide
-                # **Simple Explanation:** We POST to update the room properties with PIN dial-in settings
-                response = await client.post(
-                    f"https://api.daily.co/v1/rooms/{room_name}",
-                    headers=headers,
-                    json=payload,
-                )
-                response.raise_for_status()
-                result = response.json()
-
-                # Extract dial-in code (PIN) from the response
-                # **Simple Explanation:** Daily.co returns the dial-in code in config.dialin_code
-                # This is the PIN that callers need to enter when dialing into the room
-                config = result.get("config", {})
-                dialin_code = config.get("dialin_code")
-
-                if dialin_code:
-                    logger.info(f"✅ PIN dial-in enabled: PIN code is {dialin_code}")
-                    return {
-                        "dialin_code": dialin_code,
-                    }
-                else:
-                    logger.warning(
-                        f"PIN dial-in enabled but dialin_code missing. "
-                        f"Response: {result}"
-                    )
-                    return None
-
-        except httpx.HTTPStatusError as e:
-            try:
-                error_data = e.response.json()
-                logger.warning(f"Failed to enable PIN dial-in: {error_data}")
-            except Exception:
-                logger.warning(f"Failed to enable PIN dial-in: {e}")
-            return None
-        except Exception as e:
-            logger.warning(f"Failed to enable PIN dial-in: {e}")
             return None
 
     async def _create_daily_room(
@@ -319,38 +226,6 @@ class CreateRoomStep(InterviewStep):
                     "⚠️ Meeting token creation failed - transcription may not auto-start"
                 )
 
-            # Enable PIN dial-in if VAPI calling is enabled
-            # **Simple Explanation:** If VAPI is enabled, we need to enable PIN dial-in
-            # so that VAPI can join the room by dialing the phone number and entering the PIN.
-            # This gives us a dial-in code (PIN) that VAPI will use via DTMF to join the room.
-            vapi_config = interview_config.get("vapi", {})
-            enable_vapi_calling = vapi_config.get("enabled", False)
-
-            if enable_vapi_calling:
-                # Get display name for phone participants
-                display_name = (
-                    branding.get("display_name") if branding else "Phone Caller"
-                )
-
-                # Update room to enable PIN dial-in and get dial-in code (PIN)
-                # **Simple Explanation:** We update the room properties after creation
-                # to enable PIN dial-in, following Daily.co's guide approach
-                pin_result = await self._update_room_for_pin_dialin(
-                    room_provider_key, room_name, display_name
-                )
-
-                if pin_result:
-                    # Store dial-in code (PIN) in state for VAPI to use
-                    # **Simple Explanation:** VAPI needs the PIN to dial into the room using DTMF
-                    state["dialin_code"] = pin_result.get("dialin_code")
-                    logger.info(
-                        f"✅ PIN dial-in enabled: PIN code is {state['dialin_code']}"
-                    )
-                else:
-                    logger.warning(
-                        "⚠️ Failed to enable PIN dial-in - VAPI calling may not work"
-                    )
-
             state["room_id"] = result.get("room_id")
             state["room_url"] = room_url
             state["room_name"] = room_name
@@ -365,7 +240,6 @@ class CreateRoomStep(InterviewStep):
             logger.info(f"✅ Video room created: {room_url}")
 
             # Save session data to SQLite database
-            # **Simple Explanation:** We store session data (participant info, webhook URLs, etc.)
             # in our local SQLite database. This data will be retrieved later by the webhook
             # handler when the transcript is ready, so it knows where to send results.
             participant_info = state.get("participant_info", {})
@@ -390,7 +264,6 @@ class CreateRoomStep(InterviewStep):
             )
 
             # Determine what webhook we're waiting for based on configuration
-            # **Simple Explanation:**
             # - If bot is enabled: Bot saves transcript to DB, so we wait for meeting.ended
             # - If frontend transcription is enabled: Daily.co transcribes, so we wait for transcript.ready-to-download
             # - These flags tell the webhook handlers what to do
@@ -463,7 +336,6 @@ class CreateRoomStep(InterviewStep):
             session_data = filtered_data
 
             # Save session data to SQLite database
-            # **Simple Explanation:** We save the session data to our database using the room_name
             # as the key. Later, when Daily.co sends a webhook, we'll use the room_name to look up
             # this data and know where to send the results.
             if session_data:

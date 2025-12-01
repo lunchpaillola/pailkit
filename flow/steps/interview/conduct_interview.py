@@ -19,7 +19,6 @@ class ConductInterviewStep(InterviewStep):
     """
     Conduct the interview (AI-led, auto-detect silence for next question).
 
-    **Simple Explanation:**
     This is where the actual interview happens. The AI asks questions,
     waits for the candidate to answer, and moves to the next question.
     In a real implementation, this would integrate with the video room

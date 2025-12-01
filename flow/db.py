@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 
 # Database file location
-# **Simple Explanation:**
 # - On Fly.io: Uses /data/pailflow.db (persistent volume - survives restarts)
 # - Locally: Uses flow/pailflow.db (in your project directory)
 # - You can override with DB_PATH environment variable
@@ -41,7 +40,6 @@ def get_db_path() -> Path:
         return Path(db_path_env)
 
     # On Fly.io, use persistent volume at /data
-    # **Simple Explanation:** Fly.io volumes are mounted at /data and persist across restarts
     fly_data_path = Path("/data/pailflow.db")
     if fly_data_path.parent.exists():
         return fly_data_path
@@ -78,12 +76,6 @@ def get_encryption_key() -> bytes:
     """
     Get the encryption key and convert it to a Fernet key.
 
-    **Simple Explanation:**
-    This function retrieves the encryption key from the ENCRYPTION_KEY
-    environment variable and converts it to a format that Fernet can use.
-    Fernet requires a 32-byte key, so we derive it from the user's key using
-    PBKDF2 (a key derivation function).
-
     Returns:
         Fernet encryption key as bytes
 
@@ -106,9 +98,6 @@ def get_encryption_key() -> bytes:
         )
 
     # Derive a 32-byte key from the user's key using PBKDF2
-    # **Simple Explanation:** PBKDF2 is a key derivation function that takes
-    # a password/key and converts it into a fixed-length encryption key.
-    # We use a salt (a random value) to make the key derivation more secure.
     salt = b"pailflow_salt_2025"  # Fixed salt - in production, consider making this configurable
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -124,11 +113,6 @@ def get_fernet() -> Fernet:
     """
     Get a Fernet encryption instance.
 
-    **Simple Explanation:**
-    Fernet is a symmetric encryption algorithm that provides authenticated
-    encryption. It ensures that encrypted data cannot be tampered with and
-    can only be decrypted with the correct key.
-
     Returns:
         Fernet instance for encryption/decryption
     """
@@ -139,10 +123,6 @@ def get_fernet() -> Fernet:
 def encrypt_field(value: str | None) -> str | None:
     """
     Encrypt a sensitive field value.
-
-    **Simple Explanation:**
-    This function takes a string value (like an email or name) and encrypts it.
-    If the value is None or empty, it returns None (no encryption needed).
 
     Args:
         value: The string value to encrypt
@@ -167,10 +147,6 @@ def decrypt_field(value: str | None) -> str | None:
     """
     Decrypt a sensitive field value.
 
-    **Simple Explanation:**
-    This function takes an encrypted string and decrypts it back to the
-    original value. If the value is None or empty, it returns None.
-
     Args:
         value: The encrypted value as base64 string
 
@@ -194,11 +170,6 @@ def decrypt_field(value: str | None) -> str | None:
 def encrypt_sensitive_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Encrypt sensitive fields in a dictionary.
-
-    **Simple Explanation:**
-    This function goes through a dictionary and encrypts any fields that
-    contain sensitive information (like emails, names, webhooks). It leaves
-    operational fields (like IDs, timestamps) unencrypted.
 
     Args:
         data: Dictionary containing session data
@@ -229,10 +200,6 @@ def encrypt_sensitive_data(data: Dict[str, Any]) -> Dict[str, Any]:
 def decrypt_sensitive_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Decrypt sensitive fields in a dictionary.
-
-    **Simple Explanation:**
-    This function goes through a dictionary and decrypts any fields that
-    were encrypted. It leaves operational fields unchanged.
 
     Args:
         data: Dictionary containing encrypted session data
@@ -272,11 +239,6 @@ def get_db_connection():
     """
     Get a regular SQLite database connection with WAL mode enabled.
 
-    **Simple Explanation:**
-    Since we're using field-level encryption instead of full database encryption,
-    we use a regular SQLite connection. The encryption happens at the field level
-    before storing data.
-
     WAL (Write-Ahead Logging) mode is enabled for better concurrent access:
     - Allows multiple readers while one writer is active
     - Better performance for concurrent transcript updates
@@ -287,8 +249,6 @@ def get_db_connection():
     """
     conn = sqlite3.connect(str(DB_PATH))
     # Enable WAL mode for better concurrency (especially important for transcript updates)
-    # **Simple Explanation:** WAL mode allows multiple readers and one writer simultaneously,
-    # which is perfect for our use case where transcripts are updated frequently
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
@@ -296,16 +256,6 @@ def get_db_connection():
 def init_db() -> None:
     """
     Initialize the database and create tables if they don't exist.
-
-    **Simple Explanation:**
-    This function sets up the SQLite database for the first time.
-    It creates a table called 'room_sessions' that stores session data
-    for each room. Sensitive fields are encrypted at the field level.
-
-    The table has:
-    - room_name: The unique identifier for the room (e.g., "abc123") - unencrypted
-    - session_data: A JSON blob containing session information (sensitive fields encrypted)
-    - created_at: Timestamp when the record was created - unencrypted
 
     **Security:**
     - Sensitive fields (emails, names, webhooks, transcripts) are encrypted at rest
@@ -315,9 +265,6 @@ def init_db() -> None:
     """
     try:
         # Create parent directory if it doesn't exist (for /data on Fly.io)
-        # **Simple Explanation:** On Fly.io, the /data directory might not exist
-        # until the volume is mounted, but we want to create it if needed.
-        # SQLite will create the file, but we need the directory to exist first.
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         # Get database connection
@@ -339,9 +286,6 @@ def init_db() -> None:
         conn.close()
 
         # Set restrictive file permissions (only owner can read/write)
-        # **Simple Explanation:** This adds an extra layer of security by
-        # ensuring only the owner of the file can access it, even if someone
-        # gets access to the file system.
         try:
             os.chmod(DB_PATH, 0o600)  # rw------- (only owner)
             logger.info("✅ Database file permissions set to 0o600")
@@ -362,11 +306,6 @@ def init_db() -> None:
 def save_session_data(room_name: str, session_data: Dict[str, Any]) -> bool:
     """
     Save session data for a room to the database with field-level encryption.
-
-    **Simple Explanation:**
-    This function stores session data in the database when a room is created.
-    Before saving, it encrypts sensitive fields (emails, names, webhooks) while
-    keeping operational fields (IDs, timestamps) unencrypted.
 
     If data already exists for this room, it will be replaced (REPLACE INTO).
 
@@ -415,14 +354,6 @@ def get_session_data(room_name: str) -> Dict[str, Any] | None:
     """
     Retrieve session data for a room from the database and decrypt sensitive fields.
 
-    **Simple Explanation:**
-    This function looks up session data for a room in the database.
-    It decrypts sensitive fields (emails, names, webhooks) that were encrypted
-    when saving. Operational fields remain unchanged.
-
-    It's called by the webhook handler when a transcript is ready,
-    so we know where to send the results and who the candidate is.
-
     Args:
         room_name: The room identifier (e.g., "abc123")
 
@@ -465,12 +396,6 @@ def get_session_data(room_name: str) -> Dict[str, Any] | None:
 def delete_session_data(room_name: str) -> bool:
     """
     Delete session data for a room (optional cleanup).
-
-    **Simple Explanation:**
-    This function removes session data from the database.
-    You might call this after processing is complete to keep
-    the database clean. This is optional - data can remain
-    for debugging or audit purposes.
 
     Args:
         room_name: The room identifier (e.g., "abc123")

@@ -21,11 +21,6 @@ logger = logging.getLogger(__name__)
 class GenerateSummaryStep(InterviewStep):
     """
     Generate candidate summary/profile.
-
-    **Simple Explanation:**
-    This step creates a final summary document about the candidate based on
-    everything we learned during the interview. It's like writing a report
-    card that summarizes their performance.
     """
 
     def __init__(self):
@@ -37,13 +32,6 @@ class GenerateSummaryStep(InterviewStep):
     async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute summary generation in scorecard format.
-
-        **Simple Explanation:**
-        Creates a professional scorecard-style summary that includes:
-        - Candidate and interview information
-        - Overall score and competency breakdown
-        - Strengths and areas for improvement
-        - Detailed Q&A with individual scores
 
         Args:
             state: Current workflow state containing participant_info, insights, and qa_pairs
@@ -281,11 +269,6 @@ Questions Answered: {len(qa_pairs)}
     ) -> str:
         """
         Generate summary using AI based on custom format prompt.
-
-        **Simple Explanation:**
-        This function uses OpenAI to create a summary based on the user's custom prompt.
-        Instead of using a hardcoded template, it lets the AI format the summary however
-        the user wants by following their instructions in the format_prompt.
         """
         # Get OpenAI API key
         openai_api_key = os.getenv("OPENAI_API_KEY")

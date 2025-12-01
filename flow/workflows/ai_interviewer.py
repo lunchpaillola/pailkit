@@ -23,13 +23,9 @@ from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
 from flow.steps.interview import (
-    CallVAPIStep,
     ConfigureAgentStep,
     ConductInterviewStep,
-    ExtractInsightsStep,
     GenerateQuestionsStep,
-    GenerateSummaryStep,
-    PackageResultsStep,
     ProcessTranscriptStep,
 )
 from flow.workflows.one_time_meeting import (
@@ -81,9 +77,6 @@ class InterviewState(TypedDict):
     room_name: Optional[str]  # Room name (extracted from URL, used for API calls)
     room_provider: Optional[str]  # Room provider name (e.g., "daily")
     meeting_token: Optional[str]  # Daily.co meeting token
-    dialin_code: Optional[str]  # PIN code for dial-in (from Daily.co)
-    vapi_call_id: Optional[str]  # VAPI call ID if VAPI calling is used
-    vapi_call_created: bool  # Whether VAPI call was successfully created
     session_id: Optional[str]  # Unique interview session ID
 
     # AI Interviewer configuration
@@ -200,14 +193,9 @@ def map_from_one_time_meeting_state(
     if room_provider:
         parent_state["room_provider"] = room_provider
 
-    # Preserve VAPI-related fields from subgraph
+    # Preserve meeting token from subgraph
     if one_time_state.get("meeting_token"):
         parent_state["meeting_token"] = one_time_state.get("meeting_token")
-    if one_time_state.get("dialin_code"):
-        parent_state["dialin_code"] = one_time_state.get("dialin_code")
-    if one_time_state.get("vapi_call_id"):
-        parent_state["vapi_call_id"] = one_time_state.get("vapi_call_id")
-    parent_state["vapi_call_created"] = one_time_state.get("vapi_call_created", False)
 
     return parent_state
 
@@ -327,10 +315,8 @@ class AIInterviewerWorkflow:
     2. Configures an AI interviewer persona
     3. Generates questions from a question bank
     4. Conducts the interview (AI-led)
-    5. Processes the transcript
-    6. Extracts insights and assesses competencies
-    7. Generates a candidate summary
-    8. Packages all results
+    5. Processes the transcript, extracts insights, generates summary, and packages results
+       (ProcessTranscriptStep handles all post-interview processing internally)
 
     Note: Recording and transcription are now handled client-side in meeting.html
     using Daily.co's callFrame.startRecording() and callFrame.startTranscription()
@@ -345,14 +331,10 @@ class AIInterviewerWorkflow:
         # Initialize step instances (excluding create_room, which is handled by subgraph)
         # Recording and transcription are now handled client-side in meeting.html
         self.steps = {
-            "call_vapi": CallVAPIStep(),  # Step 2: Make VAPI outbound call (if enabled)
-            "configure_agent": ConfigureAgentStep(),  # Step 3: Configure AI interviewer
+            "configure_agent": ConfigureAgentStep(),  # Step 2: Configure AI interviewer
             "generate_questions": GenerateQuestionsStep(),  # Step 4: Generate interview questions
             "conduct_interview": ConductInterviewStep(),  # Step 5: Conduct the interview
-            "process_transcript": ProcessTranscriptStep(),  # Step 6: Process transcript into Q&A pairs
-            "extract_insights": ExtractInsightsStep(),  # Step 7: Extract insights and assessments
-            "generate_summary": GenerateSummaryStep(),  # Step 8: Generate candidate summary
-            "package_results": PackageResultsStep(),  # Step 9: Package final results
+            "process_transcript": ProcessTranscriptStep(),  # Step 6: Process transcript, extract insights, generate summary, and package results
         }
 
         # Use shared checkpointer for workflow state persistence
@@ -385,20 +367,15 @@ class AIInterviewerWorkflow:
         # Recording and transcription are handled client-side via URL parameters
         workflow.set_entry_point("create_room")  # Start with one_time_meeting subgraph
         workflow.add_edge(
-            "create_room", "call_vapi"
-        )  # After room creation, make VAPI call (if enabled)
-        workflow.add_edge(
-            "call_vapi", "configure_agent"
-        )  # Then configure agent (or skip if using VAPI)
+            "create_room", "configure_agent"
+        )  # After room creation, configure agent
         workflow.add_edge("configure_agent", "generate_questions")
         workflow.add_edge("generate_questions", "conduct_interview")
         # After conduct_interview, we need to pause and wait for transcript webhook
         # The workflow will interrupt here and wait for transcript_id
         workflow.add_edge("conduct_interview", "process_transcript")
-        workflow.add_edge("process_transcript", "extract_insights")
-        workflow.add_edge("extract_insights", "generate_summary")
-        workflow.add_edge("generate_summary", "package_results")
-        workflow.add_edge("package_results", END)
+        # ProcessTranscriptStep handles extract_insights, generate_summary, and packaging internally
+        workflow.add_edge("process_transcript", END)
 
         # Compile with interrupt after conduct_interview and checkpointing
         # This pauses the workflow until transcript_id is available (via webhook)
@@ -412,7 +389,6 @@ class AIInterviewerWorkflow:
         """
         Execute the workflow asynchronously.
 
-        **Simple Explanation:**
         This runs the entire workflow. You pass in the candidate info,
         interview config, and API keys, and it runs all the steps.
 
@@ -459,9 +435,6 @@ class AIInterviewerWorkflow:
                 "room_name": None,
                 "room_provider": None,
                 "meeting_token": None,
-                "dialin_code": None,
-                "vapi_call_id": None,
-                "vapi_call_created": False,
                 "session_id": session_id,
                 "interviewer_persona": None,
                 "interviewer_context": None,
@@ -557,7 +530,6 @@ class AIInterviewerWorkflow:
         This method implements the Workflow protocol interface, allowing
         the workflow to be used with the existing workflow system.
 
-        **Simple Explanation:**
         This is a wrapper that makes the async workflow work with the
         existing system that expects a synchronous execute method. It properly
         handles event loops without needing nest-asyncio.

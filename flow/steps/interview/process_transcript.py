@@ -13,6 +13,8 @@ This step handles the complete transcript processing pipeline:
 """
 
 import asyncio
+import html
+import json
 import logging
 import os
 import re
@@ -63,13 +65,6 @@ def parse_vtt_to_text(vtt_content: str) -> str:
 def parse_transcript_to_qa_pairs(transcript_text: str) -> list[Dict[str, Any]]:
     """
     Parse transcript text to extract Q&A pairs.
-
-    **Simple Explanation:**
-    The transcript format from TranscriptHandler is:
-    [timestamp] assistant: question text
-    [timestamp] user: answer text
-
-    This function extracts pairs where assistant = question and user = answer.
 
     Args:
         transcript_text: Full transcript text with timestamps and role labels
@@ -177,11 +172,6 @@ async def get_transcript_download_link(transcript_id: str) -> str | None:
     """
     Get transcript download link from Daily.co API.
 
-    **Simple Explanation:**
-    This function calls the Daily.co API to get transcript access link.
-    The API returns a JSON object that includes a 'download_link' field
-    which points to the actual VTT file we need to download.
-
     According to Daily.co docs, the endpoint is: GET /v1/transcript/{id}/access-link (singular!)
     Response includes: { download_link }
     """
@@ -220,11 +210,6 @@ async def download_transcript_vtt(download_link: str) -> str | None:
 def get_room_session_data(room_name: str) -> dict[str, Any] | None:
     """
     Get session data from SQLite database.
-
-    **Simple Explanation:**
-    This function retrieves session data from our local SQLite database
-    using the room_name as the key. The session data was saved when the
-    room was created and includes candidate info, webhook URLs, etc.
     """
     from flow.db import get_session_data
 
@@ -250,16 +235,454 @@ async def send_webhook(url: str, payload: dict[str, Any]) -> bool:
         return False
 
 
-async def send_email(to_email: str, subject: str, body: str) -> bool:
+def format_json_summary_html(summary_json: Dict[str, Any]) -> str:
     """
-    Send results via email using Resend.
+    Format a JSON summary (like lead qualification) into clean HTML.
 
-    **Simple Explanation:**
-    This function uses the Resend email service to send emails. It:
-    1. Gets the API key from environment variables
-    2. Gets the verified email domain from environment variables
-    3. Constructs the email with a "from" address using that domain
-    4. Sends the email with the provided subject and body (as HTML)
+    Shows key information at the top, then recommendation.
+    """
+    html_parts = []
+
+    # Extract lead information if present (skip the call_name header)
+    lead_info = summary_json.get("lead", {})
+    if isinstance(lead_info, dict) and lead_info:
+        html_parts.append(
+            '<div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 24px;">'
+        )
+        html_parts.append(
+            '<h3 style="color: #1e293b; font-size: 16px; font-weight: 600; margin: 0 0 16px 0;">Lead Information</h3>'
+        )
+
+        # Format key-value pairs
+        fields = [
+            ("Name", lead_info.get("name")),
+            ("Problem", lead_info.get("problem")),
+            ("Current Workaround", lead_info.get("current_workaround")),
+            ("Timeline", lead_info.get("timeline")),
+            ("Budget", lead_info.get("budget")),
+            ("Decision Maker", lead_info.get("decision_maker")),
+        ]
+
+        for label, value in fields:
+            if value and value != "Not specified" and value != "Unknown":
+                escaped_value = html.escape(str(value))
+                html_parts.append(
+                    f'<div style="margin-bottom: 12px;">'
+                    f'<div style="font-weight: 600; color: #475569; font-size: 13px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">{html.escape(label)}</div>'
+                    f'<div style="color: #1e293b; font-size: 15px; line-height: 1.5;">{escaped_value}</div>'
+                    f"</div>"
+                )
+
+        # Show fit score if available
+        fit_score = lead_info.get("quick_fit_score")
+        if fit_score is not None:
+            score_value = float(fit_score) if fit_score else 0.0
+            score_color = (
+                "#10b981"
+                if score_value >= 7
+                else "#f59e0b" if score_value >= 4 else "#ef4444"
+            )
+            html_parts.append(
+                f'<div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0;">'
+                f'<div style="font-weight: 600; color: #475569; font-size: 13px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Quick Fit Score</div>'
+                f'<div style="color: {score_color}; font-size: 24px; font-weight: 700; line-height: 1.2;">{score_value:.1f}/10</div>'
+                f"</div>"
+            )
+
+        html_parts.append("</div>")
+
+    # Show recommendation if present
+    recommendation = summary_json.get("recommendation")
+    if recommendation:
+        html_parts.append(
+            f'<div style="background-color: #f0f4ff; padding: 20px; border-radius: 6px; border-left: 4px solid #1f2de6; margin-top: 24px;">'
+            f'<div style="font-weight: 600; color: #1f2de6; font-size: 13px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Recommendation</div>'
+            f'<div style="color: #1e293b; font-size: 15px; line-height: 1.6;">{html.escape(str(recommendation))}</div>'
+            f"</div>"
+        )
+
+    return "\n".join(html_parts)
+
+
+def format_transcript_html(transcript_text: str) -> str:
+    """
+    Format transcript text into HTML with alternating speaker colors.
+
+    This function parses the transcript and formats it nicely:
+    - Alternating background colors for assistant vs user messages
+    - Timestamps styled subtly
+    - Clear speaker labels
+    """
+    if not transcript_text:
+        return "<p><em>No transcript available</em></p>"
+
+    lines = transcript_text.strip().split("\n")
+    html_parts = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Match format: [timestamp] role: content
+        # Or simpler: role: content (if no timestamp)
+        timestamp_match = re.match(
+            r"^\[(.+?)\]\s*(assistant|user):\s*(.+)$", line, re.IGNORECASE
+        )
+        if timestamp_match:
+            timestamp = timestamp_match.group(1)
+            role = timestamp_match.group(2).lower()
+            content = timestamp_match.group(3)
+        else:
+            # Try without timestamp
+            role_match = re.match(r"^(assistant|user):\s*(.+)$", line, re.IGNORECASE)
+            if role_match:
+                timestamp = None
+                role = role_match.group(1).lower()
+                content = role_match.group(2)
+            else:
+                # Plain text line - escape and add it
+                escaped_line = html.escape(line)
+                html_parts.append(f"<p>{escaped_line}</p>")
+                continue
+
+        # Determine speaker label and styling (using brand colors)
+        if role == "assistant":
+            speaker_label = "Assistant"
+            bg_color = "#f0f4ff"
+            border_color = "#1f2de6"
+        else:
+            speaker_label = "User"
+            bg_color = "#f8f9fa"
+            border_color = "#64748b"
+
+        # Build HTML for this message
+        message_html = '<div style="margin-bottom: 12px; padding: 12px; background-color: {}; border-left: 3px solid {}; border-radius: 4px;">'.format(
+            bg_color, border_color
+        )
+
+        # Add speaker label and timestamp
+        header_style = "font-weight: 600; color: {}; font-size: 12px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;".format(
+            border_color
+        )
+        message_html += f'<div style="{header_style}">{speaker_label}'
+        if timestamp:
+            # Format timestamp nicely (remove timezone if present)
+            clean_timestamp = timestamp.split("+")[0].split(".")[
+                0
+            ]  # Remove timezone and milliseconds
+            message_html += f' <span style="font-weight: 400; opacity: 0.7;">({clean_timestamp})</span>'
+        message_html += "</div>"
+
+        # Add content (escape HTML to prevent XSS)
+        escaped_content = html.escape(content)
+        message_html += (
+            f'<div style="color: #334155; line-height: 1.6;">{escaped_content}</div>'
+        )
+        message_html += "</div>"
+
+        html_parts.append(message_html)
+
+    return "\n".join(html_parts)
+
+
+def convert_markdown_to_html(text: str) -> str:
+    """
+    Convert basic Markdown formatting to HTML.
+
+    Handles:
+    - **bold** -> <strong>bold</strong>
+    - *italic* -> <em>italic</em>
+    - ## Header -> <h2>Header</h2>
+    - ### Header -> <h3>Header</h3>
+    - - list item -> <li>list item</li>
+    """
+    # Convert bold (**text** or __text__)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"__(.+?)__", r"<strong>\1</strong>", text)
+
+    # Convert italic (*text* or _text_)
+    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<em>\1</em>", text)
+    text = re.sub(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)", r"<em>\1</em>", text)
+
+    return text
+
+
+def format_summary_html(summary_text: str) -> str:
+    """
+    Format summary text into HTML with proper section styling.
+
+    This function converts the plain text summary into nicely formatted HTML:
+    - JSON summaries are formatted as clean key-value pairs
+    - Markdown formatting is converted to HTML
+    - Headers are styled as section titles
+    - Lists are properly formatted
+    - Scores and metrics are highlighted
+    """
+    if not summary_text:
+        return "<p><em>No summary available</em></p>"
+
+    # Check if summary is JSON and format it nicely
+    # Try to detect JSON by checking if it starts with { or [ and can be parsed
+    summary_text_stripped = summary_text.strip()
+    if summary_text_stripped.startswith("{") or summary_text_stripped.startswith("["):
+        try:
+            summary_json = json.loads(summary_text_stripped)
+            if isinstance(summary_json, dict):
+                logger.debug("Detected JSON summary, formatting as HTML")
+                return format_json_summary_html(summary_json)
+        except (json.JSONDecodeError, AttributeError, TypeError) as e:
+            # Not valid JSON, continue with regular text formatting
+            logger.debug(f"Summary is not valid JSON: {e}, using text formatting")
+            pass
+
+    lines = summary_text.split("\n")
+    html_parts = []
+    in_list = False
+
+    for line in lines:
+        line = line.strip()
+
+        # Skip empty lines (but close lists if needed)
+        if not line:
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            continue
+
+        # Check for section headers (lines with === or all caps)
+        if line.startswith("=" * 30):
+            # Section divider - skip it, we'll style the next line as a header
+            continue
+
+        # Check if this looks like a header (all caps, short, or followed by ===)
+        is_header = (
+            line.isupper()
+            and len(line) < 80
+            and not line.startswith("Q:")
+            and not line.startswith("A:")
+        ) or line.endswith(":")
+
+        # Check for Markdown headers (## Header or ### Header)
+        markdown_header_match = re.match(r"^#{1,3}\s+(.+)$", line)
+        if markdown_header_match:
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            header_text = markdown_header_match.group(1).strip()
+            header_level = len(line) - len(line.lstrip("#"))
+            escaped_header = html.escape(header_text)
+            # Convert any markdown in header text
+            escaped_header = convert_markdown_to_html(escaped_header)
+            if header_level == 1:
+                html_parts.append(
+                    f'<h2 style="color: #1e293b; font-size: 20px; font-weight: 600; margin: 24px 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0;">{escaped_header}</h2>'
+                )
+            elif header_level == 2:
+                html_parts.append(
+                    f'<h3 style="color: #1e293b; font-size: 18px; font-weight: 600; margin: 20px 0 10px 0;">{escaped_header}</h3>'
+                )
+            else:
+                html_parts.append(
+                    f'<h4 style="color: #1e293b; font-size: 16px; font-weight: 600; margin: 16px 0 8px 0;">{escaped_header}</h4>'
+                )
+            continue
+
+        # Check for Markdown list items (- item or * item)
+        markdown_list_match = re.match(r"^[-*]\s+(.+)$", line)
+        if markdown_list_match:
+            if not in_list:
+                html_parts.append('<ul style="margin: 12px 0; padding-left: 24px;">')
+                in_list = True
+            item_text = markdown_list_match.group(1).strip()
+            # Escape HTML first, then convert markdown
+            escaped_item = html.escape(item_text)
+            escaped_item = convert_markdown_to_html(escaped_item)
+            html_parts.append(
+                f'<li style="margin-bottom: 8px; line-height: 1.6;">{escaped_item}</li>'
+            )
+            continue
+
+        # Check for numbered list items
+        list_match = re.match(r"^(\d+)\.\s+(.+)$", line)
+
+        # Check for Q&A format
+        qa_match = re.match(r"^(Q|A|Question \d+):\s*(.+)$", line, re.IGNORECASE)
+
+        if list_match:
+            if not in_list:
+                html_parts.append('<ul style="margin: 12px 0; padding-left: 24px;">')
+                in_list = True
+            item_text = html.escape(list_match.group(2))
+            # Convert markdown in numbered list items too
+            item_text = convert_markdown_to_html(item_text)
+            html_parts.append(
+                f'<li style="margin-bottom: 8px; line-height: 1.6;">{item_text}</li>'
+            )
+        elif qa_match:
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            qa_type = html.escape(qa_match.group(1))
+            qa_content = html.escape(qa_match.group(2))
+            if qa_type.upper().startswith("Q"):
+                html_parts.append(
+                    f'<div style="margin: 16px 0 8px 0;"><strong style="color: #1f2de6;">{qa_type}:</strong> <span style="color: #1e293b;">{qa_content}</span></div>'
+                )
+            else:
+                html_parts.append(
+                    f'<div style="margin: 0 0 16px 20px; padding: 8px; background-color: #f8f9fa; border-left: 2px solid #e2e8f0; color: #475569;">{qa_content}</div>'
+                )
+        elif is_header and len(line) < 100:
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            # Style as section header (using brand colors)
+            escaped_header = html.escape(line)
+            html_parts.append(
+                f'<h2 style="color: #1e293b; font-size: 18px; font-weight: 600; margin: 24px 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0;">{escaped_header}</h2>'
+            )
+        else:
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            # Regular paragraph
+            # Escape HTML first, then convert markdown, then highlight scores
+            escaped_line = html.escape(line)
+            # Convert markdown formatting (bold, italic)
+            formatted_line = convert_markdown_to_html(escaped_line)
+            # Highlight scores (e.g., "8.5/10" or "Score: 7.0")
+            formatted_line = re.sub(
+                r"(\d+\.?\d*)/10",
+                r'<span style="background-color: #fff3cd; padding: 2px 6px; border-radius: 3px; font-weight: 600;">\1/10</span>',
+                formatted_line,
+            )
+            formatted_line = re.sub(
+                r"Score:\s*(\d+\.?\d*)",
+                r'Score: <span style="background-color: #fff3cd; padding: 2px 6px; border-radius: 3px; font-weight: 600;">\1</span>',
+                formatted_line,
+            )
+            html_parts.append(
+                f'<p style="margin: 8px 0; line-height: 1.6; color: #334155;">{formatted_line}</p>'
+            )
+
+    # Close any open list
+    if in_list:
+        html_parts.append("</ul>")
+
+    return "\n".join(html_parts)
+
+
+def generate_html_email(
+    summary_text: str,
+    transcript_text: str,
+    candidate_name: str = "Unknown",
+    interview_type: str = "Interview",
+    insights: Dict[str, Any] | None = None,
+) -> str:
+    """
+    Generate a beautiful HTML email from summary and transcript.
+
+    This function creates a professional-looking HTML email with:
+    - A clean header matching PailFlow branding
+    - Formatted summary sections
+    - Nicely styled transcript with speaker differentiation
+    - Responsive design that works in email clients
+    """
+    # Format the summary and transcript
+    summary_html = format_summary_html(summary_text)
+    transcript_html = format_transcript_html(transcript_text)
+
+    # Use sensible defaults if values are missing
+    if not interview_type or interview_type == "Unknown":
+        interview_type = "Session"
+    if not candidate_name:
+        candidate_name = "Unknown"
+
+    # Escape user-provided content for security
+    escaped_interview_type = html.escape(str(interview_type))
+    escaped_candidate_name = html.escape(str(candidate_name))
+
+    # Build the complete HTML email
+    # Use brand colors: #1f2de6 (brand blue), clean flat design
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{escaped_interview_type} Results</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8f9fa;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f8f9fa; padding: 20px;">
+        <tr>
+            <td align="center">
+                <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <!-- Top Brand Line -->
+                    <tr>
+                        <td style="height: 4px; background-color: #1f2de6; width: 100%;"></td>
+                    </tr>
+                    <!-- Header -->
+                    <tr>
+                        <td style="background-color: #ffffff; padding: 32px 24px 24px 24px; border-bottom: 1px solid #e2e8f0;">
+                            <div style="margin-bottom: 16px;">
+                                <div style="font-weight: 700; font-size: 18px; line-height: 1.2; color: #1e293b; letter-spacing: -0.01em;">PailFlow</div>
+                                <div style="font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px;">Workspace</div>
+                            </div>
+                            <h1 style="margin: 0; color: #1e293b; font-size: 22px; font-weight: 600; line-height: 1.3;">{escaped_interview_type} Complete</h1>
+                            {f'<p style="margin: 8px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.5;">{escaped_candidate_name}</p>' if escaped_candidate_name and escaped_candidate_name != "Unknown" else ''}
+                        </td>
+                    </tr>
+
+                    <!-- Summary Section -->
+                    <tr>
+                        <td style="padding: 32px 24px;">
+                            <div style="margin-bottom: 0;">
+                                {summary_html}
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Transcript Section -->
+                    <tr>
+                        <td style="padding: 0 24px 32px 24px;">
+                            <h2 style="color: #1e293b; font-size: 18px; font-weight: 600; margin: 0 0 16px 0; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0;">Full Transcript</h2>
+                            <div style="max-height: 600px; overflow-y: auto; padding: 16px; background-color: #f8f9fa; border-radius: 6px; border: 1px solid #e2e8f0;">
+                                {transcript_html}
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 20px 24px; text-align: center; background-color: #ffffff; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0; color: #94a3b8; font-size: 12px; font-weight: 500;">Sent by PailFlow</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"""
+
+    return html_content
+
+
+async def send_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    candidate_name: str = "Unknown",
+    interview_type: str = "Interview",
+    transcript_text: str = "",
+    insights: Dict[str, Any] | None = None,
+) -> bool:
+    """
+    Send results via email using Resend with beautiful HTML formatting.
+
+    This function now generates a professional HTML email instead of plain text.
+    The body parameter is treated as the summary text, and transcript_text is
+    formatted separately for better presentation.
     """
     try:
         # Get Resend API key from environment
@@ -278,13 +701,16 @@ async def send_email(to_email: str, subject: str, body: str) -> bool:
         resend.api_key = api_key
 
         # Construct the "from" address using the verified domain
-        # Using "noreply@" as a common pattern, but you can customize this
-        from_email = f"PailKit <noreply@{email_domain}>"
+        from_email = f"PailFlow <noreply@{email_domain}>"
 
-        # Prepare email parameters
-        # Convert body text to HTML (simple conversion - just wrap in <p> tags)
-        html_body = body.replace("\n\n", "</p><p>").replace("\n", "<br>")
-        html_body = f"<p>{html_body}</p>"
+        # Generate beautiful HTML email
+        html_body = generate_html_email(
+            summary_text=body,
+            transcript_text=transcript_text,
+            candidate_name=candidate_name,
+            interview_type=interview_type,
+            insights=insights,
+        )
 
         params: resend.Emails.SendParams = {
             "from": from_email,
@@ -310,15 +736,6 @@ async def send_email(to_email: str, subject: str, body: str) -> bool:
 class ProcessTranscriptStep(InterviewStep):
     """
     Process transcript from Daily.co webhook.
-
-    **Simple Explanation:**
-    This step is triggered when Daily.co sends a webhook saying a transcript
-    is ready. It handles the complete workflow:
-    - Downloads the transcript from Daily.co
-    - Extracts text from VTT format
-    - Retrieves session data (candidate info, webhook URLs, etc.)
-    - Generates an AI-powered summary
-    - Sends results via webhook and/or email
     """
 
     def __init__(self):
@@ -330,11 +747,6 @@ class ProcessTranscriptStep(InterviewStep):
     async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute complete transcript processing pipeline.
-
-        **Simple Explanation:**
-        This step processes the transcript from either:
-        1. Database (when bot is enabled - transcript saved in real-time)
-        2. Daily.co API (when bot is NOT enabled - downloads VTT file)
 
         Args:
             state: Current workflow state containing:
@@ -449,6 +861,9 @@ class ProcessTranscriptStep(InterviewStep):
             position = session_data.get("position", "Unknown")
             interview_type = session_data.get("interview_type", "Interview")
             interviewer_context = session_data.get("interviewer_context", "")
+
+            # For lead qualification, the name might be extracted in insights as person_name
+            # We'll check insights later after they're extracted and update candidate_name if needed
 
             logger.info(f"   👤 Candidate: {candidate_name}")
             logger.info(f"   💼 Position: {position}")
@@ -566,12 +981,150 @@ class ProcessTranscriptStep(InterviewStep):
             email_sent = False
             if email_results_to and not email_already_sent:
                 logger.info(f"📧 Sending email to: {email_results_to}")
-                logger.info(
-                    f"   Subject: Interview Complete: {candidate_name} - {position}"
+
+                # For lead qualification, try to extract name from insights if available
+                # The insights might have person_name (from lead qualification) or the name might be in the summary JSON
+                email_candidate_name = (
+                    candidate_name
+                    if candidate_name and candidate_name != "Unknown"
+                    else "Unknown"
                 )
-                subject = f"Interview Complete: {candidate_name} - {position}"
-                body = f"{candidate_summary}\n\nFull Transcript:\n{transcript_text}"
-                email_sent = await send_email(email_results_to, subject, body)
+                insights = state.get("insights", {})
+
+                # Check if insights has person_name (for lead qualification flows)
+                if insights and isinstance(insights, dict):
+                    extracted_name = insights.get("person_name")
+                    if (
+                        extracted_name
+                        and extracted_name != "Unknown"
+                        and extracted_name.strip()
+                    ):
+                        email_candidate_name = extracted_name
+                        logger.info(
+                            f"   📝 Using extracted name from insights: {email_candidate_name}"
+                        )
+
+                # Also try to extract from summary JSON if it's a lead qualification summary
+                # The summary might be JSON with lead.name field
+                if email_candidate_name == "Unknown" and candidate_summary:
+                    try:
+                        # Try to parse JSON from summary (lead qualification summaries are JSON)
+                        summary_json = json.loads(candidate_summary.strip())
+                        if isinstance(summary_json, dict):
+                            lead_info = summary_json.get("lead", {})
+                            if isinstance(lead_info, dict):
+                                lead_name = lead_info.get("name")
+                                if (
+                                    lead_name
+                                    and lead_name != "Unknown"
+                                    and lead_name.strip()
+                                ):
+                                    email_candidate_name = lead_name
+                                    logger.info(
+                                        f"   📝 Using extracted name from summary JSON: {email_candidate_name}"
+                                    )
+                    except (json.JSONDecodeError, AttributeError):
+                        # Summary is not JSON, that's fine - use the name we have
+                        pass
+
+                # Ensure we have valid values (not None)
+                email_candidate_name = (
+                    email_candidate_name if email_candidate_name else "Unknown"
+                )
+
+                # If we have a valid name (not "Unknown"), update the summary JSON/text to replace "Unknown" with the actual name
+                # This ensures the email body shows the correct name, not "Unknown"
+                email_summary = candidate_summary
+                if email_candidate_name != "Unknown" and candidate_summary:
+                    try:
+                        # Try to parse and update JSON summary (for lead qualification)
+                        summary_json = json.loads(candidate_summary.strip())
+                        if isinstance(summary_json, dict):
+                            # Check if there's a lead.name field that needs updating
+                            lead_info = summary_json.get("lead", {})
+                            if (
+                                isinstance(lead_info, dict)
+                                and lead_info.get("name") == "Unknown"
+                            ):
+                                # Update the name in the JSON
+                                summary_json["lead"]["name"] = email_candidate_name
+                                # Re-serialize the JSON with proper formatting
+                                email_summary = json.dumps(summary_json, indent=2)
+                                logger.info(
+                                    f"   📝 Updated summary JSON to use name: {email_candidate_name}"
+                                )
+                            # Also check for other name fields that might be "Unknown"
+                            elif (
+                                "name" in summary_json
+                                and summary_json.get("name") == "Unknown"
+                            ):
+                                summary_json["name"] = email_candidate_name
+                                email_summary = json.dumps(summary_json, indent=2)
+                                logger.info(
+                                    f"   📝 Updated summary JSON name field: {email_candidate_name}"
+                                )
+                    except (json.JSONDecodeError, AttributeError, TypeError):
+                        # Summary is not JSON or couldn't be updated, try text replacement
+                        if "Unknown" in candidate_summary:
+                            # Replace "Unknown" with the extracted name in the summary text
+                            # Be careful to only replace when it's clearly a name field
+                            email_summary = candidate_summary.replace(
+                                '"name": "Unknown"', f'"name": "{email_candidate_name}"'
+                            )
+                            email_summary = email_summary.replace(
+                                "name: Unknown", f"name: {email_candidate_name}"
+                            )
+                            email_summary = email_summary.replace(
+                                "Participant: Unknown",
+                                f"Participant: {email_candidate_name}",
+                            )
+                            email_summary = email_summary.replace(
+                                "Candidate: Unknown",
+                                f"Candidate: {email_candidate_name}",
+                            )
+                            logger.info(
+                                f"   📝 Updated summary text to use name: {email_candidate_name}"
+                            )
+
+                # Generate appropriate subject based on interview_type
+                # For lead qualification, use "Qualification Complete", otherwise use interview_type
+                is_qualification = (
+                    interview_type and "qualification" in interview_type.lower()
+                )
+                if is_qualification:
+                    subject_prefix = "Qualification Complete"
+                elif interview_type and interview_type != "Interview":
+                    subject_prefix = interview_type + " Complete"
+                else:
+                    subject_prefix = "Session Complete"
+
+                # Build subject with name and position/role (use extracted name if available)
+                # For qualification calls, don't include position (it's usually just "Lead")
+                # For other calls, include position if it's meaningful
+                if is_qualification:
+                    # For qualification: just use name
+                    subject = f"{subject_prefix}: {email_candidate_name}"
+                elif position and position != "Unknown" and position != "Lead":
+                    # For interviews: include position if it's meaningful
+                    subject = f"{subject_prefix}: {email_candidate_name} - {position}"
+                else:
+                    # Fallback: just use name
+                    subject = f"{subject_prefix}: {email_candidate_name}"
+
+                logger.info(f"   Subject: {subject}")
+
+                email_interview_type = interview_type if interview_type else "Session"
+                email_transcript = transcript_text if transcript_text else ""
+
+                email_sent = await send_email(
+                    to_email=email_results_to,
+                    subject=subject,
+                    body=email_summary,  # Summary text (may have been updated with extracted name)
+                    candidate_name=email_candidate_name,
+                    interview_type=email_interview_type,
+                    transcript_text=email_transcript,  # Transcript formatted separately
+                    insights=insights,  # Include insights for potential JSON formatting
+                )
 
                 # Mark as sent in session_data to prevent duplicates
                 if email_sent and room_name:
