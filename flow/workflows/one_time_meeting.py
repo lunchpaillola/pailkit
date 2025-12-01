@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 
 from langgraph.graph import END, StateGraph
 
-from flow.steps.interview import CallVAPIStep, CreateRoomStep
+from flow.steps.interview import CreateRoomStep
 from flow.steps.interview.join_bot import JoinBotStep
 
 logger = logging.getLogger(__name__)
@@ -31,9 +31,6 @@ class OneTimeMeetingState(TypedDict, total=False):
     hosted_url: str | None
     room_provider: str | None
     meeting_token: str | None
-    dialin_code: str | None  # Daily.co PIN code for dial-in
-    vapi_call_id: str | None
-    vapi_call_created: bool
     session_data_to_set: Dict[str, Any] | None  # Session data to set on join
     processing_status: str
     error: str | None
@@ -60,7 +57,6 @@ class OneTimeMeetingWorkflow:
     def __init__(self):
         self.steps = {
             "create_room": CreateRoomStep(),
-            "call_vapi": CallVAPIStep(),
             "join_bot": JoinBotStep(),
         }
         self.graph = self._build_graph()
@@ -68,16 +64,10 @@ class OneTimeMeetingWorkflow:
     def _build_graph(self) -> Any:
         workflow = StateGraph(OneTimeMeetingState)
         workflow.add_node("create_room", create_step_wrapper(self.steps["create_room"]))
-        workflow.add_node("call_vapi", create_step_wrapper(self.steps["call_vapi"]))
         workflow.add_node("join_bot", create_step_wrapper(self.steps["join_bot"]))
         workflow.set_entry_point("create_room")
         workflow.add_edge("create_room", "join_bot")
-        # IMPORTANT: Join bot BEFORE calling VAPI
-        # the meeting session to have started (when someone joins). By joining the bot first,
-        # we start the meeting session, which enables PIN dial-in functionality.
-        # Then VAPI can successfully dial the phone number and enter the PIN to join the room.
-        workflow.add_edge("join_bot", "call_vapi")
-        workflow.add_edge("call_vapi", END)
+        workflow.add_edge("join_bot", END)
         return workflow.compile()
 
     async def execute_async(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -104,9 +94,6 @@ class OneTimeMeetingWorkflow:
                 "hosted_url": None,
                 "room_provider": None,
                 "meeting_token": None,
-                "dialin_code": None,
-                "vapi_call_id": None,
-                "vapi_call_created": False,
                 "session_id": context.get("session_id", str(uuid.uuid4())),
                 "meet_base_url": base_url,
             }
@@ -119,10 +106,10 @@ class OneTimeMeetingWorkflow:
 
             room_name = result.get("room_name")
 
-            # If room was created, return room info even if later steps failed
+            # If room was created, return room info
             if room_name:
-                # Room was created successfully - return room info even if VAPI failed
-                pass  # Continue to build response with room info
+                # Room was created successfully - continue to build response with room info
+                pass
             elif result.get("error"):
                 # Room creation failed - return error
                 return {
@@ -222,15 +209,6 @@ class OneTimeMeetingWorkflow:
                 "workflow": self.name,
             }
 
-            # Include VAPI info if available (even if call failed)
-            if "dialin_code" in result:
-                response["dialin_code"] = result.get("dialin_code")
-            if "vapi_call_created" in result:
-                response["vapi_call_created"] = result.get("vapi_call_created")
-            if "vapi_call_id" in result:
-                response["vapi_call_id"] = result.get("vapi_call_id")
-            if "vapi_call_error" in result:
-                response["vapi_call_error"] = result.get("vapi_call_error")
             if result.get("error"):
                 # Include error as warning if room was still created
                 response["warning"] = result.get("error")

@@ -23,7 +23,6 @@ from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
 from flow.steps.interview import (
-    CallVAPIStep,
     ConfigureAgentStep,
     ConductInterviewStep,
     ExtractInsightsStep,
@@ -81,9 +80,6 @@ class InterviewState(TypedDict):
     room_name: Optional[str]  # Room name (extracted from URL, used for API calls)
     room_provider: Optional[str]  # Room provider name (e.g., "daily")
     meeting_token: Optional[str]  # Daily.co meeting token
-    dialin_code: Optional[str]  # PIN code for dial-in (from Daily.co)
-    vapi_call_id: Optional[str]  # VAPI call ID if VAPI calling is used
-    vapi_call_created: bool  # Whether VAPI call was successfully created
     session_id: Optional[str]  # Unique interview session ID
 
     # AI Interviewer configuration
@@ -200,14 +196,9 @@ def map_from_one_time_meeting_state(
     if room_provider:
         parent_state["room_provider"] = room_provider
 
-    # Preserve VAPI-related fields from subgraph
+    # Preserve meeting token from subgraph
     if one_time_state.get("meeting_token"):
         parent_state["meeting_token"] = one_time_state.get("meeting_token")
-    if one_time_state.get("dialin_code"):
-        parent_state["dialin_code"] = one_time_state.get("dialin_code")
-    if one_time_state.get("vapi_call_id"):
-        parent_state["vapi_call_id"] = one_time_state.get("vapi_call_id")
-    parent_state["vapi_call_created"] = one_time_state.get("vapi_call_created", False)
 
     return parent_state
 
@@ -345,8 +336,7 @@ class AIInterviewerWorkflow:
         # Initialize step instances (excluding create_room, which is handled by subgraph)
         # Recording and transcription are now handled client-side in meeting.html
         self.steps = {
-            "call_vapi": CallVAPIStep(),  # Step 2: Make VAPI outbound call (if enabled)
-            "configure_agent": ConfigureAgentStep(),  # Step 3: Configure AI interviewer
+            "configure_agent": ConfigureAgentStep(),  # Step 2: Configure AI interviewer
             "generate_questions": GenerateQuestionsStep(),  # Step 4: Generate interview questions
             "conduct_interview": ConductInterviewStep(),  # Step 5: Conduct the interview
             "process_transcript": ProcessTranscriptStep(),  # Step 6: Process transcript into Q&A pairs
@@ -385,11 +375,8 @@ class AIInterviewerWorkflow:
         # Recording and transcription are handled client-side via URL parameters
         workflow.set_entry_point("create_room")  # Start with one_time_meeting subgraph
         workflow.add_edge(
-            "create_room", "call_vapi"
-        )  # After room creation, make VAPI call (if enabled)
-        workflow.add_edge(
-            "call_vapi", "configure_agent"
-        )  # Then configure agent (or skip if using VAPI)
+            "create_room", "configure_agent"
+        )  # After room creation, configure agent
         workflow.add_edge("configure_agent", "generate_questions")
         workflow.add_edge("generate_questions", "conduct_interview")
         # After conduct_interview, we need to pause and wait for transcript webhook
@@ -458,9 +445,6 @@ class AIInterviewerWorkflow:
                 "room_name": None,
                 "room_provider": None,
                 "meeting_token": None,
-                "dialin_code": None,
-                "vapi_call_id": None,
-                "vapi_call_created": False,
                 "session_id": session_id,
                 "interviewer_persona": None,
                 "interviewer_context": None,
