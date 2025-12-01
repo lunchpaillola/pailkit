@@ -33,6 +33,7 @@ Optional environment variables:
 import asyncio
 import os
 import sys
+from typing import Any
 from dotenv import load_dotenv
 
 # Add project root to path so we can import flow modules
@@ -44,20 +45,27 @@ sys.path.insert(0, project_root)
 from flow.workflows.one_time_meeting import OneTimeMeetingWorkflow  # noqa: E402
 
 
-async def main():
-    """Create lead qualification room with bot and wait for user to join."""
+async def create_lead_qualification_room(
+    participant_name: str | None = None,
+    participant_email: str | None = None,
+) -> dict[str, Any]:
+    """
+    Create a lead qualification room with bot.
+
+    This is the core function that can be called from scripts or API endpoints.
+    Returns the workflow result with room information.
+    """
     load_dotenv()
 
     daily_api_key = os.getenv("DAILY_API_KEY")
-    test_email = os.getenv("TEST_EMAIL", "test@example.com")
-    test_name = os.getenv("TEST_NAME", "Unknown")
+    test_email = participant_email or os.getenv("TEST_EMAIL", "test@example.com")
+    test_name = participant_name or os.getenv("TEST_NAME", "Unknown")
     test_webhook_site = os.getenv(
         "TEST_WEBHOOK_SITE", "https://webhook.site/38c8fcd9-00e6-48d2-a169-32856a7e76fe"
     )
 
     if not daily_api_key:
-        print("❌ Missing required API key: DAILY_API_KEY")
-        sys.exit(1)
+        raise ValueError("Missing required API key: DAILY_API_KEY")
 
     workflow = OneTimeMeetingWorkflow()
 
@@ -210,18 +218,18 @@ IMPORTANT:
     # Set the base URL for the hosted meeting page
     os.environ["MEET_BASE_URL"] = os.getenv("MEET_BASE_URL", "http://localhost:8001")
 
+    # Execute the workflow
+    result = await workflow.execute_async(context)
+    return result
+
+
+async def main():
+    """Create lead qualification room with bot and wait for user to join."""
     print(f"\n{'='*80}")
     print("🚀 Creating lead qualification room with bot...")
     print(f"{'='*80}\n")
 
-    # Show demo lead info
-    participant_info = context.get("participant_info", {})
-    print("👤 Lead Qualification Call:")
-    print(f"   Email: {participant_info.get('email', 'N/A')}")
-    print("   Type: Lead Qualification")
-    print("   Bot will ask 5 qualification questions\n")
-
-    result = await workflow.execute_async(context)
+    result = await create_lead_qualification_room()
 
     # Get room info from result
     room_name = result.get("room_name")
