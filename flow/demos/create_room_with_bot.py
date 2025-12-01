@@ -25,7 +25,8 @@ Required environment variables in your .env file:
 - ENCRYPTION_KEY: Encryption key for database (required, at least 32 characters)
 
 Optional environment variables:
-- TEST_CANDIDATE_EMAIL: Email to send results to (defaults to test@example.com)
+- TEST_EMAIL: Email to send results to (defaults to test@example.com)
+- TEST_NAME: Name of the participant (defaults to Alex Johnson)
 - TEST_WEBHOOK_SITE: Webhook URL for testing (defaults to webhook.site URL)
 - MEET_BASE_URL: Base URL for hosted meeting page (defaults to http://localhost:8001)
 
@@ -51,7 +52,8 @@ async def main():
     load_dotenv()
 
     daily_api_key = os.getenv("DAILY_API_KEY")
-    test_candidate_email = os.getenv("TEST_CANDIDATE_EMAIL", "test@example.com")
+    test_email = os.getenv("TEST_EMAIL", "test@example.com")
+    test_name = os.getenv("TEST_NAME", "Alex Johnson")
     test_webhook_site = os.getenv(
         "TEST_WEBHOOK_SITE", "https://webhook.site/38c8fcd9-00e6-48d2-a169-32856a7e76fe"
     )
@@ -136,8 +138,8 @@ Make it readable and useful for understanding the candidate's performance."""
     # This includes meeting_config (for room settings) and participant_info (for candidate data).
     # The participant_info will be used to populate the email subject and summary.
     participant_info = {
-        "name": "Alex Johnson",  # This will appear in the summary
-        "email": test_candidate_email,  # From .env file
+        "name": test_name,  # From .env file (TEST_NAME)
+        "email": test_email,  # From .env file (TEST_EMAIL)
         "role": "Senior Software Engineer",  # This will appear in the summary
         "position": "Senior Software Engineer",  # Alternative key name (for compatibility)
         "company": "TechCorp Inc.",  # Optional: company they're applying from
@@ -150,7 +152,7 @@ Make it readable and useful for understanding the candidate's performance."""
             # So we don't need client-side autoTranscribe (which only transcribes the user)
             "autoTranscribe": False,
             "webhook_callback_url": test_webhook_site,  # Test webhook endpoint from .env
-            "email_results_to": test_candidate_email,  # From .env file
+            "email_results_to": test_email,  # From .env file (TEST_EMAIL)
             "interview_type": "Technical Interview",  # This will appear in the summary
             "difficulty_level": "intermediate",
             # Bot configuration with prompt-driven behavior

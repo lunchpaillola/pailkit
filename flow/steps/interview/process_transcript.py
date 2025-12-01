@@ -528,10 +528,33 @@ class ProcessTranscriptStep(InterviewStep):
             email_sent = False
             if email_results_to and not email_already_sent:
                 logger.info(f"📧 Sending email to: {email_results_to}")
-                logger.info(
-                    f"   Subject: Interview Complete: {candidate_name} - {position}"
+
+                # Generate appropriate subject based on interview_type
+                # For lead qualification, use "Qualification Complete", otherwise use interview_type
+                is_qualification = (
+                    interview_type and "qualification" in interview_type.lower()
                 )
-                subject = f"Interview Complete: {candidate_name} - {position}"
+                if is_qualification:
+                    subject_prefix = "Qualification Complete"
+                elif interview_type and interview_type != "Interview":
+                    subject_prefix = interview_type + " Complete"
+                else:
+                    subject_prefix = "Session Complete"
+
+                # Build subject with name and position/role
+                # For qualification calls, don't include position (it's usually just "Lead")
+                # For other calls, include position if it's meaningful
+                if is_qualification:
+                    # For qualification: just use name
+                    subject = f"{subject_prefix}: {candidate_name}"
+                elif position and position != "Unknown" and position != "Lead":
+                    # For interviews: include position if it's meaningful
+                    subject = f"{subject_prefix}: {candidate_name} - {position}"
+                else:
+                    # Fallback: just use name
+                    subject = f"{subject_prefix}: {candidate_name}"
+
+                logger.info(f"   Subject: {subject}")
                 body = f"{candidate_summary}\n\nFull Transcript:\n{transcript_text}"
                 email_sent = await send_email(email_results_to, subject, body)
 

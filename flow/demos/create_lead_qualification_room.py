@@ -24,7 +24,8 @@ Required environment variables in your .env file:
 - ENCRYPTION_KEY: Encryption key for database (required, at least 32 characters)
 
 Optional environment variables:
-- TEST_LEAD_EMAIL or TEST_CANDIDATE_EMAIL: Email to send results to (defaults to test@example.com)
+- TEST_EMAIL: Email to send results to (defaults to test@example.com)
+- TEST_NAME: Name of the lead (defaults to Unknown, will be extracted from call if provided)
 - TEST_WEBHOOK_SITE: Webhook URL for testing (defaults to webhook.site URL)
 - MEET_BASE_URL: Base URL for hosted meeting page (defaults to http://localhost:8001)
 """
@@ -48,10 +49,8 @@ async def main():
     load_dotenv()
 
     daily_api_key = os.getenv("DAILY_API_KEY")
-    # Support both TEST_LEAD_EMAIL and TEST_CANDIDATE_EMAIL for consistency
-    test_lead_email = os.getenv("TEST_LEAD_EMAIL") or os.getenv(
-        "TEST_CANDIDATE_EMAIL", "test@example.com"
-    )
+    test_email = os.getenv("TEST_EMAIL", "test@example.com")
+    test_name = os.getenv("TEST_NAME", "Unknown")
     test_webhook_site = os.getenv(
         "TEST_WEBHOOK_SITE", "https://webhook.site/38c8fcd9-00e6-48d2-a169-32856a7e76fe"
     )
@@ -167,10 +166,10 @@ IMPORTANT:
 - Use "Unknown" or "Not specified" for missing fields
 - Ensure quick_fit_score is a number, not a string"""
 
-    # Lead information (optional - can be Unknown if not provided)
+    # Lead information (name can be extracted from call, but use TEST_NAME as fallback)
     participant_info = {
-        "name": "Unknown",  # Will be extracted from the call
-        "email": test_lead_email,  # From .env file
+        "name": test_name,  # From .env file (TEST_NAME), may be updated from call
+        "email": test_email,  # From .env file (TEST_EMAIL)
         "role": "Lead",  # Generic role for qualification calls
     }
 
@@ -180,7 +179,7 @@ IMPORTANT:
             # When bot is enabled, TranscriptProcessor handles transcription automatically
             "autoTranscribe": False,
             "webhook_callback_url": test_webhook_site,  # Test webhook endpoint from .env
-            "email_results_to": test_lead_email,  # From .env file
+            "email_results_to": test_email,  # From .env file (TEST_EMAIL)
             "interview_type": "Lead Qualification Call",  # This will appear in the summary
             "difficulty_level": "beginner",  # Not applicable but required field
             # Bot configuration with qualification prompts
@@ -197,6 +196,9 @@ IMPORTANT:
             # Also include participant info in meeting_config for easier access
             "participant_name": participant_info.get("name", "Unknown"),
             "role": participant_info.get("role", "Lead"),
+            "position": participant_info.get(
+                "role", "Lead"
+            ),  # Use role as position for email subject
         },
         "participant_info": participant_info,
         "session_id": f"lead-qual-{int(asyncio.get_event_loop().time())}",  # Unique session ID
