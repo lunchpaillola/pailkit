@@ -188,14 +188,19 @@ Return ONLY valid JSON, no additional text."""
         """
         Validate and normalize insights structure.
         """
-        # Ensure all required fields exist
-        validated = {
-            "overall_score": float(insights.get("overall_score", 0.0)),
-            "competency_scores": insights.get("competency_scores", {}),
-            "strengths": insights.get("strengths", []),
-            "weaknesses": insights.get("weaknesses", []),
-            "question_assessments": insights.get("question_assessments", []),
-        }
+        # Start with all fields from insights to preserve custom fields
+        # (e.g., person_name, problem, timeline, etc. for lead qualification)
+        validated = dict(insights)
+
+        # Ensure all required fields exist with defaults
+        validated.setdefault("overall_score", 0.0)
+        validated.setdefault("competency_scores", {})
+        validated.setdefault("strengths", [])
+        validated.setdefault("weaknesses", [])
+        validated.setdefault("question_assessments", [])
+
+        # Normalize required fields
+        validated["overall_score"] = float(validated["overall_score"])
 
         # Clamp scores to 0-10
         validated["overall_score"] = max(0.0, min(10.0, validated["overall_score"]))
