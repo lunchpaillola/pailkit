@@ -386,12 +386,35 @@ def format_transcript_html(transcript_text: str) -> str:
     return "\n".join(html_parts)
 
 
+def convert_markdown_to_html(text: str) -> str:
+    """
+    Convert basic Markdown formatting to HTML.
+
+    Handles:
+    - **bold** -> <strong>bold</strong>
+    - *italic* -> <em>italic</em>
+    - ## Header -> <h2>Header</h2>
+    - ### Header -> <h3>Header</h3>
+    - - list item -> <li>list item</li>
+    """
+    # Convert bold (**text** or __text__)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"__(.+?)__", r"<strong>\1</strong>", text)
+
+    # Convert italic (*text* or _text_)
+    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<em>\1</em>", text)
+    text = re.sub(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)", r"<em>\1</em>", text)
+
+    return text
+
+
 def format_summary_html(summary_text: str) -> str:
     """
     Format summary text into HTML with proper section styling.
 
     This function converts the plain text summary into nicely formatted HTML:
     - JSON summaries are formatted as clean key-value pairs
+    - Markdown formatting is converted to HTML
     - Headers are styled as section titles
     - Lists are properly formatted
     - Scores and metrics are highlighted
@@ -440,6 +463,46 @@ def format_summary_html(summary_text: str) -> str:
             and not line.startswith("A:")
         ) or line.endswith(":")
 
+        # Check for Markdown headers (## Header or ### Header)
+        markdown_header_match = re.match(r"^#{1,3}\s+(.+)$", line)
+        if markdown_header_match:
+            if in_list:
+                html_parts.append("</ul>")
+                in_list = False
+            header_text = markdown_header_match.group(1).strip()
+            header_level = len(line) - len(line.lstrip("#"))
+            escaped_header = html.escape(header_text)
+            # Convert any markdown in header text
+            escaped_header = convert_markdown_to_html(escaped_header)
+            if header_level == 1:
+                html_parts.append(
+                    f'<h2 style="color: #1e293b; font-size: 20px; font-weight: 600; margin: 24px 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0;">{escaped_header}</h2>'
+                )
+            elif header_level == 2:
+                html_parts.append(
+                    f'<h3 style="color: #1e293b; font-size: 18px; font-weight: 600; margin: 20px 0 10px 0;">{escaped_header}</h3>'
+                )
+            else:
+                html_parts.append(
+                    f'<h4 style="color: #1e293b; font-size: 16px; font-weight: 600; margin: 16px 0 8px 0;">{escaped_header}</h4>'
+                )
+            continue
+
+        # Check for Markdown list items (- item or * item)
+        markdown_list_match = re.match(r"^[-*]\s+(.+)$", line)
+        if markdown_list_match:
+            if not in_list:
+                html_parts.append('<ul style="margin: 12px 0; padding-left: 24px;">')
+                in_list = True
+            item_text = markdown_list_match.group(1).strip()
+            # Escape HTML first, then convert markdown
+            escaped_item = html.escape(item_text)
+            escaped_item = convert_markdown_to_html(escaped_item)
+            html_parts.append(
+                f'<li style="margin-bottom: 8px; line-height: 1.6;">{escaped_item}</li>'
+            )
+            continue
+
         # Check for numbered list items
         list_match = re.match(r"^(\d+)\.\s+(.+)$", line)
 
@@ -451,6 +514,8 @@ def format_summary_html(summary_text: str) -> str:
                 html_parts.append('<ul style="margin: 12px 0; padding-left: 24px;">')
                 in_list = True
             item_text = html.escape(list_match.group(2))
+            # Convert markdown in numbered list items too
+            item_text = convert_markdown_to_html(item_text)
             html_parts.append(
                 f'<li style="margin-bottom: 8px; line-height: 1.6;">{item_text}</li>'
             )
@@ -482,12 +547,15 @@ def format_summary_html(summary_text: str) -> str:
                 html_parts.append("</ul>")
                 in_list = False
             # Regular paragraph
-            # Escape HTML first, then highlight scores (e.g., "8.5/10" or "Score: 7.0")
+            # Escape HTML first, then convert markdown, then highlight scores
             escaped_line = html.escape(line)
+            # Convert markdown formatting (bold, italic)
+            formatted_line = convert_markdown_to_html(escaped_line)
+            # Highlight scores (e.g., "8.5/10" or "Score: 7.0")
             formatted_line = re.sub(
                 r"(\d+\.?\d*)/10",
                 r'<span style="background-color: #fff3cd; padding: 2px 6px; border-radius: 3px; font-weight: 600;">\1/10</span>',
-                escaped_line,
+                formatted_line,
             )
             formatted_line = re.sub(
                 r"Score:\s*(\d+\.?\d*)",
