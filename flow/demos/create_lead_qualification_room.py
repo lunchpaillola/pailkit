@@ -140,39 +140,27 @@ Provide a JSON response with:
 Transcript: {transcript}"""
 
     # Summary Format Prompt: Defines how to format the final output
-    summary_format_prompt = """Create a lead qualification summary in this exact JSON format.
+    summary_format_prompt = """Create a clean, professional lead qualification summary.
 
-Extract the following fields from the insights in the Context Data:
-- person_name (from insights.person_name)
-- problem (from insights.problem)
-- current_workaround (from insights.current_workaround)
-- timeline (from insights.timeline)
-- budget (from insights.budget)
-- decision_maker (from insights.decision_maker)
-- quick_fit_score (from insights.quick_fit_score, should be a number 1-10)
+Extract the following information from the insights in the Context Data and format it as a clear, readable summary:
 
-Output this exact JSON structure:
+LEAD INFORMATION
+- Name: Extract from insights.person_name (use 'Unknown' if not available)
+- Problem: Extract from insights.problem (use 'Not specified' if not available)
+- Current Workaround: Extract from insights.current_workaround (use 'Not specified' if not available)
+- Timeline: Extract from insights.timeline (use 'Not specified' if not available)
+- Budget: Extract from insights.budget (use 'Not specified' if not available)
+- Decision Maker: Extract from insights.decision_maker (use 'Not specified' if not available)
+- Quick Fit Score: Extract from insights.quick_fit_score (should be a number 1-10)
 
-{{
-  "call_name": "Lead Qualification Call",
-  "lead": {{
-    "name": "<extract from insights.person_name, use 'Unknown' if not available>",
-    "problem": "<extract from insights.problem, use 'Not specified' if not available>",
-    "current_workaround": "<extract from insights.current_workaround, use 'Not specified' if not available>",
-    "timeline": "<extract from insights.timeline, use 'Not specified' if not available>",
-    "budget": "<extract from insights.budget, use 'Not specified' if not available>",
-    "decision_maker": "<extract from insights.decision_maker, use 'Not specified' if not available>",
-    "quick_fit_score": <extract from insights.quick_fit_score, must be a number>
-  }},
-  "recommendation": "<calculate based on quick_fit_score: if >= 7 use 'Book a demo at https://cal.com/lunchpaillabs/intro', if >= 4 use 'Schedule a discovery call to learn more', if < 4 use 'Send follow-up email with resources'>"
-}}
+RECOMMENDATION
+Calculate based on quick_fit_score:
+- If >= 7: "Book a demo at https://cal.com/lunchpaillabs/intro"
+- If >= 4: "Schedule a discovery call to learn more"
+- If < 4: "Send follow-up email with resources"
 
-IMPORTANT:
-- Output ONLY valid JSON, no additional text before or after
-- Use the insights data from the Context Data provided
-- Calculate recommendation based on quick_fit_score value
-- Use "Unknown" or "Not specified" for missing fields
-- Ensure quick_fit_score is a number, not a string"""
+Format the summary as clear sections with headers. Use a professional, readable format.
+Do not use JSON - just write a clean text summary with clear sections and labels."""
 
     # Lead information (name can be extracted from call, but use TEST_NAME as fallback)
     participant_info = {
