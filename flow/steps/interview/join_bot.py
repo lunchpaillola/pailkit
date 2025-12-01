@@ -19,7 +19,12 @@ class JoinBotStep:
         logger.info("🟢 JoinBotStep.execute() called")
         logger.info(f"   State keys: {list(state.keys())}")
         try:
-            bot_config = state.get("meeting_config", {}).get("bot", {})
+            meeting_config = state.get("meeting_config", {})
+            logger.info(
+                f"   meeting_config keys: {list(meeting_config.keys()) if meeting_config else 'None'}"
+            )
+            logger.info(f"   meeting_config.get('bot'): {meeting_config.get('bot')}")
+            bot_config = meeting_config.get("bot", {})
             logger.info(f"   bot_config: {bot_config}")
             logger.info(f"   bot_config.get('enabled'): {bot_config.get('enabled')}")
 

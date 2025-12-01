@@ -7,7 +7,6 @@ PailFlow FastAPI Application
 Main entry point for the PailFlow API server with REST API and MCP integration.
 """
 
-import json
 import logging
 import os
 import sys
@@ -677,13 +676,13 @@ async def start_bot_conversation(
         # Use AI Interviewer workflow (it's generic enough for any bot conversation)
         workflow = get_workflow("ai_interviewer")
 
-        # Execute the workflow
-        # Note: The workflow.execute() method handles async execution internally
-        result = workflow.execute(
-            message=json.dumps(context),
-            user_id=None,
-            channel_id=None,
-        )
+        # Execute the workflow asynchronously
+        # **Simple Explanation:**
+        # We use execute_async() directly instead of execute() because:
+        # 1. execute() creates a new event loop in a thread and closes it when done
+        # 2. This kills the bot task which runs in that loop
+        # 3. execute_async() runs in the current event loop, so the bot task keeps running
+        result = await workflow.execute_async(context)
 
         # Check for errors
         if not result.get("success"):
@@ -692,23 +691,18 @@ async def start_bot_conversation(
             raise HTTPException(status_code=500, detail=error_msg)
 
         # Extract results from workflow response
-        workflow_results = result.get("results", {})
+        # execute_async() returns the result directly (not wrapped in "results")
         processing_status = result.get("processing_status", "unknown")
 
-        # Get state from _state if available (when workflow is paused)
-        state = result.get("_state", {})
+        # Get hosted_url and room_url from workflow result (from one_time_meeting subgraph)
+        # execute_async() returns these directly in the result dict
+        hosted_url = result.get("hosted_url")
+        room_url = result.get("room_url")
+        room_name = result.get("room_name")
 
-        # Get hosted_url from workflow result (from one_time_meeting subgraph)
-        # Check multiple places: direct result, _state, or workflow_results
-        hosted_url = (
-            state.get("hosted_url")
-            or result.get("hosted_url")
-            or workflow_results.get("hosted_url")
-        )
-        room_url = (
-            state.get("room_url")
-            or result.get("room_url")
-            or workflow_results.get("room_url")
+        # Get session_id - might be in result or in _state
+        session_id = result.get("session_id") or result.get("_state", {}).get(
+            "session_id"
         )
 
         # Build response with room information
@@ -716,12 +710,10 @@ async def start_bot_conversation(
         response = {
             "success": True,
             "message": "Bot conversation started successfully",
-            "session_id": workflow_results.get("session_id")
-            or result.get("session_id"),
+            "session_id": session_id,
             "room_url": room_url,
+            "room_name": room_name,
             "hosted_url": hosted_url,  # The hosted meeting.html link
-            "candidate_info": workflow_results.get("candidate_info")
-            or result.get("candidate_info"),
             "processing_status": processing_status,
             "note": (
                 "Interview results will be sent to your webhook URL when complete. "
@@ -870,10 +862,21 @@ async def handle_transcript_ready_to_download(
             # LangGraph stores state in checkpoints, we need to get it and update it
             try:
                 # Get the latest checkpoint for this thread
+                # checkpointer.list() returns an iterator of (checkpoint_id, checkpoint_data) tuples
                 checkpoints = list(workflow.checkpointer.list(config))
                 if checkpoints:
-                    # Get the latest checkpoint
-                    latest_checkpoint_id = checkpoints[-1]["checkpoint_id"]
+                    # Get the latest checkpoint - checkpoints[-1] is a tuple (checkpoint_id, checkpoint_data)
+                    # Access checkpoint_id as the first element of the tuple
+                    latest_checkpoint_tuple = checkpoints[-1]
+                    if isinstance(latest_checkpoint_tuple, tuple):
+                        latest_checkpoint_id = latest_checkpoint_tuple[0]
+                    else:
+                        # Fallback: if it's a dict, use the old way
+                        latest_checkpoint_id = (
+                            latest_checkpoint_tuple.get("checkpoint_id")
+                            if isinstance(latest_checkpoint_tuple, dict)
+                            else str(latest_checkpoint_tuple)
+                        )
                     checkpoint = workflow.checkpointer.get(
                         config, {"checkpoint_id": latest_checkpoint_id}
                     )
@@ -985,16 +988,30 @@ async def webhook_recording_ready_to_download(
     This endpoint receives webhooks when a Daily.co recording is ready to download.
     The Cloudflare Worker routes 'recording.ready-to-download' events here.
 
+    **Error Handling:**
+    This endpoint ALWAYS returns 200 OK, even on errors, to prevent Daily.co
+    from retrying the webhook. Errors are logged but don't cause 500 responses.
+
     See: https://docs.daily.co/reference/rest-api/webhooks/events/recording-ready-to-download
     """
     try:
         result = await handle_recording_ready_to_download(payload)
         return result
     except Exception as e:
+        # **CRITICAL:** Always return 200 OK for webhooks, even on errors
+        # This prevents Daily.co from retrying the webhook repeatedly
         logger.error(
-            f"Error handling recording.ready-to-download webhook: {e}", exc_info=True
+            f"❌ Error handling recording.ready-to-download webhook: {e}", exc_info=True
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        webhook_payload = payload.get("payload", payload)
+        room_name = webhook_payload.get("room_name", "unknown")
+        return {
+            "status": "error",
+            "room_name": room_name,
+            "message": "Webhook received but processing failed",
+            "error": str(e),
+            "note": "This error was logged. Please check server logs for details.",
+        }
 
 
 @app.post("/webhooks/transcript-ready-to-download")
@@ -1008,16 +1025,31 @@ async def webhook_transcript_ready_to_download(
     This endpoint receives webhooks when a Daily.co transcript is ready to download.
     The Cloudflare Worker routes 'transcript.ready-to-download' events here.
 
+    **Error Handling:**
+    This endpoint ALWAYS returns 200 OK, even on errors, to prevent Daily.co
+    from retrying the webhook. Errors are logged but don't cause 500 responses.
+
     See: https://docs.daily.co/reference/rest-api/webhooks/events/transcript-ready-to-download
     """
     try:
         result = await handle_transcript_ready_to_download(payload)
         return result
     except Exception as e:
+        # **CRITICAL:** Always return 200 OK for webhooks, even on errors
+        # This prevents Daily.co from retrying the webhook repeatedly
         logger.error(
-            f"Error handling transcript.ready-to-download webhook: {e}", exc_info=True
+            f"❌ Error handling transcript.ready-to-download webhook: {e}",
+            exc_info=True,
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        webhook_payload = payload.get("payload", payload)
+        room_name = webhook_payload.get("room_name", "unknown")
+        return {
+            "status": "error",
+            "room_name": room_name,
+            "message": "Webhook received but processing failed",
+            "error": str(e),
+            "note": "This error was logged. Please check server logs for details.",
+        }
 
 
 async def handle_meeting_ended_webhook(
@@ -1137,10 +1169,21 @@ async def handle_meeting_ended_webhook(
             if config:
                 try:
                     # Get the latest checkpoint for this thread
+                    # checkpointer.list() returns an iterator of (checkpoint_id, checkpoint_data) tuples
                     checkpoints = list(workflow.checkpointer.list(config))
                     if checkpoints:
-                        # Get the latest checkpoint
-                        latest_checkpoint_id = checkpoints[-1]["checkpoint_id"]
+                        # Get the latest checkpoint - checkpoints[-1] is a tuple (checkpoint_id, checkpoint_data)
+                        # Access checkpoint_id as the first element of the tuple
+                        latest_checkpoint_tuple = checkpoints[-1]
+                        if isinstance(latest_checkpoint_tuple, tuple):
+                            latest_checkpoint_id = latest_checkpoint_tuple[0]
+                        else:
+                            # Fallback: if it's a dict, use the old way
+                            latest_checkpoint_id = (
+                                latest_checkpoint_tuple.get("checkpoint_id")
+                                if isinstance(latest_checkpoint_tuple, dict)
+                                else str(latest_checkpoint_tuple)
+                            )
                         checkpoint = workflow.checkpointer.get(
                             config, {"checkpoint_id": latest_checkpoint_id}
                         )
@@ -1234,7 +1277,55 @@ async def handle_meeting_ended_webhook(
                     logger.warning(
                         f"⚠️ Could not resume workflow from checkpoint: {e}, processing transcript directly"
                     )
-                    # Fall through to process transcript directly
+                    # Process transcript directly (same logic as else block below)
+                    from flow.steps.interview.process_transcript import (
+                        ProcessTranscriptStep,
+                    )
+
+                    # Check what we're waiting for
+                    waiting_for_meeting_ended = session_data and session_data.get(
+                        "waiting_for_meeting_ended", False
+                    )
+                    if waiting_for_meeting_ended:
+                        # Bot was enabled - transcript is in DB
+                        logger.info(
+                            "🤖 Bot was enabled - using transcript from database"
+                        )
+                        transcript_id = None  # Will be None if using DB transcript
+                    else:
+                        # Frontend transcription - use transcript_id from webhook
+                        logger.info(
+                            "📥 Frontend transcription - using transcript_id from webhook"
+                        )
+                        transcript_id = None  # Will be set from webhook if available
+
+                    state = {
+                        "transcript_id": transcript_id,  # May be None if using DB transcript
+                        "room_id": meeting_id,  # Use meeting_id as room_id
+                        "room_name": room_name,
+                        "duration": duration,
+                        "meeting_ended": True,
+                    }
+
+                    # Mark as processing immediately to prevent duplicate webhooks
+                    if session_data and room_name:
+                        session_data["transcript_processing"] = True
+                        save_session_data(room_name, session_data)
+
+                    # Add processing to background tasks - return 200 OK immediately
+                    step = ProcessTranscriptStep()
+                    background_tasks.add_task(step.execute, state)
+
+                    # Return 200 OK immediately so webhook doesn't timeout
+                    # Processing will happen in background
+                    logger.info(
+                        "🚀 Added transcript processing to background tasks - returning 200 OK immediately"
+                    )
+                    return {
+                        "status": "success",
+                        "room_name": room_name,
+                        "message": "Transcript processing started in background",
+                    }
             else:
                 # No thread_id - process transcript directly (OneTimeMeetingWorkflow or direct processing)
                 logger.info(
@@ -1257,6 +1348,7 @@ async def handle_meeting_ended_webhook(
                     logger.info(
                         "📥 Frontend transcription - using transcript_id from webhook"
                     )
+                    transcript_id = None  # Will be set from webhook if available
 
                 state = {
                     "transcript_id": transcript_id,  # May be None if using DB transcript
@@ -1330,14 +1422,34 @@ async def webhook_meeting_ended(
     - Complete transcript is available (especially when bot is enabled)
     - No timeouts from Daily.co webhook retries
 
+    **Error Handling:**
+    This endpoint ALWAYS returns 200 OK, even on errors, to prevent Daily.co
+    from retrying the webhook. Errors are logged but don't cause 500 responses.
+
     See: https://docs.daily.co/reference/rest-api/webhooks/events/meeting-ended
     """
     try:
         result = await handle_meeting_ended_webhook(payload, background_tasks)
         return result
     except Exception as e:
-        logger.error(f"Error handling meeting.ended webhook: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        # **CRITICAL:** Always return 200 OK for webhooks, even on errors
+        # This prevents Daily.co from retrying the webhook repeatedly
+        # Daily.co will retry on 5xx errors, which can cause duplicate processing
+        logger.error(f"❌ Error handling meeting.ended webhook: {e}", exc_info=True)
+
+        # Extract room name from payload for logging
+        webhook_payload = payload.get("payload", payload)
+        room_name = webhook_payload.get("room", "unknown")
+
+        # Return 200 OK with error details (but don't raise HTTPException)
+        # This tells Daily.co the webhook was received, even if processing failed
+        return {
+            "status": "error",
+            "room_name": room_name,
+            "message": "Webhook received but processing failed",
+            "error": str(e),
+            "note": "This error was logged. Please check server logs for details.",
+        }
 
 
 # MCP Tools
