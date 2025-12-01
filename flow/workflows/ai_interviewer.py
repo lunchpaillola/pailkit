@@ -25,10 +25,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from flow.steps.interview import (
     ConfigureAgentStep,
     ConductInterviewStep,
-    ExtractInsightsStep,
     GenerateQuestionsStep,
-    GenerateSummaryStep,
-    PackageResultsStep,
     ProcessTranscriptStep,
 )
 from flow.workflows.one_time_meeting import (
@@ -318,10 +315,8 @@ class AIInterviewerWorkflow:
     2. Configures an AI interviewer persona
     3. Generates questions from a question bank
     4. Conducts the interview (AI-led)
-    5. Processes the transcript
-    6. Extracts insights and assesses competencies
-    7. Generates a candidate summary
-    8. Packages all results
+    5. Processes the transcript, extracts insights, generates summary, and packages results
+       (ProcessTranscriptStep handles all post-interview processing internally)
 
     Note: Recording and transcription are now handled client-side in meeting.html
     using Daily.co's callFrame.startRecording() and callFrame.startTranscription()
@@ -339,10 +334,7 @@ class AIInterviewerWorkflow:
             "configure_agent": ConfigureAgentStep(),  # Step 2: Configure AI interviewer
             "generate_questions": GenerateQuestionsStep(),  # Step 4: Generate interview questions
             "conduct_interview": ConductInterviewStep(),  # Step 5: Conduct the interview
-            "process_transcript": ProcessTranscriptStep(),  # Step 6: Process transcript into Q&A pairs
-            "extract_insights": ExtractInsightsStep(),  # Step 7: Extract insights and assessments
-            "generate_summary": GenerateSummaryStep(),  # Step 8: Generate candidate summary
-            "package_results": PackageResultsStep(),  # Step 9: Package final results
+            "process_transcript": ProcessTranscriptStep(),  # Step 6: Process transcript, extract insights, generate summary, and package results
         }
 
         # Use shared checkpointer for workflow state persistence
@@ -382,10 +374,8 @@ class AIInterviewerWorkflow:
         # After conduct_interview, we need to pause and wait for transcript webhook
         # The workflow will interrupt here and wait for transcript_id
         workflow.add_edge("conduct_interview", "process_transcript")
-        workflow.add_edge("process_transcript", "extract_insights")
-        workflow.add_edge("extract_insights", "generate_summary")
-        workflow.add_edge("generate_summary", "package_results")
-        workflow.add_edge("package_results", END)
+        # ProcessTranscriptStep handles extract_insights, generate_summary, and packaging internally
+        workflow.add_edge("process_transcript", END)
 
         # Compile with interrupt after conduct_interview and checkpointing
         # This pauses the workflow until transcript_id is available (via webhook)
