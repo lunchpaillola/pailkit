@@ -153,12 +153,6 @@ LEAD INFORMATION
 - Decision Maker: Extract from insights.decision_maker (use 'Not specified' if not available)
 - Quick Fit Score: Extract from insights.quick_fit_score (should be a number 1-10)
 
-RECOMMENDATION
-Calculate based on quick_fit_score:
-- If >= 7: "Book a demo at https://cal.com/lunchpaillabs/intro"
-- If >= 4: "Schedule a discovery call to learn more"
-- If < 4: "Send follow-up email with resources"
-
 Format the summary as clear sections with headers. Use a professional, readable format.
 Do not use JSON - just write a clean text summary with clear sections and labels."""
 
