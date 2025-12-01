@@ -20,13 +20,6 @@ logger = logging.getLogger(__name__)
 class ExtractInsightsStep(InterviewStep):
     """
     Extract insights and assess competencies.
-
-    **Simple Explanation:**
-    This step analyzes the candidate's answers to figure out:
-    - How well they answered each question
-    - What competencies they demonstrated
-    - Overall strengths and weaknesses
-    It's like having an expert reviewer analyze the interview.
     """
 
     def __init__(self):
@@ -38,13 +31,6 @@ class ExtractInsightsStep(InterviewStep):
     async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute insight extraction using AI analysis.
-
-        **Simple Explanation:**
-        This function uses OpenAI to analyze the interview transcript and:
-        1. Assesses each Q&A pair with a score (0-10)
-        2. Identifies key competencies demonstrated
-        3. Extracts strengths and weaknesses
-        4. Calculates an overall score
 
         Args:
             state: Current workflow state containing qa_pairs and interview_config
@@ -201,9 +187,6 @@ Return ONLY valid JSON, no additional text."""
     ) -> Dict[str, Any]:
         """
         Validate and normalize insights structure.
-
-        **Simple Explanation:**
-        Makes sure the AI response has all required fields and valid values.
         """
         # Ensure all required fields exist
         validated = {
@@ -270,9 +253,6 @@ Return ONLY valid JSON, no additional text."""
     ) -> Dict[str, Any]:
         """
         Create placeholder insights when AI analysis is not available.
-
-        **Simple Explanation:**
-        Returns a basic structure with default values when we can't use AI.
         """
         insights: Dict[str, Any] = {
             "overall_score": 0.0,

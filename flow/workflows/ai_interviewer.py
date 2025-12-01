@@ -412,7 +412,6 @@ class AIInterviewerWorkflow:
         """
         Execute the workflow asynchronously.
 
-        **Simple Explanation:**
         This runs the entire workflow. You pass in the candidate info,
         interview config, and API keys, and it runs all the steps.
 
@@ -557,7 +556,6 @@ class AIInterviewerWorkflow:
         This method implements the Workflow protocol interface, allowing
         the workflow to be used with the existing workflow system.
 
-        **Simple Explanation:**
         This is a wrapper that makes the async workflow work with the
         existing system that expects a synchronous execute method. It properly
         handles event loops without needing nest-asyncio.

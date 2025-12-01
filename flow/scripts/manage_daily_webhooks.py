@@ -12,7 +12,6 @@ It supports:
 - Updating existing webhooks
 - Deleting webhooks
 
-**Simple Explanation:**
 Daily.co sends webhooks (HTTP POST requests) to your server when events happen
 (like when a meeting ends, a transcript is ready, or a recording is ready).
 This script helps you configure which events Daily.co should send to your server.

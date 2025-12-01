@@ -1,11 +1,6 @@
 /**
  * PailFlow Embeddable Meeting Widget
  *
- * Simple Explanation:
- * This is a JavaScript widget that creates a video meeting interface
- * that can be embedded in any website. It builds the HTML structure
- * programmatically and initializes Daily.co video calls.
- *
  * Usage:
  * <div id="meeting-container"></div>
  * <script src="https://your-domain.com/embed.js"></script>

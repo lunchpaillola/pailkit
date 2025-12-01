@@ -62,7 +62,6 @@ async def main():
 
     workflow = OneTimeMeetingWorkflow()
 
-    # **Simple Explanation:** We're adding test session data here so that when
     # the room is created, it will have meaningful context data that gets passed
     # through to webhooks and can be used for testing the full interview flow.
     # We include interview_type, interviewer_context, and analysis parameters
@@ -77,7 +76,6 @@ async def main():
     # 3. How results are formatted (summary_format_prompt)
 
     # Bot Prompt: Defines what the bot should do and say
-    # **Simple Explanation:** This is the system message for the bot.
     # It tells the bot its role, what questions to ask, and how to behave.
     bot_prompt = """You are conducting a technical interview for a Senior Software Engineer position.
 Your role is to assess the candidate's technical skills, problem-solving abilities, and communication.
@@ -98,7 +96,6 @@ Guidelines:
 - After 5-7 questions, wrap up the interview politely"""
 
     # Analysis Prompt: Defines how to analyze the conversation
-    # **Simple Explanation:** This tells the AI how to evaluate the transcript.
     # Use {transcript} as a placeholder - it will be replaced with the actual conversation.
     analysis_prompt = """Analyze this technical interview transcript and provide a comprehensive assessment.
 
@@ -121,7 +118,6 @@ Provide a JSON response with:
 Be constructive and specific. Focus on what was actually said in the transcript."""
 
     # Summary Format Prompt: Defines how to format the results
-    # **Simple Explanation:** This describes how you want the final summary/email to look.
     # The AI will use this prompt to generate a natural, less structured summary.
     summary_format_prompt = """Create a conversational summary of this interview.
 
@@ -137,7 +133,6 @@ Write in a natural, professional tone. Focus on insights and observations rather
 Do not include placeholder text like "Assessment pending" or show scores of 0/10 unless they are meaningful.
 Make it readable and useful for understanding the candidate's performance."""
 
-    # **Simple Explanation:** We're setting up the context that will be passed to the workflow.
     # This includes meeting_config (for room settings) and participant_info (for candidate data).
     # The participant_info will be used to populate the email subject and summary.
     participant_info = {
@@ -173,7 +168,6 @@ Make it readable and useful for understanding the candidate's performance."""
             "participant_name": participant_info["name"],
             "role": participant_info["role"],
         },
-        # **Simple Explanation:** This is the candidate/participant information that will
         # appear in the summary. Make sure to include name and role so they show up
         # properly instead of "Unknown".
         "participant_info": participant_info,  # Use the participant_info we defined above

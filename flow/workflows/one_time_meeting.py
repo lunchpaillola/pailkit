@@ -73,7 +73,6 @@ class OneTimeMeetingWorkflow:
         workflow.set_entry_point("create_room")
         workflow.add_edge("create_room", "join_bot")
         # IMPORTANT: Join bot BEFORE calling VAPI
-        # **Simple Explanation:** According to Daily.co docs, PIN dial-in requires
         # the meeting session to have started (when someone joins). By joining the bot first,
         # we start the meeting session, which enables PIN dial-in functionality.
         # Then VAPI can successfully dial the phone number and enter the PIN to join the room.
@@ -121,7 +120,6 @@ class OneTimeMeetingWorkflow:
             room_name = result.get("room_name")
 
             # If room was created, return room info even if later steps failed
-            # **Simple Explanation:** Room creation is the main goal - VAPI can be retried
             if room_name:
                 # Room was created successfully - return room info even if VAPI failed
                 pass  # Continue to build response with room info
@@ -194,7 +192,6 @@ class OneTimeMeetingWorkflow:
                 ) or meeting_config.get("logo_text")
 
             # Add session data if available (for setting on join)
-            # **Simple Explanation:** If the create_room step prepared session data,
             # we encode it as base64 JSON and add it to the URL. The frontend will
             # decode it and call our API to set it in Daily.co when someone joins.
             session_data_to_set = result.get("session_data_to_set")

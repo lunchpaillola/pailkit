@@ -19,7 +19,6 @@ class PackageResultsStep(InterviewStep):
     """
     Package and return final results.
 
-    **Simple Explanation:**
     This is the final step. It puts together all the results (video recording,
     transcript, analysis) into a nice package that can be returned. It's like
     putting everything in a folder and labeling it.

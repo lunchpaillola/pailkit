@@ -17,16 +17,6 @@ logger = logging.getLogger(__name__)
 class InterviewStep(ABC):
     """
     Base class for all interview workflow steps.
-
-    **Simple Explanation:**
-    This is like a template that all interview steps follow. It ensures
-    every step has the same structure and can be used in the workflow.
-
-    Each step:
-    - Takes the current state (all the data from previous steps)
-    - Does its specific job
-    - Returns the updated state
-    - Handles errors gracefully
     """
 
     def __init__(self, name: str, description: str):
@@ -45,10 +35,6 @@ class InterviewStep(ABC):
         """
         Execute the step.
 
-        **Simple Explanation:**
-        This is the main method that does the work. Each step must implement
-        this method to define what it does.
-
         Args:
             state: Current workflow state dictionary
 
@@ -63,11 +49,6 @@ class InterviewStep(ABC):
     def validate_state(self, state: Dict[str, Any], required_keys: list[str]) -> bool:
         """
         Validate that required state keys are present.
-
-        **Simple Explanation:**
-        This checks if the state has all the data this step needs before
-        trying to run. It's like checking you have all ingredients before
-        starting to cook.
 
         Args:
             state: Current workflow state
@@ -92,10 +73,6 @@ class InterviewStep(ABC):
         """
         Update the processing status in state.
 
-        **Simple Explanation:**
-        This updates the status field so we can track which step is currently
-        running or if there's an error.
-
         Args:
             state: Current workflow state
             status: New status string (e.g., "room_created", "error")
@@ -109,10 +86,6 @@ class InterviewStep(ABC):
     def set_error(self, state: Dict[str, Any], error_message: str) -> Dict[str, Any]:
         """
         Set an error in the state.
-
-        **Simple Explanation:**
-        If something goes wrong, this method records the error so the workflow
-        knows what happened and can stop gracefully.
 
         Args:
             state: Current workflow state

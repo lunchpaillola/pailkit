@@ -59,14 +59,6 @@ class TranscriptHandler:
     """
     Handles real-time transcript processing and saves to database.
 
-    **Simple Explanation:**
-    This class processes transcripts from TranscriptProcessor, which captures:
-    1. User speech - via Deepgram STT in the pipeline
-    2. Bot speech - from TTS input text
-
-    It formats them with timestamps and role labels, then stores them in
-    the session data for the room.
-
     Attributes:
         messages: List of all processed transcript messages
         room_name: Room name for saving to database
@@ -91,10 +83,6 @@ class TranscriptHandler:
         """
         Format a transcript message as a line of text.
 
-        **Simple Explanation:**
-        Converts transcript content into a formatted string with
-        timestamp and role (user/assistant).
-
         Args:
             role: Role of speaker (user/assistant)
             content: The transcript text
@@ -112,11 +100,6 @@ class TranscriptHandler:
         """
         Legacy method for Daily.co transcription (not used with Deepgram STT).
 
-        **Simple Explanation:**
-        This method is kept for backward compatibility but is not used
-        when using Deepgram STT in the pipeline. All transcripts come
-        through on_transcript_update() from TranscriptProcessor.
-
         Args:
             participant_id: Participant ID from Daily.co
             text: The transcribed text
@@ -130,11 +113,6 @@ class TranscriptHandler:
     async def _save_to_database(self):
         """
         Save accumulated transcript to database.
-
-        **Simple Explanation:**
-        Updates the session data in the database with the current
-        transcript text. This is called periodically as new messages
-        are received, so the transcript is always up-to-date.
         """
         try:
             from flow.db import get_session_data, save_session_data
@@ -156,12 +134,6 @@ class TranscriptHandler:
     ):
         """
         Handle new transcript messages from the TranscriptProcessor.
-
-        **Simple Explanation:**
-        This is called automatically when the TranscriptProcessor detects
-        new speech. It captures both:
-        - User speech: from Deepgram STT in the pipeline
-        - Bot speech: from TTS input text
 
         Args:
             processor: The TranscriptProcessor that emitted the update
@@ -391,15 +363,7 @@ class BotProcess:
 
 
 class BotService:
-    """Service to manage Pipecat bot instances with proper process management.
-
-    **Simple Explanation:**
-    This service can run bots in two ways:
-    1. Direct execution: Runs bots in the same process (current default)
-    2. Fly.io machines: Spawns separate Fly.io machines for each bot (better performance)
-
-    Use the `use_fly_machines` parameter in start_bot() to choose the method.
-    """
+    """Service to manage Pipecat bot instances with proper process management."""
 
     def __init__(self):
         self.active_bots: Dict[str, BotProcess] = {}
@@ -409,9 +373,6 @@ class BotService:
         )  # Lock to prevent race conditions when starting bots
 
         # Fly.io configuration - read from environment variables
-        # **Simple Explanation:**
-        # These settings control how we spawn new Fly.io machines for bots.
-        # If FLY_API_KEY is not set, we'll fall back to direct execution.
         self.fly_api_host = os.getenv("FLY_API_HOST", "https://api.machines.dev/v1")
         self.fly_app_name = os.getenv("FLY_APP_NAME", "")
         self.fly_api_key = os.getenv("FLY_API_KEY", "")
@@ -432,17 +393,6 @@ class BotService:
     ) -> str:
         """
         Spawn a new Fly.io machine to run the bot.
-
-        **Simple Explanation:**
-        This method creates a new Fly.io virtual machine (VM) that will run
-        the bot in its own container. Each bot gets its own dedicated resources
-        (CPU, memory), which provides better performance and isolation.
-
-        The method:
-        1. Gets the Docker image from the current Fly app
-        2. Creates a new machine with the bot.py script as the command
-        3. Waits for the machine to start
-        4. Returns the machine ID
 
         Args:
             room_url: Full Daily.co room URL
@@ -467,9 +417,6 @@ class BotService:
         }
 
         # Get the Docker image from the current app
-        # **Simple Explanation:**
-        # We need to use the same Docker image that the main app is using.
-        # We query Fly.io to get the image from an existing machine.
         res = requests.get(
             f"{self.fly_api_host}/apps/{self.fly_app_name}/machines",
             headers=headers,
@@ -488,12 +435,6 @@ class BotService:
         bot_config_json = json.dumps(bot_config)
 
         # Machine configuration
-        # **Simple Explanation:**
-        # We configure the machine to:
-        # - Run bot.py with the room URL, token, and bot config
-        # - Auto-destroy when done (saves costs)
-        # - Use 1GB RAM (enough for VAD and bot processing)
-        # - Don't restart if it crashes (we want it to exit cleanly)
         cmd = [
             "python3",
             "flow/steps/interview/bot.py",
@@ -543,9 +484,6 @@ class BotService:
         logger.info(f"✅ Machine spawned: {vm_id}")
 
         # Wait for the machine to enter the started state
-        # **Simple Explanation:**
-        # We wait for the machine to fully start before returning.
-        # This ensures the bot is ready to connect to the room.
         res = requests.get(
             f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}/wait?state=started",
             headers=headers,
@@ -568,11 +506,6 @@ class BotService:
         """
         Start a bot instance for the given room.
 
-        **Simple Explanation:**
-        This method can start bots in two ways:
-        1. Direct execution: Runs the bot in the current process (default if Fly.io not configured)
-        2. Fly.io machines: Spawns a separate Fly.io machine for the bot (better performance)
-
         Args:
             room_url: Full Daily.co room URL
             token: Meeting token for authentication
@@ -585,9 +518,6 @@ class BotService:
                 room_name = room_url.split("/")[-1]
 
             # Determine whether to use Fly.io machines
-            # **Simple Explanation:**
-            # If use_fly_machines is explicitly set, use that.
-            # Otherwise, auto-detect based on whether Fly.io is configured.
             should_use_fly = (
                 use_fly_machines
                 if use_fly_machines is not None
@@ -606,10 +536,6 @@ class BotService:
 
                 if should_use_fly:
                     # Spawn a Fly.io machine for the bot
-                    # **Simple Explanation:**
-                    # Instead of running the bot in this process, we create a new
-                    # Fly.io machine that will run the bot in its own container.
-                    # This provides better isolation and performance.
                     try:
                         vm_id = self._spawn_fly_machine(room_url, token, bot_config)
                         logger.info(
@@ -628,9 +554,6 @@ class BotService:
 
                 if not should_use_fly:
                     # Direct execution: run bot in current process
-                    # **Simple Explanation:**
-                    # This runs the bot in the same process as the API server.
-                    # It's simpler but uses shared resources.
                     bot_task = asyncio.create_task(
                         self._run_bot(room_url, token, bot_config, room_name)
                     )
@@ -671,20 +594,6 @@ class BotService:
     ) -> None:
         """
         Run the Pipecat bot directly without subprocess.
-
-        **Simple Explanation:**
-        This method runs the bot in the current async context. When the bot finishes,
-        the Daily.co transport might still have pending callbacks that try to post
-        to a closed event loop. These "Event loop is closed" errors are expected
-        during cleanup and don't affect functionality - they're just warnings.
-
-        **Simple Explanation:**
-        This sets up the bot's pipeline including:
-        - Deepgram STT (Speech-to-Text) for converting user speech to text
-        - LLM for generating responses
-        - Text-to-speech (TTS) for bot output
-        - TranscriptProcessor to capture both user and bot speech
-        - TranscriptHandler to save transcripts to database
 
         Args:
             room_url: Full Daily.co room URL
@@ -749,10 +658,6 @@ IMPORTANT: Your output will be spoken aloud, so:
             )
 
             # Use Deepgram for Speech-to-Text (STT) to transcribe user speech
-            # **Simple Explanation:**
-            # Deepgram converts the user's spoken words into text so the bot can understand them.
-            # This is different from Daily.co transcription - Deepgram STT is used in the pipeline
-            # to process audio in real-time and feed it to the LLM.
             stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
 
             messages = [
@@ -766,18 +671,9 @@ IMPORTANT: Your output will be spoken aloud, so:
             context_aggregator = LLMContextAggregatorPair(context)
 
             # Create transcript processor and handler
-            # **Simple Explanation:**
-            # We use TranscriptProcessor to capture both user and bot speech:
-            # 1. User speech: Captured via Deepgram STT in the pipeline
-            # 2. Bot speech: Captured from TTS input text (what the bot says)
-            # The TranscriptProcessor automatically formats these with timestamps and roles.
             transcript = TranscriptProcessor()
 
             # Create transcript handler that saves to database
-            # **Simple Explanation:**
-            # Instead of saving to files (which would get messy with many users),
-            # we save transcripts to the database. Each room's transcript is stored
-            # in the session data, which is encrypted and can be retrieved later.
             transcript_handler = TranscriptHandler(room_name=room_name)
             logger.info(
                 f"📝 Transcript will be saved to database for room: {room_name}\n"
@@ -790,18 +686,6 @@ IMPORTANT: Your output will be spoken aloud, so:
             ta = TalkingAnimation(quiet_frame=quiet_frame, talking_frame=talking_frame)
 
             # Build pipeline with Deepgram STT and TranscriptProcessor
-            # **Simple Explanation:**
-            # The pipeline processes audio in this order:
-            # 1. transport.input() - Receives user audio from Daily
-            # 2. stt - Converts user speech to text using Deepgram
-            # 3. transcript.user() - Captures user speech for transcript (from STT)
-            # 4. context_aggregator.user() - Adds user message to conversation context
-            # 5. llm - Generates bot response
-            # 6. tts - Converts bot response to speech
-            # 7. ta - Updates bot animation (talking/quiet) - for video output
-            # 8. transport.output() - Sends bot audio/video to Daily
-            # 9. transcript.assistant() - Captures bot speech for transcript (MUST be after transport.output())
-            # 10. context_aggregator.assistant() - Adds bot response to conversation context
             pipeline_components = [
                 transport.input(),  # Transport user input
                 stt,  # Deepgram STT - converts user speech to text
@@ -839,9 +723,6 @@ IMPORTANT: Your output will be spoken aloud, so:
                 )
 
             # Register event handler for transcript updates from TranscriptProcessor
-            # **Simple Explanation:**
-            # When TranscriptProcessor detects new speech (user or bot),
-            # it emits a TranscriptionUpdateFrame. This handler saves it to file.
             @transcript.event_handler("on_transcript_update")
             async def on_transcript_update(processor, frame):
                 await transcript_handler.on_transcript_update(processor, frame)
@@ -869,7 +750,6 @@ IMPORTANT: Your output will be spoken aloud, so:
                 logger.info(f"Participant left: {participant['id']}, reason: {reason}")
                 await task.cancel()
 
-            # **Simple Explanation:**
             # PipelineRunner tries to set up signal handlers in __init__, but this only works in the main thread.
             # Since we're running in a background task, we need to create the runner in a way that
             # skips signal handler setup. We'll monkey-patch the _setup_sigint method to be a no-op.
@@ -906,7 +786,6 @@ IMPORTANT: Your output will be spoken aloud, so:
                 await runner.run(task)
                 logger.info("✅ runner.run(task) completed")
             finally:
-                # **Simple Explanation:**
                 # When the bot task finishes, the Daily.co transport might still have pending callbacks
                 # that try to post to the event loop. We need to properly clean up the transport
                 # to prevent "Event loop is closed" errors.

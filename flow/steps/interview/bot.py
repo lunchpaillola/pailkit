@@ -4,11 +4,6 @@
 """
 Standalone bot script for running in a separate container.
 
-**Simple Explanation:**
-This script runs a Pipecat bot in its own container. It's designed to be
-launched by Fly.io machines when a new bot session starts. The bot connects
-to a Daily.co room and handles the conversation.
-
 Usage:
     python bot.py -u <room_url> -t <token> [--bot-config <json>]
 
@@ -24,16 +19,10 @@ import sys
 from typing import Any, Dict
 
 # Add parent directory to path so we can import from flow.steps.interview
-# **Simple Explanation:**
-# We need to add the project root to Python's path so we can import modules
-# from the flow package. This allows us to reuse code from bot_service.py.
 project_root = os.path.join(os.path.dirname(__file__), "../../../")
 sys.path.insert(0, os.path.abspath(project_root))
 
 # Import shared components from bot_service
-# **Simple Explanation:**
-# We reuse the same transcript handler, animation, and video frame loading
-# logic from bot_service.py to keep the code consistent.
 from flow.steps.interview.bot_service import (  # noqa: E402
     TranscriptHandler,
     TalkingAnimation,
@@ -76,13 +65,6 @@ logger = logging.getLogger(__name__)
 async def run_bot(room_url: str, token: str, bot_config: Dict[str, Any]) -> None:
     """
     Run the Pipecat bot.
-
-    **Simple Explanation:**
-    This function sets up and runs the bot pipeline. It:
-    1. Creates a Daily.co transport to connect to the room
-    2. Sets up speech-to-text (Deepgram), LLM (OpenAI), and text-to-speech (OpenAI)
-    3. Creates a pipeline that processes audio and generates responses
-    4. Runs until the participant leaves
 
     Args:
         room_url: Full Daily.co room URL

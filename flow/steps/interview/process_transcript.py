@@ -64,13 +64,6 @@ def parse_transcript_to_qa_pairs(transcript_text: str) -> list[Dict[str, Any]]:
     """
     Parse transcript text to extract Q&A pairs.
 
-    **Simple Explanation:**
-    The transcript format from TranscriptHandler is:
-    [timestamp] assistant: question text
-    [timestamp] user: answer text
-
-    This function extracts pairs where assistant = question and user = answer.
-
     Args:
         transcript_text: Full transcript text with timestamps and role labels
 
@@ -177,11 +170,6 @@ async def get_transcript_download_link(transcript_id: str) -> str | None:
     """
     Get transcript download link from Daily.co API.
 
-    **Simple Explanation:**
-    This function calls the Daily.co API to get transcript access link.
-    The API returns a JSON object that includes a 'download_link' field
-    which points to the actual VTT file we need to download.
-
     According to Daily.co docs, the endpoint is: GET /v1/transcript/{id}/access-link (singular!)
     Response includes: { download_link }
     """
@@ -220,11 +208,6 @@ async def download_transcript_vtt(download_link: str) -> str | None:
 def get_room_session_data(room_name: str) -> dict[str, Any] | None:
     """
     Get session data from SQLite database.
-
-    **Simple Explanation:**
-    This function retrieves session data from our local SQLite database
-    using the room_name as the key. The session data was saved when the
-    room was created and includes candidate info, webhook URLs, etc.
     """
     from flow.db import get_session_data
 
@@ -253,13 +236,6 @@ async def send_webhook(url: str, payload: dict[str, Any]) -> bool:
 async def send_email(to_email: str, subject: str, body: str) -> bool:
     """
     Send results via email using Resend.
-
-    **Simple Explanation:**
-    This function uses the Resend email service to send emails. It:
-    1. Gets the API key from environment variables
-    2. Gets the verified email domain from environment variables
-    3. Constructs the email with a "from" address using that domain
-    4. Sends the email with the provided subject and body (as HTML)
     """
     try:
         # Get Resend API key from environment
@@ -310,15 +286,6 @@ async def send_email(to_email: str, subject: str, body: str) -> bool:
 class ProcessTranscriptStep(InterviewStep):
     """
     Process transcript from Daily.co webhook.
-
-    **Simple Explanation:**
-    This step is triggered when Daily.co sends a webhook saying a transcript
-    is ready. It handles the complete workflow:
-    - Downloads the transcript from Daily.co
-    - Extracts text from VTT format
-    - Retrieves session data (candidate info, webhook URLs, etc.)
-    - Generates an AI-powered summary
-    - Sends results via webhook and/or email
     """
 
     def __init__(self):
@@ -330,11 +297,6 @@ class ProcessTranscriptStep(InterviewStep):
     async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute complete transcript processing pipeline.
-
-        **Simple Explanation:**
-        This step processes the transcript from either:
-        1. Database (when bot is enabled - transcript saved in real-time)
-        2. Daily.co API (when bot is NOT enabled - downloads VTT file)
 
         Args:
             state: Current workflow state containing:

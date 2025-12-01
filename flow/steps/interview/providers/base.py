@@ -17,7 +17,6 @@ class RoomProvider(ABC):
     """
     Abstract base class for room providers (e.g., Daily.co).
 
-    **Simple Explanation:**
     This defines what any video room provider must be able to do.
     Different providers (Daily.co, Zoom, etc.) can implement this interface
     so the workflow works with any of them.
@@ -59,7 +58,6 @@ class TranscriptionProvider(ABC):
     """
     Abstract base class for transcription providers.
 
-    **Simple Explanation:**
     This defines what any transcription provider must be able to do.
     Different providers (Daily.co, AssemblyAI, etc.) can implement this
     so the workflow works with any of them.
@@ -101,7 +99,6 @@ class VoiceProvider(ABC):
     """
     Abstract base class for voice/AI providers (e.g., VAPI, 11Labs, OpenAI).
 
-    **Simple Explanation:**
     This defines what any voice/AI provider must be able to do.
     Different providers (VAPI, 11Labs, OpenAI Voice, etc.) can implement this
     so the workflow works with any of them.

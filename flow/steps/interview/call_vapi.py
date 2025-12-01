@@ -23,7 +23,6 @@ class CallVAPIStep(InterviewStep):
     """
     Step to make an outbound call using VAPI with DTMF PIN dialing.
 
-    **Simple Explanation:**
     This step calls VAPI's API to make an outbound call. VAPI will:
     1. Use the phoneNumberId to make an outbound call to the Daily.co phone number
     2. Once connected, use DTMF to dial the PIN code
@@ -65,7 +64,6 @@ class CallVAPIStep(InterviewStep):
         """
         Create an outbound call using VAPI's API with DTMF PIN dialing.
 
-        **Simple Explanation:**
         This calls VAPI's API to start an outbound call. VAPI will:
         1. Use the phoneNumberId to make an outbound call to the Daily.co phone number
         2. Once connected, use DTMF (Dual-Tone Multi-Frequency) to dial the PIN code
@@ -85,14 +83,12 @@ class CallVAPIStep(InterviewStep):
         headers = self._get_vapi_headers(api_key)
 
         # Format phone number to E.164 format (ensure it has + prefix)
-        # **Simple Explanation:** VAPI requires E.164 format (e.g., "+12092080701")
         # If the number doesn't have a +, we add it
         formatted_phone = daily_phone_number.strip()
         if not formatted_phone.startswith("+"):
             formatted_phone = f"+{formatted_phone}"
 
         # Build the request payload according to VAPI API documentation
-        # **Simple Explanation:** Based on https://docs.vapi.ai/api-reference/calls/create
         # VAPI API expects:
         # - assistantId: Which AI assistant to use (required)
         # - phoneNumberId: Which phone number to call from (required)
@@ -106,7 +102,6 @@ class CallVAPIStep(InterviewStep):
         # (https://docs.vapi.ai/tools/default-tools#dial-keypad-dtmf) to dial the PIN
         # after connecting to the phone number.
         # IMPORTANT: Append "#" (pound) key after PIN to submit it
-        # **Simple Explanation:** Most phone systems require pressing # after entering a PIN
         # to submit it. We append "#" to the PIN so VAPI dials: PIN + # (e.g., "12345678987#")
         dialin_code_with_pound = f"{dialin_code}#"
 
@@ -137,7 +132,6 @@ class CallVAPIStep(InterviewStep):
         try:
             async with httpx.AsyncClient() as client:
                 # VAPI API endpoint: POST https://api.vapi.ai/call
-                # **Simple Explanation:** According to VAPI docs at https://docs.vapi.ai/api-reference/calls/create
                 # The endpoint is /call (singular) for creating a call
                 response = await client.post(
                     "https://api.vapi.ai/call",
@@ -202,7 +196,6 @@ class CallVAPIStep(InterviewStep):
         """
         Execute VAPI outbound call with DTMF PIN dialing.
 
-        **Simple Explanation:**
         This checks if VAPI calling is enabled, gets the Daily.co phone number and PIN
         from the room creation step, and makes an outbound call. VAPI will dial the
         Daily.co phone number and then use DTMF to enter the PIN to join the room.
@@ -246,7 +239,6 @@ class CallVAPIStep(InterviewStep):
             return self.set_error(state, error_msg)
 
         # Get phone number ID from environment variable
-        # **Simple Explanation:** This is the VAPI phone number that will be used to make the outbound call
         phone_number_id = os.getenv("VAPI_PHONE_NUMBER_ID")
 
         if not phone_number_id:
@@ -255,7 +247,6 @@ class CallVAPIStep(InterviewStep):
             return self.set_error(state, error_msg)
 
         # Get Daily.co phone number from environment variable
-        # **Simple Explanation:** This is the Daily.co phone number that VAPI will dial
         # to join the room via phone dial-in
         daily_phone_number = os.getenv("DAILY_PHONE_NUMBER")
 
@@ -265,7 +256,6 @@ class CallVAPIStep(InterviewStep):
             return self.set_error(state, error_msg)
 
         # Get dial-in code (PIN) from state (set by create_room step)
-        # **Simple Explanation:**
         # 1. CreateRoomStep enables PIN dial-in on the Daily.co room
         # 2. Daily.co returns a dial-in code (PIN) (e.g., "12345678987")
         # 3. CreateRoomStep stores this in state as "dialin_code"
@@ -297,7 +287,6 @@ class CallVAPIStep(InterviewStep):
             )
 
         # IMPORTANT: Wait for meeting session to start before dialing
-        # **Simple Explanation:** According to Daily.co docs, PIN dial-in requires
         # the meeting session to have started (when someone joins). The bot should join first
         # to start the meeting session, then we wait a bit before VAPI tries to dial.
         logger.info(
@@ -334,7 +323,6 @@ class CallVAPIStep(InterviewStep):
                 )
             else:
                 # VAPI call failure is non-fatal - room is still created and usable
-                # **Simple Explanation:** Even if VAPI call fails, the room exists and can be used
                 error_msg = result.get("message", "Unknown error creating VAPI call")
                 logger.warning(f"⚠️ Failed to create VAPI call: {error_msg}")
                 logger.warning(
