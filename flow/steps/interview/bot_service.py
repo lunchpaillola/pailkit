@@ -4,6 +4,7 @@
 """Pipecat Bot Service - AI bot that joins Daily meetings."""
 
 import asyncio
+import json
 import logging
 import os
 import signal
@@ -11,6 +12,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 
+import requests
 from PIL import Image
 
 from pipecat.audio.interruptions.min_words_interruption_strategy import (
@@ -389,7 +391,15 @@ class BotProcess:
 
 
 class BotService:
-    """Service to manage Pipecat bot instances with proper process management."""
+    """Service to manage Pipecat bot instances with proper process management.
+
+    **Simple Explanation:**
+    This service can run bots in two ways:
+    1. Direct execution: Runs bots in the same process (current default)
+    2. Fly.io machines: Spawns separate Fly.io machines for each bot (better performance)
+
+    Use the `use_fly_machines` parameter in start_bot() to choose the method.
+    """
 
     def __init__(self):
         self.active_bots: Dict[str, BotProcess] = {}
@@ -398,25 +408,191 @@ class BotService:
             asyncio.Lock()
         )  # Lock to prevent race conditions when starting bots
 
+        # Fly.io configuration - read from environment variables
+        # **Simple Explanation:**
+        # These settings control how we spawn new Fly.io machines for bots.
+        # If FLY_API_KEY is not set, we'll fall back to direct execution.
+        self.fly_api_host = os.getenv("FLY_API_HOST", "https://api.machines.dev/v1")
+        self.fly_app_name = os.getenv("FLY_APP_NAME", "")
+        self.fly_api_key = os.getenv("FLY_API_KEY", "")
+        self.use_fly_machines = bool(self.fly_api_key and self.fly_app_name)
+
+        if self.use_fly_machines:
+            logger.info(
+                f"✅ Fly.io machine spawning enabled (app: {self.fly_app_name})"
+            )
+        else:
+            logger.info(
+                "ℹ️ Fly.io machine spawning disabled - using direct execution. "
+                "Set FLY_API_KEY and FLY_APP_NAME to enable."
+            )
+
+    def _spawn_fly_machine(
+        self, room_url: str, token: str, bot_config: Dict[str, Any]
+    ) -> str:
+        """
+        Spawn a new Fly.io machine to run the bot.
+
+        **Simple Explanation:**
+        This method creates a new Fly.io virtual machine (VM) that will run
+        the bot in its own container. Each bot gets its own dedicated resources
+        (CPU, memory), which provides better performance and isolation.
+
+        The method:
+        1. Gets the Docker image from the current Fly app
+        2. Creates a new machine with the bot.py script as the command
+        3. Waits for the machine to start
+        4. Returns the machine ID
+
+        Args:
+            room_url: Full Daily.co room URL
+            token: Meeting token for authentication
+            bot_config: Bot configuration dictionary
+
+        Returns:
+            Machine ID of the spawned machine
+
+        Raises:
+            Exception: If machine spawning fails
+        """
+        if not self.use_fly_machines:
+            raise RuntimeError(
+                "Fly.io machine spawning is not enabled. "
+                "Set FLY_API_KEY and FLY_APP_NAME environment variables."
+            )
+
+        headers = {
+            "Authorization": f"Bearer {self.fly_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        # Get the Docker image from the current app
+        # **Simple Explanation:**
+        # We need to use the same Docker image that the main app is using.
+        # We query Fly.io to get the image from an existing machine.
+        res = requests.get(
+            f"{self.fly_api_host}/apps/{self.fly_app_name}/machines",
+            headers=headers,
+        )
+        if res.status_code != 200:
+            raise Exception(f"Unable to get machine info from Fly: {res.text}")
+
+        machines = res.json()
+        if not machines:
+            raise Exception("No machines found in Fly app to get image from")
+
+        image = machines[0]["config"]["image"]
+        logger.info(f"Using Docker image: {image}")
+
+        # Prepare bot config as JSON for the command
+        bot_config_json = json.dumps(bot_config)
+
+        # Machine configuration
+        # **Simple Explanation:**
+        # We configure the machine to:
+        # - Run bot.py with the room URL, token, and bot config
+        # - Auto-destroy when done (saves costs)
+        # - Use 1GB RAM (enough for VAD and bot processing)
+        # - Don't restart if it crashes (we want it to exit cleanly)
+        cmd = [
+            "python3",
+            "flow/steps/interview/bot.py",
+            "-u",
+            room_url,
+            "-t",
+            token,
+            "--bot-config",
+            bot_config_json,
+        ]
+
+        worker_props = {
+            "config": {
+                "image": image,
+                "auto_destroy": True,  # Machine destroys itself when bot exits
+                "init": {"cmd": cmd},
+                "restart": {"policy": "no"},  # Don't restart - let it exit cleanly
+                "guest": {
+                    "cpu_kind": "shared",
+                    "cpus": 1,
+                    "memory_mb": 1024,  # 1GB RAM - enough for VAD and bot processing
+                },
+                "env": {
+                    # Pass through required environment variables
+                    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+                    "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY", ""),
+                    "DAILY_API_KEY": os.getenv("DAILY_API_KEY", ""),
+                },
+            },
+        }
+
+        # Spawn a new machine instance
+        logger.info(
+            f"Spawning Fly.io machine for bot (room: {room_url.split('/')[-1]})"
+        )
+        res = requests.post(
+            f"{self.fly_api_host}/apps/{self.fly_app_name}/machines",
+            headers=headers,
+            json=worker_props,
+        )
+
+        if res.status_code != 200:
+            raise Exception(f"Problem starting a bot worker: {res.text}")
+
+        # Get the machine ID from the response
+        vm_id = res.json()["id"]
+        logger.info(f"✅ Machine spawned: {vm_id}")
+
+        # Wait for the machine to enter the started state
+        # **Simple Explanation:**
+        # We wait for the machine to fully start before returning.
+        # This ensures the bot is ready to connect to the room.
+        res = requests.get(
+            f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}/wait?state=started",
+            headers=headers,
+        )
+
+        if res.status_code != 200:
+            raise Exception(f"Bot was unable to enter started state: {res.text}")
+
+        logger.info(f"✅ Machine {vm_id} is started and ready")
+        return vm_id
+
     async def start_bot(
         self,
         room_url: str,
         token: str,
         bot_config: Dict[str, Any],
         room_name: Optional[str] = None,
+        use_fly_machines: Optional[bool] = None,
     ) -> bool:
         """
         Start a bot instance for the given room.
+
+        **Simple Explanation:**
+        This method can start bots in two ways:
+        1. Direct execution: Runs the bot in the current process (default if Fly.io not configured)
+        2. Fly.io machines: Spawns a separate Fly.io machine for the bot (better performance)
 
         Args:
             room_url: Full Daily.co room URL
             token: Meeting token for authentication
             bot_config: Bot configuration dictionary
             room_name: Optional room name (extracted from URL if not provided)
+            use_fly_machines: Whether to use Fly.io machines (None = auto-detect from config)
         """
         try:
             if not room_name:
                 room_name = room_url.split("/")[-1]
+
+            # Determine whether to use Fly.io machines
+            # **Simple Explanation:**
+            # If use_fly_machines is explicitly set, use that.
+            # Otherwise, auto-detect based on whether Fly.io is configured.
+            should_use_fly = (
+                use_fly_machines
+                if use_fly_machines is not None
+                else self.use_fly_machines
+            )
 
             # Use a lock to prevent race conditions - ensure only one bot starts per room
             async with self._start_lock:
@@ -428,35 +604,61 @@ class BotService:
                     logger.warning(f"Bot already running for room: {room_name}")
                     return True
 
-                # Create bot task
-                bot_task = asyncio.create_task(
-                    self._run_bot(room_url, token, bot_config, room_name)
-                )
-
-                # Track the bot BEFORE it starts running (so concurrent requests see it)
-                bot_process = BotProcess(room_name, bot_task)
-                self.active_bots[room_name] = bot_process
-
-                # Set up cleanup callback
-                bot_task.add_done_callback(lambda t: self._cleanup_bot(room_name))
-
-                logger.info(
-                    f"Started bot for room {room_name} (ID: {bot_process.process_id})"
-                )
-
-                # Give the bot task a moment to start and check if it's still running
-                await asyncio.sleep(0.1)  # Small delay to let task start
-                if bot_task.done():
-                    # Task finished immediately - something went wrong
+                if should_use_fly:
+                    # Spawn a Fly.io machine for the bot
+                    # **Simple Explanation:**
+                    # Instead of running the bot in this process, we create a new
+                    # Fly.io machine that will run the bot in its own container.
+                    # This provides better isolation and performance.
                     try:
-                        await bot_task  # This will raise the exception if there was one
+                        vm_id = self._spawn_fly_machine(room_url, token, bot_config)
+                        logger.info(
+                            f"✅ Bot spawned on Fly.io machine {vm_id} for room {room_name}"
+                        )
+                        # For Fly.io machines, we don't track them in active_bots
+                        # because they run independently and auto-destroy when done
+                        return True
                     except Exception as e:
                         logger.error(
-                            f"❌ Bot task failed immediately: {e}", exc_info=True
+                            f"❌ Failed to spawn Fly.io machine: {e}", exc_info=True
                         )
-                        return False
-                else:
-                    logger.info("✅ Bot task is running (not done yet)")
+                        # Fall back to direct execution if Fly.io fails
+                        logger.info("Falling back to direct execution...")
+                        should_use_fly = False
+
+                if not should_use_fly:
+                    # Direct execution: run bot in current process
+                    # **Simple Explanation:**
+                    # This runs the bot in the same process as the API server.
+                    # It's simpler but uses shared resources.
+                    bot_task = asyncio.create_task(
+                        self._run_bot(room_url, token, bot_config, room_name)
+                    )
+
+                    # Track the bot BEFORE it starts running (so concurrent requests see it)
+                    bot_process = BotProcess(room_name, bot_task)
+                    self.active_bots[room_name] = bot_process
+
+                    # Set up cleanup callback
+                    bot_task.add_done_callback(lambda t: self._cleanup_bot(room_name))
+
+                    logger.info(
+                        f"Started bot for room {room_name} (ID: {bot_process.process_id})"
+                    )
+
+                    # Give the bot task a moment to start and check if it's still running
+                    await asyncio.sleep(0.1)  # Small delay to let task start
+                    if bot_task.done():
+                        # Task finished immediately - something went wrong
+                        try:
+                            await bot_task  # This will raise the exception if there was one
+                        except Exception as e:
+                            logger.error(
+                                f"❌ Bot task failed immediately: {e}", exc_info=True
+                            )
+                            return False
+                    else:
+                        logger.info("✅ Bot task is running (not done yet)")
 
                 return True
 
