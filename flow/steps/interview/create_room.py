@@ -365,10 +365,10 @@ class CreateRoomStep(InterviewStep):
             logger.info(f"✅ Video room created: {room_url}")
 
             # Save session data to SQLite database
-            # **Simple Explanation:** We store session data (candidate info, webhook URLs, etc.)
+            # **Simple Explanation:** We store session data (participant info, webhook URLs, etc.)
             # in our local SQLite database. This data will be retrieved later by the webhook
             # handler when the transcript is ready, so it knows where to send results.
-            candidate_info = state.get("candidate_info", {})
+            participant_info = state.get("participant_info", {})
 
             # Get interviewer_context from state (if configure_agent already ran) or from interview_config
             interviewer_context = (
@@ -397,16 +397,46 @@ class CreateRoomStep(InterviewStep):
             waiting_for_meeting_ended = bot_enabled
             waiting_for_transcript_webhook = auto_transcribe and not bot_enabled
 
+            # Get prompts from meeting_config
+            analysis_prompt = interview_config.get("analysis_prompt")
+            summary_format_prompt = interview_config.get("summary_format_prompt")
+
+            # Extract name - check multiple possible keys
+            participant_name = (
+                participant_info.get("name")
+                or participant_info.get("participant_name")
+                or None
+            )
+            # Extract role/position - check multiple possible keys
+            position = (
+                participant_info.get("role") or participant_info.get("position") or None
+            )
+
+            # If we didn't find the data, try to get it from meeting_config as fallback
+            if not participant_name or not position:
+                meeting_config = state.get("meeting_config", {})
+                if not participant_name:
+                    participant_name = meeting_config.get("participant_name")
+                if not position:
+                    position = meeting_config.get("role") or meeting_config.get(
+                        "position"
+                    )
+
             session_data = {
                 "webhook_callback_url": interview_config.get("webhook_callback_url"),
                 "email_results_to": interview_config.get("email_results_to"),
-                "candidate_name": candidate_info.get("name"),
-                "candidate_email": candidate_info.get("email"),
-                "position": candidate_info.get("role"),
+                "candidate_name": participant_name
+                or "Unknown",  # Keep as candidate_name for DB compatibility
+                "candidate_email": participant_info.get("email"),
+                "position": position or "Unknown",
                 "interviewer_context": interviewer_context,
                 "session_id": state.get("session_id"),
-                "interview_type": interview_config.get("interview_type"),
+                "interview_type": interview_config.get(
+                    "interview_type", "Conversation"
+                ),
                 "difficulty_level": interview_config.get("difficulty_level"),
+                "analysis_prompt": analysis_prompt,  # Save analysis prompt for transcript processing
+                "summary_format_prompt": summary_format_prompt,  # Save summary format prompt
                 "bot_enabled": bot_enabled,  # Track if bot is enabled
                 "waiting_for_meeting_ended": waiting_for_meeting_ended,  # Bot enabled → wait for meeting.ended
                 "waiting_for_transcript_webhook": waiting_for_transcript_webhook,  # Frontend transcription → wait for transcript webhook
@@ -414,16 +444,18 @@ class CreateRoomStep(InterviewStep):
             }
 
             # Remove None values and empty strings to keep session data clean
-            # But keep boolean flags and meeting_status even if False/empty string
+            # But keep boolean flags, meeting_status, and analysis_config even if False/empty string/dict
             filtered_data = {}
             for k, v in session_data.items():
                 if v is not None:
-                    # Keep boolean flags and meeting_status even if False/empty string
+                    # Keep boolean flags, meeting_status, and analysis_config even if False/empty string/dict
                     if k in [
                         "bot_enabled",
                         "waiting_for_meeting_ended",
                         "waiting_for_transcript_webhook",
                         "meeting_status",
+                        "analysis_prompt",  # Keep prompts even if None
+                        "summary_format_prompt",  # Keep prompts even if None
                     ]:
                         filtered_data[k] = v
                     elif v != "":

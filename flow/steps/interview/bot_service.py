@@ -48,6 +48,10 @@ from pipecat.transports.daily.transport import DailyParams, DailyTransport
 
 logger = logging.getLogger(__name__)
 
+# Note: "Event loop is closed" RuntimeErrors may appear in logs when the bot finishes.
+# These come from Daily.co transport's WebSocket callbacks trying to post to a closed loop.
+# They are harmless and expected during cleanup - the bot still functions correctly.
+
 
 class TranscriptHandler:
     """
@@ -439,6 +443,21 @@ class BotService:
                 logger.info(
                     f"Started bot for room {room_name} (ID: {bot_process.process_id})"
                 )
+
+                # Give the bot task a moment to start and check if it's still running
+                await asyncio.sleep(0.1)  # Small delay to let task start
+                if bot_task.done():
+                    # Task finished immediately - something went wrong
+                    try:
+                        await bot_task  # This will raise the exception if there was one
+                    except Exception as e:
+                        logger.error(
+                            f"❌ Bot task failed immediately: {e}", exc_info=True
+                        )
+                        return False
+                else:
+                    logger.info("✅ Bot task is running (not done yet)")
+
                 return True
 
         except Exception as e:
@@ -450,6 +469,12 @@ class BotService:
     ) -> None:
         """
         Run the Pipecat bot directly without subprocess.
+
+        **Simple Explanation:**
+        This method runs the bot in the current async context. When the bot finishes,
+        the Daily.co transport might still have pending callbacks that try to post
+        to a closed event loop. These "Event loop is closed" errors are expected
+        during cleanup and don't affect functionality - they're just warnings.
 
         **Simple Explanation:**
         This sets up the bot's pipeline including:
@@ -467,23 +492,28 @@ class BotService:
         """
         try:
 
-            system_message = bot_config.get(
-                "system_message",
-                "You are an AI interview host conducting a structured behavioral interview. "
-                "Your output will be spoken aloud, so keep language natural and easy to say. "
-                "Do not use special characters. Ask one question at a time. "
-                "After asking a question, wait for the candidate's response before continuing. "
-                "When the candidate finishes speaking, acknowledge their answer briefly, offer light positive reinforcement, and then move on. "
-                "Keep your tone warm, steady, and professional. "
-                "Follow these questions in order and do not add new ones unless the candidate asks for clarification.\n\n"
-                "Questions:\n\n"
-                "Tell me about a time you had to solve a difficult problem. What was the situation and what did you do.\n\n"
-                "Describe a moment when you made a mistake at work. How did you handle it.\n\n"
-                "Give an example of a time you had to work with a challenging teammate or stakeholder. What did you do to make it successful.\n\n"
-                "Tell me about a goal you set that you had to work hard to achieve. How did you approach it.\n\n"
-                "Describe a situation where you had to make a decision with incomplete information. How did you think through it.\n\n"
-                "Guide the interview smoothly, keep the pacing natural, and help the candidate stay on track.",
+            # Get bot prompt from config - this defines what the bot should do/say
+            # If not provided, use a generic default
+            bot_prompt = bot_config.get(
+                "bot_prompt",
+                bot_config.get(
+                    "system_message",  # Fallback to old field name for backwards compatibility
+                    "You are a helpful AI assistant. "
+                    "Your output will be spoken aloud, so keep language natural and easy to say. "
+                    "Do not use special characters. "
+                    "Have a natural conversation with the participant.",
+                ),
             )
+
+            # Add voice-specific instructions to any prompt
+            system_message = f"""{bot_prompt}
+
+IMPORTANT: Your output will be spoken aloud, so:
+- Keep language natural and conversational
+- Do not use special characters, markdown, or formatting
+- Speak in complete sentences
+- Wait for the participant to finish speaking before responding
+- Keep responses concise and clear"""
 
             bot_name = bot_config.get("name", "PailBot")
 
@@ -637,17 +667,108 @@ class BotService:
                 logger.info(f"Participant left: {participant['id']}, reason: {reason}")
                 await task.cancel()
 
-            runner = PipelineRunner()
+            # **Simple Explanation:**
+            # PipelineRunner tries to set up signal handlers in __init__, but this only works in the main thread.
+            # Since we're running in a background task, we need to create the runner in a way that
+            # skips signal handler setup. We'll monkey-patch the _setup_sigint method to be a no-op.
+            import pipecat.pipeline.runner as runner_module
+
+            original_setup_sigint = runner_module.PipelineRunner._setup_sigint
+
+            # Temporarily disable signal handler setup
+            def noop_setup_sigint(self):
+                """No-op signal handler setup for background threads."""
+                pass
+
+            # Replace the method temporarily
+            runner_module.PipelineRunner._setup_sigint = noop_setup_sigint
+            try:
+                runner = PipelineRunner()
+                logger.info(
+                    "✅ PipelineRunner created (signal handlers disabled for background thread)"
+                )
+            finally:
+                # Restore original method
+                runner_module.PipelineRunner._setup_sigint = original_setup_sigint
 
             logger.info("Starting bot pipeline runner...")
+            logger.info(f"   Transport created: {transport}")
+            logger.info(f"   Task created: {task}")
+            logger.info(f"   Runner created: {runner}")
 
             # **FOLLOW REFERENCE IMPLEMENTATION**: Use await runner.run(task) directly
             # This matches the reference implementation's blocking behavior exactly
             # The runner will block until the task completes (typically when participant leaves)
-            await runner.run(task)
+            try:
+                logger.info("🚀 Calling runner.run(task)...")
+                await runner.run(task)
+                logger.info("✅ runner.run(task) completed")
+            finally:
+                # **Simple Explanation:**
+                # When the bot task finishes, the Daily.co transport might still have pending callbacks
+                # that try to post to the event loop. We need to properly clean up the transport
+                # to prevent "Event loop is closed" errors.
+                try:
+                    # Clean up the transport to prevent callbacks after task completion
+                    if hasattr(transport, "cleanup") and callable(transport.cleanup):
+                        await transport.cleanup()
+                    elif hasattr(transport, "close") and callable(transport.close):
+                        await transport.close()
+                    logger.info("✅ Transport cleaned up successfully")
+                except (RuntimeError, asyncio.CancelledError) as cleanup_error:
+                    # Ignore cleanup errors - transport might already be closed
+                    # These are expected when the event loop is closing
+                    # "Event loop is closed" errors are common during cleanup
+                    error_msg = str(cleanup_error)
+                    if (
+                        "Event loop is closed" in error_msg
+                        or "loop is closed" in error_msg.lower()
+                    ):
+                        logger.debug(
+                            f"Transport cleanup warning (expected during shutdown): {cleanup_error}"
+                        )
+                    else:
+                        logger.warning(f"Transport cleanup warning: {cleanup_error}")
+                except Exception as cleanup_error:
+                    # Other cleanup errors - log but don't fail
+                    logger.debug(f"Transport cleanup warning: {cleanup_error}")
 
+        except asyncio.CancelledError:
+            # Task was cancelled - this is expected when participant leaves
+            logger.info("🛑 Bot task was cancelled (participant left)")
+            # Ensure transport is cleaned up even on cancellation
+            try:
+                if (
+                    "transport" in locals()
+                    and hasattr(transport, "cleanup")
+                    and callable(transport.cleanup)
+                ):
+                    await transport.cleanup()
+            except (RuntimeError, asyncio.CancelledError) as e:
+                # Ignore "Event loop is closed" errors during cancellation - these are expected
+                if "Event loop is closed" not in str(e):
+                    logger.debug(f"Transport cleanup during cancellation: {e}")
+            except Exception:
+                pass  # Ignore other cleanup errors during cancellation
+            raise
         except Exception as e:
-            logger.error(f"Bot process error: {e}", exc_info=True)
+            logger.error(f"❌ Bot process error: {e}", exc_info=True)
+            logger.error(f"   Error type: {type(e).__name__}")
+            logger.error(f"   Error message: {str(e)}")
+            # Ensure transport is cleaned up even on error
+            try:
+                if (
+                    "transport" in locals()
+                    and hasattr(transport, "cleanup")
+                    and callable(transport.cleanup)
+                ):
+                    await transport.cleanup()
+            except (RuntimeError, asyncio.CancelledError) as cleanup_e:
+                # Ignore "Event loop is closed" errors during error handling - these are expected
+                if "Event loop is closed" not in str(cleanup_e):
+                    logger.debug(f"Transport cleanup during error: {cleanup_e}")
+            except Exception:
+                pass  # Ignore other cleanup errors during error handling
             raise
 
     def _cleanup_bot(self, room_name: str) -> None:

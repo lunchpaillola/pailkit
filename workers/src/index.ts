@@ -21,10 +21,12 @@ export interface Env {
   FLOW_WEBHOOK_BASE_URL: string;
 
   // Base URL for DEV rooms (rooms with names starting with "dev")
+  // OPTIONAL: If not set, dev rooms will use the production URL
   // When running locally with `wrangler dev`, this can be your local server
   // Wrangler automatically creates a tunnel, so you can use localhost or the tunnel URL
   // Example: http://localhost:8001 or the Wrangler tunnel URL
-  FLOW_WEBHOOK_DEV_BASE_URL: string;
+  // In production, you can omit this and dev rooms will route to production
+  FLOW_WEBHOOK_DEV_BASE_URL?: string;
 
   // Daily.co API key (optional - no longer needed since room_name is in payload)
   // Get this from: https://dashboard.daily.co/developers
@@ -264,15 +266,10 @@ export default {
           );
         }
 
+        // FLOW_WEBHOOK_DEV_BASE_URL is optional - if not set, dev rooms will use production URL
+        // This is useful in production where you don't have a separate dev server
         if (!env.FLOW_WEBHOOK_DEV_BASE_URL) {
-          console.error("FLOW_WEBHOOK_DEV_BASE_URL is not configured");
-          return new Response(
-            JSON.stringify({ error: "Webhook router not configured: missing FLOW_WEBHOOK_DEV_BASE_URL" }),
-            {
-              status: 500,
-              headers: { "Content-Type": "application/json" },
-            }
-          );
+          console.warn("FLOW_WEBHOOK_DEV_BASE_URL is not configured - dev rooms will use production URL");
         }
 
         // DAILY_API_KEY is no longer required since room_name is in the payload
@@ -329,8 +326,10 @@ export default {
         // room_name is now included directly in the payload, no API call needed
         const isDev = isDevEnvironment(payload);
 
-        // Simple routing: dev rooms → dev URL, everything else → production URL
-        const baseUrl = isDev
+        // Simple routing: dev rooms → dev URL (or production if dev URL not set), everything else → production URL
+        // If FLOW_WEBHOOK_DEV_BASE_URL is not set, dev rooms will use production URL
+        // This allows production to work without a separate dev server
+        const baseUrl = isDev && env.FLOW_WEBHOOK_DEV_BASE_URL
           ? env.FLOW_WEBHOOK_DEV_BASE_URL.replace(/\/$/, "")
           : env.FLOW_WEBHOOK_BASE_URL.replace(/\/$/, "");
 

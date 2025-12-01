@@ -153,6 +153,9 @@ def map_to_one_time_meeting_state(state: InterviewState) -> OneTimeMeetingState:
     if not session_id:
         session_id = str(uuid.uuid4())
 
+    # Get participant_info from state (might be under candidate_info or participant_info)
+    participant_info = state.get("participant_info") or state.get("candidate_info", {})
+
     return {
         "meeting_config": interview_config,  # Use interview_config as meeting_config
         "provider_keys": state.get("provider_keys", {}),
@@ -165,6 +168,7 @@ def map_to_one_time_meeting_state(state: InterviewState) -> OneTimeMeetingState:
         "room_url": state.get("room_url"),
         "hosted_url": None,
         "room_provider": None,
+        "participant_info": participant_info,  # Pass participant_info to subgraph
     }
 
 
@@ -423,8 +427,13 @@ class AIInterviewerWorkflow:
         """
         try:
             # Extract parameters from context
-            candidate_info = context.get("candidate_info", {})
-            interview_config = context.get("interview_config", {})
+            # Support both old names (candidate_info, interview_config) and new names (participant_info, meeting_config)
+            candidate_info = context.get("candidate_info") or context.get(
+                "participant_info", {}
+            )
+            interview_config = context.get("interview_config") or context.get(
+                "meeting_config", {}
+            )
             provider_keys = context.get("provider_keys", {})
 
             # Generate session ID and thread ID for tracking
@@ -436,8 +445,10 @@ class AIInterviewerWorkflow:
             )
 
             # Prepare initial state
+            # Include both candidate_info (old name) and participant_info (new name) for compatibility
             initial_state: InterviewState = {
                 "candidate_info": candidate_info,
+                "participant_info": candidate_info,  # Also include as participant_info
                 "interview_config": interview_config,
                 "provider_keys": provider_keys,
                 "processing_status": "starting",
@@ -563,28 +574,34 @@ class AIInterviewerWorkflow:
             # Parse JSON message
             params = json.loads(message)
 
-            # Extract required parameters
-            candidate_info = params.get("candidate_info", {})
-            interview_config = params.get("interview_config", {})
+            # Extract required parameters - support both old and new field names
+            candidate_info = params.get("candidate_info") or params.get(
+                "participant_info", {}
+            )
+            interview_config = params.get("interview_config") or params.get(
+                "meeting_config", {}
+            )
             provider_keys = params.get("provider_keys", {})
 
             # Validate required parameters
             if not candidate_info:
                 return {
                     "success": False,
-                    "error": "Missing required parameter: candidate_info",
+                    "error": "Missing required parameter: candidate_info or participant_info",
                 }
 
             if not interview_config:
                 return {
                     "success": False,
-                    "error": "Missing required parameter: interview_config",
+                    "error": "Missing required parameter: interview_config or meeting_config",
                 }
 
-            # Prepare context
+            # Prepare context - include both old and new field names for compatibility
             context = {
-                "candidate_info": candidate_info,
-                "interview_config": interview_config,
+                "candidate_info": candidate_info,  # Old name for backwards compatibility
+                "participant_info": candidate_info,  # New generic name
+                "interview_config": interview_config,  # Old name for backwards compatibility
+                "meeting_config": interview_config,  # New generic name
                 "provider_keys": provider_keys,
             }
 

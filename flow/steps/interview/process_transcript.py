@@ -22,6 +22,7 @@ import httpx
 import resend
 
 from flow.steps.interview.base import InterviewStep
+from flow.steps.interview.extract_insights import ExtractInsightsStep
 from flow.steps.interview.generate_summary import GenerateSummaryStep
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,102 @@ def parse_vtt_to_text(vtt_content: str) -> str:
     # Remove empty lines and join
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     return " ".join(lines)
+
+
+def parse_transcript_to_qa_pairs(transcript_text: str) -> list[Dict[str, Any]]:
+    """
+    Parse transcript text to extract Q&A pairs.
+
+    **Simple Explanation:**
+    The transcript format from TranscriptHandler is:
+    [timestamp] assistant: question text
+    [timestamp] user: answer text
+
+    This function extracts pairs where assistant = question and user = answer.
+
+    Args:
+        transcript_text: Full transcript text with timestamps and role labels
+
+    Returns:
+        List of dictionaries with 'question' and 'answer' keys
+    """
+    qa_pairs = []
+    lines = transcript_text.strip().split("\n")
+
+    current_question = None
+    current_answer_parts = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Match format: [timestamp] role: content
+        # Or simpler: role: content (if no timestamp)
+        # First try with timestamp: [timestamp] assistant: content
+        match = re.match(r"^\[.*?\]\s*(assistant|user):\s*(.+)$", line, re.IGNORECASE)
+        if match:
+            role = match.group(1).lower()
+            content = match.group(2)
+        else:
+            # Try without timestamp: assistant: content
+            match = re.match(r"^(assistant|user):\s*(.+)$", line, re.IGNORECASE)
+            if match:
+                role = match.group(1).lower()
+                content = match.group(2)
+            else:
+                # Skip lines that don't match the expected format
+                continue
+
+        if role and content:
+
+            if role == "assistant":
+                # If we have a previous question, save it as a Q&A pair
+                if current_question and current_answer_parts:
+                    qa_pairs.append(
+                        {
+                            "question": current_question,
+                            "answer": " ".join(current_answer_parts).strip(),
+                        }
+                    )
+                    current_answer_parts = []
+
+                # Start new question
+                current_question = content
+            elif role == "user" and current_question:
+                # Add to current answer
+                current_answer_parts.append(content)
+
+    # Don't forget the last pair
+    if current_question and current_answer_parts:
+        qa_pairs.append(
+            {
+                "question": current_question,
+                "answer": " ".join(current_answer_parts).strip(),
+            }
+        )
+
+    # Filter out pairs where question is just a greeting or answer is too short
+    filtered_pairs = []
+    for qa in qa_pairs:
+        question = qa.get("question", "").lower()
+        answer = qa.get("answer", "").strip()
+
+        # Skip greetings and very short answers
+        if any(
+            greeting in question
+            for greeting in ["hello", "thank you", "welcome", "goodbye", "bye"]
+        ):
+            if len(answer) < 20:  # Very short answers to greetings
+                continue
+
+        # Skip if answer is too short (likely not a real answer)
+        if len(answer) < 10:
+            continue
+
+        filtered_pairs.append(qa)
+
+    return filtered_pairs
 
 
 async def get_daily_headers() -> dict[str, str]:
@@ -332,37 +429,106 @@ class ProcessTranscriptStep(InterviewStep):
                 logger.warning("⚠️ No session data found")
                 session_data = {}
 
+            # Check if transcript was already processed to prevent duplicate processing
+            transcript_already_processed = session_data.get(
+                "transcript_processed", False
+            )
+            if transcript_already_processed:
+                logger.warning(
+                    "⚠️ Transcript was already processed for this room - skipping duplicate processing"
+                )
+                logger.info(
+                    "   If you need to reprocess, clear the transcript_processed flag in session_data"
+                )
+                state = self.update_status(state, "already_completed")
+                return state
+
             webhook_callback_url = session_data.get("webhook_callback_url")
             email_results_to = session_data.get("email_results_to")
             candidate_name = session_data.get("candidate_name", "Unknown")
             position = session_data.get("position", "Unknown")
+            interview_type = session_data.get("interview_type", "Interview")
+            interviewer_context = session_data.get("interviewer_context", "")
 
             logger.info(f"   👤 Candidate: {candidate_name}")
             logger.info(f"   💼 Position: {position}")
+            logger.info(f"   📋 Interview Type: {interview_type}")
 
-            state["candidate_info"] = {
+            # Check if we already sent email to prevent duplicates
+            email_already_sent = session_data.get("email_sent", False)
+            if email_already_sent:
+                logger.warning(
+                    "⚠️ Email was already sent for this room - skipping duplicate send"
+                )
+
+            # Build participant_info from session_data
+            # Note: session_data uses "candidate_name" for backwards compatibility with existing DB records
+            participant_info = {
                 "name": candidate_name,
                 "role": position,
                 "email": session_data.get("candidate_email"),
             }
+            state["participant_info"] = participant_info
 
-            # Step 6: Generate AI summary
-            logger.info("\n🤖 STEP 6: Generating AI summary")
+            # Store interview metadata for summary
+            state["interview_type"] = interview_type
+            state["interviewer_context"] = interviewer_context
 
-            # Add required fields for summary generation
-            state["insights"] = {
-                "overall_score": 0.0,
-                "competency_scores": {},
-                "strengths": ["To be analyzed from transcript"],
-                "weaknesses": ["To be analyzed from transcript"],
+            # Get prompts from session_data (passed from meeting_config)
+            analysis_prompt = session_data.get("analysis_prompt")
+            summary_format_prompt = session_data.get("summary_format_prompt")
+
+            # Build meeting_config with prompts for steps to access
+            state["meeting_config"] = {
+                "analysis_prompt": analysis_prompt,
+                "summary_format_prompt": summary_format_prompt,
             }
-            state["qa_pairs"] = [
-                {
-                    "question": "See full transcript",
-                    "answer": transcript_text[:500] + "...",
-                }
-            ]
 
+            # Also store in interview_config for backwards compatibility
+            state["interview_config"] = {
+                "interview_type": interview_type,
+                "interviewer_context": interviewer_context,
+                "analysis_prompt": analysis_prompt,
+                "summary_format_prompt": summary_format_prompt,
+            }
+
+            # Step 6: Parse transcript to extract Q&A pairs
+            logger.info("\n📝 STEP 6: Parsing transcript to extract Q&A pairs")
+            qa_pairs = parse_transcript_to_qa_pairs(transcript_text)
+            logger.info(f"✅ Extracted {len(qa_pairs)} Q&A pairs from transcript")
+
+            if not qa_pairs:
+                logger.warning(
+                    "⚠️ No Q&A pairs found in transcript - using full transcript as fallback"
+                )
+                qa_pairs = [
+                    {
+                        "question": "Full Interview Transcript",
+                        "answer": transcript_text,
+                    }
+                ]
+
+            state["qa_pairs"] = qa_pairs
+
+            # Step 7: Extract insights using AI analysis
+            logger.info("\n🧠 STEP 7: Extracting insights and assessing competencies")
+            extract_insights_step = ExtractInsightsStep()
+            state = await extract_insights_step.execute(state)
+
+            if state.get("error"):
+                logger.error(f"❌ Error extracting insights: {state.get('error')}")
+                # Continue anyway with placeholder insights
+                state["insights"] = {
+                    "overall_score": 0.0,
+                    "competency_scores": {},
+                    "strengths": ["Analysis pending"],
+                    "weaknesses": ["Analysis pending"],
+                }
+            else:
+                logger.info("✅ Insights extracted successfully")
+
+            # Step 8: Generate AI summary
+            logger.info("\n🤖 STEP 8: Generating AI summary")
             summary_step = GenerateSummaryStep()
             state = await summary_step.execute(state)
 
@@ -372,8 +538,8 @@ class ProcessTranscriptStep(InterviewStep):
             candidate_summary = state.get("candidate_summary", "")
             logger.info(f"✅ Summary generated ({len(candidate_summary)} chars)")
 
-            # Step 7: Send results
-            logger.info("\n📤 STEP 7: Sending results")
+            # Step 9: Send results
+            logger.info("\n📤 STEP 9: Sending results")
 
             results_payload = {
                 "event": "interview_complete",
@@ -396,15 +562,39 @@ class ProcessTranscriptStep(InterviewStep):
 
             state["webhook_sent"] = webhook_sent
 
-            # Send email
+            # Send email (only if not already sent)
             email_sent = False
-            if email_results_to:
+            if email_results_to and not email_already_sent:
                 logger.info(f"📧 Sending email to: {email_results_to}")
+                logger.info(
+                    f"   Subject: Interview Complete: {candidate_name} - {position}"
+                )
                 subject = f"Interview Complete: {candidate_name} - {position}"
                 body = f"{candidate_summary}\n\nFull Transcript:\n{transcript_text}"
                 email_sent = await send_email(email_results_to, subject, body)
 
+                # Mark as sent in session_data to prevent duplicates
+                if email_sent and room_name:
+                    from flow.db import get_session_data, save_session_data
+
+                    current_session = get_session_data(room_name) or {}
+                    current_session["email_sent"] = True
+                    save_session_data(room_name, current_session)
+            elif email_already_sent:
+                logger.info("📧 Email already sent - skipping duplicate")
+            elif not email_results_to:
+                logger.info("📧 No email address configured - skipping email")
+
             state["email_sent"] = email_sent
+
+            # Mark transcript as processed to prevent duplicate processing
+            if room_name:
+                from flow.db import get_session_data, save_session_data
+
+                current_session = get_session_data(room_name) or {}
+                current_session["transcript_processed"] = True
+                save_session_data(room_name, current_session)
+                logger.info("✅ Marked transcript as processed to prevent duplicates")
 
             state = self.update_status(state, "completed")
 

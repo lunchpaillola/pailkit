@@ -51,13 +51,15 @@ class UnkeyAuthMiddleware:
         request = Request(scope, receive=receive)
 
         # Skip authentication for public routes (e.g., hosted meeting pages, favicon, webhooks, API for frontend)
-        path = request.url.path
+        path = request.url.path.rstrip("/")  # Remove trailing slash for consistent matching
         if (
             path.startswith("/meet/")
             or path.startswith("/webhooks/")
             or path.startswith("/api/rooms/")
             or path == "/favicon.ico"
             or path == "/health"
+            or path == "/embed.js"
+            or path == "/test-embed"
         ):
             # Public route - allow access without authentication
             await self.app(scope, receive, send)

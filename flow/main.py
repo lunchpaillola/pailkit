@@ -7,7 +7,6 @@ PailFlow FastAPI Application
 Main entry point for the PailFlow API server with REST API and MCP integration.
 """
 
-import json
 import logging
 import os
 import sys
@@ -22,7 +21,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from dotenv import load_dotenv  # noqa: E402
-from fastapi import FastAPI, HTTPException, Query  # noqa: E402
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from mcp.server import FastMCP  # noqa: E402
@@ -265,6 +264,102 @@ async def favicon() -> Response:
     return Response(status_code=204)  # No Content
 
 
+@app.get("/test-embed", response_class=HTMLResponse)
+async def test_embed() -> HTMLResponse:
+    """
+    Serve a test page for the embeddable widget.
+
+    **Simple Explanation:**
+    This endpoint serves a simple test page where you can test the embeddable
+    widget by entering a room name. Useful for development and testing.
+    """
+    try:
+        test_file = Path(__file__).parent / "hosting" / "test-embed.html"
+        if not test_file.exists():
+            raise HTTPException(status_code=404, detail="Test page not found")
+        with open(test_file, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except Exception as e:
+        logger.error(f"Error serving test page: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to serve test page: {str(e)}"
+        )
+
+
+@app.get("/embed.js")
+async def serve_embed_script() -> Response:
+    """
+    Serve the embeddable JavaScript widget for video meetings.
+
+    **Simple Explanation:**
+    This endpoint serves a JavaScript file that creates a video meeting widget
+    that can be embedded in any website. The DAILY_DOMAIN is automatically
+    injected into the script so users don't need to provide it.
+
+    **Usage:**
+    ```html
+    <div id="meeting-container" style="width: 100%; height: 600px;"></div>
+    <script src="https://your-domain.com/embed.js"></script>
+    <script>
+      PailFlow.init({
+        container: '#meeting-container',
+        roomName: 'my-room-123'
+      });
+    </script>
+    ```
+
+    **Note:** The Daily.co SDK is automatically loaded by the embed script, so you don't need to include it separately.
+
+    **Configuration Options:**
+    - `container` (required): CSS selector or DOM element for the widget
+    - `roomName` (required): Daily.co room name
+    - `token` (optional): Meeting token for authenticated rooms
+    - `accentColor` (optional): Accent color hex code (default: '#1f2de6')
+    - `logoText` (optional): Logo text (default: 'PailFlow')
+    - `showHeader` (optional): Show header (default: true)
+    - `showBrandLine` (optional): Show top brand line (default: true)
+    - `autoRecord` (optional): Auto-start recording (default: false)
+    - `autoTranscribe` (optional): Auto-start transcription (default: false)
+    - `onLoaded`, `onJoined`, `onLeft`, `onError`, etc.: Event callbacks
+    """
+    try:
+        # Get the path to the JavaScript file
+        hosting_dir = Path(__file__).parent / "hosting"
+        js_file = hosting_dir / "embed.js"
+
+        if not js_file.exists():
+            logger.error(f"Embed script not found: {js_file}")
+            raise HTTPException(status_code=500, detail="Embed script not found")
+
+        # Read the JavaScript file
+        with open(js_file, "r", encoding="utf-8") as f:
+            js_content = f.read()
+
+        # Inject DAILY_DOMAIN into the JavaScript file
+        daily_domain = os.getenv("DAILY_DOMAIN", "https://your-domain.daily.co").rstrip(
+            "/"
+        )
+        js_content = js_content.replace(
+            "const DAILY_DOMAIN = null; // Will be replaced by server",
+            f'const DAILY_DOMAIN = "{daily_domain}";',
+        )
+
+        # Return as JavaScript with proper content type
+        return Response(
+            content=js_content,
+            media_type="application/javascript",
+            headers={
+                "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error serving embed script: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to serve embed script: {str(e)}"
+        )
+
+
 @app.get("/meet/{room_name}", response_class=HTMLResponse)
 async def serve_meeting_page(
     room_name: str,
@@ -385,43 +480,53 @@ async def execute_workflow(
 # ============================================================================
 
 
-class AIInterviewerRequest(BaseModel):
-    """Request model for AI Interviewer workflow execution."""
+class StartBotRequest(BaseModel):
+    """Request model for starting a bot conversation."""
 
-    candidate_info: dict[str, Any] = Field(
+    participant_info: dict[str, Any] = Field(
         ...,
-        description="Candidate information (name, email, role, etc.)",
+        description="Participant information (name, email, role, etc.) - generic field for any use case",
     )
-    interview_config: dict[str, Any] = Field(
+    meeting_config: dict[str, Any] = Field(
         ...,
-        description="Interview configuration (type, duration, difficulty, etc.)",
+        description="Meeting configuration with prompts for bot behavior, analysis, and summary formatting",
     )
     webhook_callback_url: str | None = Field(
         None,
-        description="Optional webhook URL to receive interview results when complete",
+        description="Optional webhook URL to receive results when complete",
     )
     email_results_to: str | None = Field(
         None,
-        description="Optional email address to receive interview results",
+        description="Optional email address to receive results",
     )
 
-    @field_validator("candidate_info")
+    @field_validator("participant_info")
     @classmethod
-    def validate_candidate_info(cls, v: dict[str, Any]) -> dict[str, Any]:
-        """Validate candidate_info has required fields."""
+    def validate_participant_info(cls, v: dict[str, Any]) -> dict[str, Any]:
+        """Validate participant_info has required fields."""
         if not isinstance(v, dict):
-            raise ValueError("candidate_info must be a dictionary")
+            raise ValueError("participant_info must be a dictionary")
         if not v.get("name"):
-            raise ValueError("candidate_info must include 'name' field")
+            raise ValueError("participant_info must include 'name' field")
         return v
 
-    @field_validator("interview_config")
+    @field_validator("meeting_config")
     @classmethod
-    def validate_interview_config(cls, v: dict[str, Any]) -> dict[str, Any]:
-        """Validate interview_config is a dictionary."""
+    def validate_meeting_config(cls, v: dict[str, Any]) -> dict[str, Any]:
+        """Validate meeting_config is a dictionary."""
         if not isinstance(v, dict):
-            raise ValueError("interview_config must be a dictionary")
+            raise ValueError("meeting_config must be a dictionary")
+        # Ensure bot is enabled
+        bot_config = v.get("bot", {})
+        if not bot_config.get("enabled", False):
+            raise ValueError("meeting_config.bot.enabled must be true")
+        if not bot_config.get("bot_prompt"):
+            raise ValueError("meeting_config.bot.bot_prompt is required")
         return v
+
+
+# Keep old name for backwards compatibility
+AIInterviewerRequest = StartBotRequest
 
 
 def get_provider_keys() -> dict[str, str]:
@@ -449,21 +554,29 @@ def get_provider_keys() -> dict[str, str]:
     }
 
 
-@app.post("/api/flows/ai-interviewer")
-async def execute_ai_interviewer_workflow(
-    request: AIInterviewerRequest,
+@app.post("/api/flows/start-bot")
+async def start_bot_conversation(
+    request: StartBotRequest,
 ) -> dict[str, Any]:
     """
-    Execute the AI Interviewer workflow.
+    Start a bot conversation with customizable prompts.
 
     **Simple Explanation:**
-    This endpoint starts an AI-powered interview. You provide:
-    - Candidate information (name, email, etc.)
-    - Interview configuration (type, duration, etc.)
+    This endpoint creates a video room with an AI bot that can be configured for any purpose
+    (interviews, consultations, training, etc.). You provide:
+    - Participant information (name, email, etc.)
+    - Bot prompt (defines what the bot says/does)
+    - Analysis prompt (defines how to analyze the conversation)
+    - Summary format prompt (defines how to format results)
     - Optional webhook URL and email for results
 
-    The endpoint returns immediately with a room URL where the interview will take place.
-    Results (transcript, analysis, assessment) will be sent to your webhook URL when complete.
+    The endpoint returns immediately with a room URL where the conversation will take place.
+    Results (transcript, analysis, summary) will be sent to your webhook URL when complete.
+
+    **Key Features:**
+    - Fully prompt-driven: Control bot behavior, analysis, and output format via text prompts
+    - Generic: Not limited to interviews - use for any conversation scenario
+    - Flexible: Customize analysis and summary format for your use case
 
     **Authentication:**
     Provide your PailKit API key via the `Authorization` header:
@@ -473,39 +586,72 @@ async def execute_ai_interviewer_workflow(
     **Request Body:**
     ```json
     {
-      "candidate_info": {
+      "participant_info": {
         "name": "John Doe",
         "email": "john@example.com",
         "role": "Software Engineer"
       },
-      "interview_config": {
-        "type": "technical",
-        "duration": 30,
-        "difficulty": "medium"
+      "meeting_config": {
+        "bot": {
+          "enabled": true,
+          "bot_prompt": "You are a friendly AI assistant conducting a technical interview. Ask questions about Python, system design, and problem-solving. Wait for responses before asking the next question."
+        },
+        "analysis_prompt": "Analyze this conversation transcript. Provide scores, strengths, and areas for improvement. Use {transcript} as a placeholder for the transcript.",
+        "summary_format_prompt": "Format as a professional scorecard with overall score, competency breakdown, and detailed Q&A sections."
       },
-      "webhook_callback_url": "https://your-app.com/webhooks/interview-complete",
-      "email_results_to": "hr@example.com"
+      "webhook_callback_url": "https://your-app.com/webhooks/conversation-complete",
+      "email_results_to": "results@example.com"
     }
     ```
+
+    **Prompt Placeholders:**
+    - In `analysis_prompt`, use `{transcript}` or `{qa_text}` to inject the conversation transcript
+    - If no placeholder is used, the transcript will be appended automatically
 
     **Response:**
     Returns immediately with room URL and session info. Results sent via webhook when complete.
 
-    **Example:**
+    **Example - Technical Interview:**
     ```bash
-    curl -X POST https://api.pailkit.com/api/flows/ai-interviewer \\
+    curl -X POST https://api.pailkit.com/api/flows/start-bot \\
       -H "Authorization: Bearer <your-pailkit-key>" \\
       -H "Content-Type: application/json" \\
       -d '{
-        "candidate_info": {
+        "participant_info": {
           "name": "John Doe",
           "email": "john@example.com"
         },
-        "interview_config": {
-          "type": "technical",
-          "duration": 30
+        "meeting_config": {
+          "bot": {
+            "enabled": true,
+            "bot_prompt": "You are conducting a technical interview. Ask questions about Python, system design, and problem-solving."
+          },
+          "analysis_prompt": "Analyze this interview transcript. Provide scores, strengths, and areas for improvement. Transcript: {transcript}",
+          "summary_format_prompt": "Format as a scorecard with overall score, competency breakdown, and detailed Q&A."
         },
         "webhook_callback_url": "https://your-app.com/webhooks/interview-complete"
+      }'
+    ```
+
+    **Example - Customer Support:**
+    ```bash
+    curl -X POST https://api.pailkit.com/api/flows/start-bot \\
+      -H "Authorization: Bearer <your-pailkit-key>" \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "participant_info": {
+          "name": "Jane Smith",
+          "email": "jane@example.com"
+        },
+        "meeting_config": {
+          "bot": {
+            "enabled": true,
+            "bot_prompt": "You are a customer support agent. Help the customer with their issue. Be friendly and solution-oriented."
+          },
+          "analysis_prompt": "Analyze this support conversation. Identify the issue, resolution, and customer satisfaction. Transcript: {transcript}",
+          "summary_format_prompt": "Format as a support ticket summary with issue description, resolution steps, and customer feedback."
+        },
+        "webhook_callback_url": "https://your-app.com/webhooks/support-complete"
       }'
     ```
     """
@@ -514,29 +660,29 @@ async def execute_ai_interviewer_workflow(
         provider_keys = get_provider_keys()
 
         # Prepare workflow context
-        # Include webhook and email in interview_config so they're saved to session data
-        interview_config = request.interview_config.copy()
+        # Include webhook and email in meeting_config so they're saved to session data
+        meeting_config = request.meeting_config.copy()
         if request.webhook_callback_url:
-            interview_config["webhook_callback_url"] = request.webhook_callback_url
+            meeting_config["webhook_callback_url"] = request.webhook_callback_url
         if request.email_results_to:
-            interview_config["email_results_to"] = request.email_results_to
+            meeting_config["email_results_to"] = request.email_results_to
 
         context = {
-            "candidate_info": request.candidate_info,
-            "interview_config": interview_config,
+            "participant_info": request.participant_info,
+            "meeting_config": meeting_config,
             "provider_keys": provider_keys,
         }
 
-        # Get the AI Interviewer workflow
+        # Use AI Interviewer workflow (it's generic enough for any bot conversation)
         workflow = get_workflow("ai_interviewer")
 
-        # Execute the workflow
-        # Note: The workflow.execute() method handles async execution internally
-        result = workflow.execute(
-            message=json.dumps(context),
-            user_id=None,
-            channel_id=None,
-        )
+        # Execute the workflow asynchronously
+        # **Simple Explanation:**
+        # We use execute_async() directly instead of execute() because:
+        # 1. execute() creates a new event loop in a thread and closes it when done
+        # 2. This kills the bot task which runs in that loop
+        # 3. execute_async() runs in the current event loop, so the bot task keeps running
+        result = await workflow.execute_async(context)
 
         # Check for errors
         if not result.get("success"):
@@ -545,36 +691,29 @@ async def execute_ai_interviewer_workflow(
             raise HTTPException(status_code=500, detail=error_msg)
 
         # Extract results from workflow response
-        workflow_results = result.get("results", {})
+        # execute_async() returns the result directly (not wrapped in "results")
         processing_status = result.get("processing_status", "unknown")
 
-        # Get state from _state if available (when workflow is paused)
-        state = result.get("_state", {})
+        # Get hosted_url and room_url from workflow result (from one_time_meeting subgraph)
+        # execute_async() returns these directly in the result dict
+        hosted_url = result.get("hosted_url")
+        room_url = result.get("room_url")
+        room_name = result.get("room_name")
 
-        # Get hosted_url from workflow result (from one_time_meeting subgraph)
-        # Check multiple places: direct result, _state, or workflow_results
-        hosted_url = (
-            state.get("hosted_url")
-            or result.get("hosted_url")
-            or workflow_results.get("hosted_url")
-        )
-        room_url = (
-            state.get("room_url")
-            or result.get("room_url")
-            or workflow_results.get("room_url")
+        # Get session_id - might be in result or in _state
+        session_id = result.get("session_id") or result.get("_state", {}).get(
+            "session_id"
         )
 
         # Build response with room information
         # Results will be sent via webhook when complete
         response = {
             "success": True,
-            "message": "Interview workflow started successfully",
-            "session_id": workflow_results.get("session_id")
-            or result.get("session_id"),
+            "message": "Bot conversation started successfully",
+            "session_id": session_id,
             "room_url": room_url,
+            "room_name": room_name,
             "hosted_url": hosted_url,  # The hosted meeting.html link
-            "candidate_info": workflow_results.get("candidate_info")
-            or result.get("candidate_info"),
             "processing_status": processing_status,
             "note": (
                 "Interview results will be sent to your webhook URL when complete. "
@@ -590,16 +729,24 @@ async def execute_ai_interviewer_workflow(
         logger.error(f"Validation error: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     except WorkflowNotFoundError:
-        logger.error("AI Interviewer workflow not found")
-        raise HTTPException(
-            status_code=500, detail="AI Interviewer workflow is not available"
-        )
+        raise
     except Exception as e:
-        logger.error(f"Error executing AI Interviewer workflow: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error executing interview workflow: {str(e)}",
-        )
+        logger.error(f"Error starting bot conversation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# Keep old endpoint for backwards compatibility
+@app.post("/api/flows/ai-interviewer")
+async def execute_ai_interviewer_workflow(
+    request: AIInterviewerRequest,
+) -> dict[str, Any]:
+    """
+    Execute the AI Interviewer workflow (deprecated - use /api/flows/start-bot instead).
+
+    This endpoint is kept for backwards compatibility. New integrations should use /api/flows/start-bot.
+    """
+    # Delegate to the new endpoint
+    return await start_bot_conversation(request)
 
 
 # Webhook Handlers and Endpoints
@@ -715,10 +862,21 @@ async def handle_transcript_ready_to_download(
             # LangGraph stores state in checkpoints, we need to get it and update it
             try:
                 # Get the latest checkpoint for this thread
+                # checkpointer.list() returns an iterator of (checkpoint_id, checkpoint_data) tuples
                 checkpoints = list(workflow.checkpointer.list(config))
                 if checkpoints:
-                    # Get the latest checkpoint
-                    latest_checkpoint_id = checkpoints[-1]["checkpoint_id"]
+                    # Get the latest checkpoint - checkpoints[-1] is a tuple (checkpoint_id, checkpoint_data)
+                    # Access checkpoint_id as the first element of the tuple
+                    latest_checkpoint_tuple = checkpoints[-1]
+                    if isinstance(latest_checkpoint_tuple, tuple):
+                        latest_checkpoint_id = latest_checkpoint_tuple[0]
+                    else:
+                        # Fallback: if it's a dict, use the old way
+                        latest_checkpoint_id = (
+                            latest_checkpoint_tuple.get("checkpoint_id")
+                            if isinstance(latest_checkpoint_tuple, dict)
+                            else str(latest_checkpoint_tuple)
+                        )
                     checkpoint = workflow.checkpointer.get(
                         config, {"checkpoint_id": latest_checkpoint_id}
                     )
@@ -830,16 +988,30 @@ async def webhook_recording_ready_to_download(
     This endpoint receives webhooks when a Daily.co recording is ready to download.
     The Cloudflare Worker routes 'recording.ready-to-download' events here.
 
+    **Error Handling:**
+    This endpoint ALWAYS returns 200 OK, even on errors, to prevent Daily.co
+    from retrying the webhook. Errors are logged but don't cause 500 responses.
+
     See: https://docs.daily.co/reference/rest-api/webhooks/events/recording-ready-to-download
     """
     try:
         result = await handle_recording_ready_to_download(payload)
         return result
     except Exception as e:
+        # **CRITICAL:** Always return 200 OK for webhooks, even on errors
+        # This prevents Daily.co from retrying the webhook repeatedly
         logger.error(
-            f"Error handling recording.ready-to-download webhook: {e}", exc_info=True
+            f"❌ Error handling recording.ready-to-download webhook: {e}", exc_info=True
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        webhook_payload = payload.get("payload", payload)
+        room_name = webhook_payload.get("room_name", "unknown")
+        return {
+            "status": "error",
+            "room_name": room_name,
+            "message": "Webhook received but processing failed",
+            "error": str(e),
+            "note": "This error was logged. Please check server logs for details.",
+        }
 
 
 @app.post("/webhooks/transcript-ready-to-download")
@@ -853,20 +1025,36 @@ async def webhook_transcript_ready_to_download(
     This endpoint receives webhooks when a Daily.co transcript is ready to download.
     The Cloudflare Worker routes 'transcript.ready-to-download' events here.
 
+    **Error Handling:**
+    This endpoint ALWAYS returns 200 OK, even on errors, to prevent Daily.co
+    from retrying the webhook. Errors are logged but don't cause 500 responses.
+
     See: https://docs.daily.co/reference/rest-api/webhooks/events/transcript-ready-to-download
     """
     try:
         result = await handle_transcript_ready_to_download(payload)
         return result
     except Exception as e:
+        # **CRITICAL:** Always return 200 OK for webhooks, even on errors
+        # This prevents Daily.co from retrying the webhook repeatedly
         logger.error(
-            f"Error handling transcript.ready-to-download webhook: {e}", exc_info=True
+            f"❌ Error handling transcript.ready-to-download webhook: {e}",
+            exc_info=True,
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        webhook_payload = payload.get("payload", payload)
+        room_name = webhook_payload.get("room_name", "unknown")
+        return {
+            "status": "error",
+            "room_name": room_name,
+            "message": "Webhook received but processing failed",
+            "error": str(e),
+            "note": "This error was logged. Please check server logs for details.",
+        }
 
 
 async def handle_meeting_ended_webhook(
     payload: dict[str, Any],
+    background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
     """
     Handle 'meeting.ended' webhook event from Daily.co.
@@ -903,6 +1091,38 @@ async def handle_meeting_ended_webhook(
 
         # Check if there's a paused workflow for this room
         session_data = get_session_data(room_name) if room_name else None
+
+        # CRITICAL: Check if transcript was already processed or is currently processing
+        # This prevents multiple webhooks from all trying to process the same transcript
+        transcript_already_processed = session_data and session_data.get(
+            "transcript_processed", False
+        )
+        transcript_processing = session_data and session_data.get(
+            "transcript_processing", False
+        )
+
+        if transcript_already_processed:
+            logger.info(
+                f"✅ Transcript already processed for room {room_name} - returning 200 OK immediately"
+            )
+            return {
+                "status": "success",
+                "room_name": room_name,
+                "message": "Transcript already processed",
+                "already_processed": True,
+            }
+
+        if transcript_processing:
+            logger.info(
+                f"⏳ Transcript is currently processing for room {room_name} - returning 200 OK immediately"
+            )
+            return {
+                "status": "success",
+                "room_name": room_name,
+                "message": "Transcript is currently being processed",
+                "already_processing": True,
+            }
+
         workflow_paused = session_data and session_data.get("workflow_paused", False)
         thread_id = session_data.get("workflow_thread_id") if session_data else None
         waiting_for_meeting_ended = session_data and session_data.get(
@@ -921,6 +1141,9 @@ async def handle_meeting_ended_webhook(
         waiting_for_transcript_webhook = session_data and session_data.get(
             "waiting_for_transcript_webhook", False
         )
+
+        # Check if this is a OneTimeMeetingWorkflow (no checkpoints) or AIInterviewerWorkflow (with checkpoints)
+        # OneTimeMeetingWorkflow rooms won't have workflow_paused or thread_id, but will have waiting_for_meeting_ended
 
         # Resume workflow if it was paused, OR if bot was enabled (waiting_for_meeting_ended)
         if (workflow_paused and thread_id) or waiting_for_meeting_ended:
@@ -946,10 +1169,21 @@ async def handle_meeting_ended_webhook(
             if config:
                 try:
                     # Get the latest checkpoint for this thread
+                    # checkpointer.list() returns an iterator of (checkpoint_id, checkpoint_data) tuples
                     checkpoints = list(workflow.checkpointer.list(config))
                     if checkpoints:
-                        # Get the latest checkpoint
-                        latest_checkpoint_id = checkpoints[-1]["checkpoint_id"]
+                        # Get the latest checkpoint - checkpoints[-1] is a tuple (checkpoint_id, checkpoint_data)
+                        # Access checkpoint_id as the first element of the tuple
+                        latest_checkpoint_tuple = checkpoints[-1]
+                        if isinstance(latest_checkpoint_tuple, tuple):
+                            latest_checkpoint_id = latest_checkpoint_tuple[0]
+                        else:
+                            # Fallback: if it's a dict, use the old way
+                            latest_checkpoint_id = (
+                                latest_checkpoint_tuple.get("checkpoint_id")
+                                if isinstance(latest_checkpoint_tuple, dict)
+                                else str(latest_checkpoint_tuple)
+                            )
                         checkpoint = workflow.checkpointer.get(
                             config, {"checkpoint_id": latest_checkpoint_id}
                         )
@@ -1010,11 +1244,30 @@ async def handle_meeting_ended_webhook(
                             current_state["duration"] = duration
                             current_state["meeting_ended"] = True
 
-                            # Resume the workflow from where it paused
+                            # Mark as processing immediately to prevent duplicate webhooks
+                            if session_data and room_name:
+                                session_data["transcript_processing"] = True
+                                save_session_data(room_name, session_data)
+
+                            # Resume the workflow from where it paused in background
                             # LangGraph will continue from the interrupt point
-                            result = await workflow.graph.ainvoke(
-                                current_state, config=config
+                            async def resume_workflow():
+                                await workflow.graph.ainvoke(
+                                    current_state, config=config
+                                )
+
+                            background_tasks.add_task(resume_workflow)
+
+                            # Return 200 OK immediately so webhook doesn't timeout
+                            # Processing will happen in background
+                            logger.info(
+                                "🚀 Added workflow resume to background tasks - returning 200 OK immediately"
                             )
+                            return {
+                                "status": "success",
+                                "room_name": room_name,
+                                "message": "Workflow resumed in background",
+                            }
                         else:
                             raise ValueError("Checkpoint state not found")
                     else:
@@ -1024,9 +1277,57 @@ async def handle_meeting_ended_webhook(
                     logger.warning(
                         f"⚠️ Could not resume workflow from checkpoint: {e}, processing transcript directly"
                     )
-                    # Fall through to process transcript directly
+                    # Process transcript directly (same logic as else block below)
+                    from flow.steps.interview.process_transcript import (
+                        ProcessTranscriptStep,
+                    )
+
+                    # Check what we're waiting for
+                    waiting_for_meeting_ended = session_data and session_data.get(
+                        "waiting_for_meeting_ended", False
+                    )
+                    if waiting_for_meeting_ended:
+                        # Bot was enabled - transcript is in DB
+                        logger.info(
+                            "🤖 Bot was enabled - using transcript from database"
+                        )
+                        transcript_id = None  # Will be None if using DB transcript
+                    else:
+                        # Frontend transcription - use transcript_id from webhook
+                        logger.info(
+                            "📥 Frontend transcription - using transcript_id from webhook"
+                        )
+                        transcript_id = None  # Will be set from webhook if available
+
+                    state = {
+                        "transcript_id": transcript_id,  # May be None if using DB transcript
+                        "room_id": meeting_id,  # Use meeting_id as room_id
+                        "room_name": room_name,
+                        "duration": duration,
+                        "meeting_ended": True,
+                    }
+
+                    # Mark as processing immediately to prevent duplicate webhooks
+                    if session_data and room_name:
+                        session_data["transcript_processing"] = True
+                        save_session_data(room_name, session_data)
+
+                    # Add processing to background tasks - return 200 OK immediately
+                    step = ProcessTranscriptStep()
+                    background_tasks.add_task(step.execute, state)
+
+                    # Return 200 OK immediately so webhook doesn't timeout
+                    # Processing will happen in background
+                    logger.info(
+                        "🚀 Added transcript processing to background tasks - returning 200 OK immediately"
+                    )
+                    return {
+                        "status": "success",
+                        "room_name": room_name,
+                        "message": "Transcript processing started in background",
+                    }
             else:
-                # No thread_id - process transcript directly
+                # No thread_id - process transcript directly (OneTimeMeetingWorkflow or direct processing)
                 logger.info(
                     "   No thread_id available - processing transcript directly"
                 )
@@ -1047,6 +1348,7 @@ async def handle_meeting_ended_webhook(
                     logger.info(
                         "📥 Frontend transcription - using transcript_id from webhook"
                     )
+                    transcript_id = None  # Will be set from webhook if available
 
                 state = {
                     "transcript_id": transcript_id,  # May be None if using DB transcript
@@ -1055,27 +1357,26 @@ async def handle_meeting_ended_webhook(
                     "duration": duration,
                     "meeting_ended": True,
                 }
+
+                # Mark as processing immediately to prevent duplicate webhooks
+                if session_data and room_name:
+                    session_data["transcript_processing"] = True
+                    save_session_data(room_name, session_data)
+
+                # Add processing to background tasks - return 200 OK immediately
                 step = ProcessTranscriptStep()
-                result = await step.execute(state)
+                background_tasks.add_task(step.execute, state)
 
-            # Check for errors
-            if result.get("error"):
+                # Return 200 OK immediately so webhook doesn't timeout
+                # Processing will happen in background
+                logger.info(
+                    "🚀 Added transcript processing to background tasks - returning 200 OK immediately"
+                )
                 return {
-                    "status": "error",
+                    "status": "success",
                     "room_name": room_name,
-                    "error": result.get("error"),
+                    "message": "Transcript processing started in background",
                 }
-
-            # Return success response
-            candidate_name = result.get("candidate_info", {}).get("name", "Unknown")
-            return {
-                "status": "success",
-                "room_name": room_name,
-                "candidate_name": candidate_name,
-                "webhook_sent": result.get("webhook_sent", False),
-                "email_sent": result.get("email_sent", False),
-                "workflow_resumed": True,
-            }
         else:
             # No paused workflow - just log the meeting end
             logger.info(
@@ -1099,28 +1400,56 @@ async def handle_meeting_ended_webhook(
 @app.post("/webhooks/meeting-ended")
 async def webhook_meeting_ended(
     payload: dict[str, Any],
+    background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
     """
     Handle 'meeting.ended' webhook from Daily.co.
 
+    **Important:** This is a webhook endpoint that returns 200 OK immediately
+    and processes in the background. This prevents timeouts from Daily.co.
+    Unlike regular API endpoints, webhooks don't validate input strictly -
+    they're fire-and-forget notifications from Daily.co.
+
     **Simple Explanation:**
     This endpoint is called when a Daily.co meeting ends. It:
-    1. Checks if there's a paused workflow waiting for the meeting to end
-    2. Checks if bot was enabled (transcript in DB) or not (needs Daily.co transcript)
-    3. Resumes the workflow to process the transcript
+    1. Checks if transcript was already processed (prevents duplicates)
+    2. Checks if there's a paused workflow waiting for the meeting to end
+    3. Checks if bot was enabled (transcript in DB) or not (needs Daily.co transcript)
+    4. Returns 200 OK immediately and processes transcript in background
 
     This is more robust than processing immediately because it ensures:
     - Meeting is actually finished (not partial transcript)
     - Complete transcript is available (especially when bot is enabled)
+    - No timeouts from Daily.co webhook retries
+
+    **Error Handling:**
+    This endpoint ALWAYS returns 200 OK, even on errors, to prevent Daily.co
+    from retrying the webhook. Errors are logged but don't cause 500 responses.
 
     See: https://docs.daily.co/reference/rest-api/webhooks/events/meeting-ended
     """
     try:
-        result = await handle_meeting_ended_webhook(payload)
+        result = await handle_meeting_ended_webhook(payload, background_tasks)
         return result
     except Exception as e:
-        logger.error(f"Error handling meeting.ended webhook: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        # **CRITICAL:** Always return 200 OK for webhooks, even on errors
+        # This prevents Daily.co from retrying the webhook repeatedly
+        # Daily.co will retry on 5xx errors, which can cause duplicate processing
+        logger.error(f"❌ Error handling meeting.ended webhook: {e}", exc_info=True)
+
+        # Extract room name from payload for logging
+        webhook_payload = payload.get("payload", payload)
+        room_name = webhook_payload.get("room", "unknown")
+
+        # Return 200 OK with error details (but don't raise HTTPException)
+        # This tells Daily.co the webhook was received, even if processing failed
+        return {
+            "status": "error",
+            "room_name": room_name,
+            "message": "Webhook received but processing failed",
+            "error": str(e),
+            "note": "This error was logged. Please check server logs for details.",
+        }
 
 
 # MCP Tools

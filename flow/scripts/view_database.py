@@ -20,8 +20,11 @@ flow_dir = os.path.dirname(script_dir)
 project_root = os.path.dirname(flow_dir)
 sys.path.insert(0, project_root)
 
-from flow.db import get_db_path  # noqa: E402
+from flow.db import get_db_path, decrypt_sensitive_data  # noqa: E402
 import sqlite3  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv()
 
 
 def view_database():
@@ -68,7 +71,9 @@ def view_database():
 
             try:
                 session_data = json.loads(session_data_json)
-                print("\n📦 Session Data:")
+                # Decrypt sensitive fields
+                session_data = decrypt_sensitive_data(session_data)
+                print("\n📦 Session Data (decrypted):")
                 for key, value in session_data.items():
                     # Special handling for transcript_text - show it fully
                     if key == "transcript_text" and value:
