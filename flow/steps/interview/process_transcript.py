@@ -209,7 +209,7 @@ async def download_transcript_vtt(download_link: str) -> str | None:
 
 def get_room_session_data(room_name: str) -> dict[str, Any] | None:
     """
-    Get session data from SQLite database.
+    Get session data from Supabase database.
     """
     from flow.db import get_session_data
 
@@ -832,7 +832,7 @@ class ProcessTranscriptStep(InterviewStep):
             # Store transcript in state
             state["interview_transcript"] = transcript_text
 
-            # Step 5: Retrieve session data from SQLite database (if not already retrieved)
+            # Step 5: Retrieve session data from Supabase database (if not already retrieved)
             logger.info("\n📦 STEP 5: Retrieving session data from database")
             if not session_data:
                 session_data = get_room_session_data(room_name) if room_name else None

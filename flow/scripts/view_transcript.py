@@ -61,28 +61,33 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         room_name = sys.argv[1]
     else:
-        # Get most recent room
-        import sqlite3
-        from flow.db import get_db_path
+        # Get most recent room from Supabase
+        from flow.db import get_supabase_client
 
-        db_path = get_db_path()
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT room_name FROM room_sessions
-            ORDER BY created_at DESC
-            LIMIT 1
-        """
-        )
-        result = cursor.fetchone()
-        conn.close()
+        client = get_supabase_client()
+        if not client:
+            print(
+                "❌ Cannot connect to Supabase. Check your SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+            )
+            sys.exit(1)
 
-        if result:
-            room_name = result[0]
-            print(f"📋 Using most recent room: {room_name}\n")
-        else:
-            print("❌ No rooms found in database")
+        try:
+            response = (
+                client.table("rooms")
+                .select("room_name")
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            if response.data and len(response.data) > 0:
+                room_name = response.data[0]["room_name"]
+                print(f"📋 Using most recent room: {room_name}\n")
+            else:
+                print("❌ No rooms found in database")
+                sys.exit(1)
+        except Exception as e:
+            print(f"❌ Error getting most recent room: {e}")
             sys.exit(1)
 
     view_transcript(room_name)
