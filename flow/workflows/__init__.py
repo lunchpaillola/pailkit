@@ -5,8 +5,6 @@
 
 from typing import Any, Protocol
 
-from flow.workflows.ai_interviewer import AIInterviewerWorkflow
-from flow.workflows.one_time_meeting import OneTimeMeetingWorkflow
 from flow.workflows.order_food import OrderFoodWorkflow
 
 
@@ -33,8 +31,6 @@ def get_workflows() -> dict[str, Workflow]:
     """Return all available workflows."""
     return {
         "order_food": OrderFoodWorkflow(),
-        "ai_interviewer": AIInterviewerWorkflow(),
-        "one_time_meeting": OneTimeMeetingWorkflow(),
     }
 
 
@@ -55,8 +51,6 @@ def get_workflow(name: str) -> Workflow:
 
 __all__ = [
     "Workflow",
-    "AIInterviewerWorkflow",
-    "OneTimeMeetingWorkflow",
     "OrderFoodWorkflow",
     "get_workflows",
     "get_workflow",

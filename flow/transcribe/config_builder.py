@@ -10,7 +10,7 @@ This is the single source of truth for config composition across all adapters.
 
 from typing import Any
 
-from api.utils.deep_merge import deep_merge
+from flow.utils.deep_merge import deep_merge
 
 from .config_schema import (
     BASE_TRANSCRIPTION_CONFIG,

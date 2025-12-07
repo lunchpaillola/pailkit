@@ -456,3 +456,241 @@ def delete_session_data(room_name: str) -> bool:
             exc_info=True,
         )
         return False
+
+
+def save_bot_session(bot_id: str, bot_session_data: Dict[str, Any]) -> bool:
+    """
+    Save or update bot session data in Supabase.
+
+    **Simple Explanation:**
+    This function saves bot session information to the database. It stores:
+    - Bot status (running, completed, failed)
+    - Room information
+    - Bot configuration
+    - Transcript, Q&A pairs, and insights (when available)
+    - Timestamps
+
+    Args:
+        bot_id: Unique bot session identifier (UUID)
+        bot_session_data: Dictionary containing bot session information:
+            - room_url: Full Daily.co room URL
+            - room_name: Room name
+            - status: Bot status ('running', 'completed', 'failed')
+            - started_at: ISO timestamp when bot started
+            - completed_at: ISO timestamp when bot completed (optional)
+            - process_insights: Whether to process insights
+            - bot_config: Bot configuration dictionary
+            - transcript_text: Full transcript (optional, will be encrypted)
+            - qa_pairs: List of Q&A pairs (optional)
+            - insights: Insights dictionary (optional)
+            - error: Error message if failed (optional)
+
+    Returns:
+        True if saved successfully, False otherwise
+    """
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot save bot session to Supabase: client not available")
+        return False
+
+    try:
+        # Encrypt transcript_text if present (it's a sensitive field)
+        db_data = bot_session_data.copy()
+        if "transcript_text" in db_data and db_data["transcript_text"]:
+            db_data["transcript_text"] = encrypt_field(db_data["transcript_text"])
+
+        # Prepare data for Supabase
+        # Convert ISO timestamps to proper format if they're strings
+        if "started_at" in db_data and isinstance(db_data["started_at"], str):
+            # Remove 'Z' suffix if present, Supabase handles timezone
+            db_data["started_at"] = db_data["started_at"].rstrip("Z")
+        if "completed_at" in db_data and isinstance(db_data["completed_at"], str):
+            db_data["completed_at"] = db_data["completed_at"].rstrip("Z")
+
+        # Use upsert (insert or update) based on bot_id
+        client.table("bot_sessions").upsert(
+            {"bot_id": bot_id, **db_data}, on_conflict="bot_id"
+        ).execute()
+
+        logger.info(f"✅ Bot session saved to Supabase: bot_id={bot_id}")
+        return True
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error saving bot session to Supabase for {bot_id}: {e}",
+            exc_info=True,
+        )
+        return False
+
+
+def get_bot_session(bot_id: str) -> Dict[str, Any] | None:
+    """
+    Retrieve bot session data from Supabase.
+
+    **Simple Explanation:**
+    This function retrieves bot session information from the database.
+    It decrypts the transcript_text field automatically.
+
+    Args:
+        bot_id: Unique bot session identifier (UUID)
+
+    Returns:
+        Dictionary with bot session data (transcript_text decrypted), or None if not found
+    """
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot read bot session from Supabase: client not available")
+        return None
+
+    try:
+        response = (
+            client.table("bot_sessions").select("*").eq("bot_id", bot_id).execute()
+        )
+
+        if not response.data or len(response.data) == 0:
+            logger.warning(f"⚠️ No bot session found in Supabase for bot_id: {bot_id}")
+            return None
+
+        # Get the first (and should be only) row
+        row = response.data[0]
+
+        # Convert database row to dictionary
+        bot_session = {
+            "bot_id": row.get("bot_id"),
+            "room_url": row.get("room_url"),
+            "room_name": row.get("room_name"),
+            "status": row.get("status"),
+            "started_at": row.get("started_at"),
+            "completed_at": row.get("completed_at"),
+            "process_insights": row.get("process_insights"),
+            "bot_config": row.get("bot_config"),
+            "transcript_text": row.get("transcript_text"),
+            "qa_pairs": row.get("qa_pairs"),
+            "insights": row.get("insights"),
+            "error": row.get("error"),
+            "created_at": row.get("created_at"),
+            "updated_at": row.get("updated_at"),
+        }
+
+        # Decrypt transcript_text if present
+        if bot_session.get("transcript_text"):
+            try:
+                bot_session["transcript_text"] = decrypt_field(
+                    bot_session["transcript_text"]
+                )
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ Could not decrypt transcript_text for bot_id {bot_id}: {e}"
+                )
+                # If decryption fails, try to use as-is (might be unencrypted for migration)
+                pass
+
+        # Format timestamps as ISO strings with Z suffix for API responses
+        if bot_session.get("started_at"):
+            started_at = bot_session["started_at"]
+            if isinstance(started_at, str) and not started_at.endswith("Z"):
+                bot_session["started_at"] = started_at + "Z"
+        if bot_session.get("completed_at"):
+            completed_at = bot_session["completed_at"]
+            if isinstance(completed_at, str) and not completed_at.endswith("Z"):
+                bot_session["completed_at"] = completed_at + "Z"
+
+        logger.info(
+            f"✅ Retrieved bot session from Supabase: bot_id={bot_id} (transcript_text decrypted)"
+        )
+        return bot_session
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error retrieving bot session from Supabase for {bot_id}: {e}",
+            exc_info=True,
+        )
+        return None
+
+
+def get_bot_session_by_room_name(room_name: str) -> Dict[str, Any] | None:
+    """
+    Retrieve bot session data by room_name (most recent session for that room).
+
+    **Simple Explanation:**
+    This function finds the most recent bot session for a given room name.
+    Useful when you have a room_name but need to find the associated bot_id.
+
+    Args:
+        room_name: Room name to search for
+
+    Returns:
+        Dictionary with bot session data, or None if not found
+    """
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot read bot session from Supabase: client not available")
+        return None
+
+    try:
+        response = (
+            client.table("bot_sessions")
+            .select("*")
+            .eq("room_name", room_name)
+            .order("started_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if not response.data or len(response.data) == 0:
+            logger.warning(
+                f"⚠️ No bot session found in Supabase for room_name: {room_name}"
+            )
+            return None
+
+        # Get the first (most recent) row
+        row = response.data[0]
+
+        # Convert and decrypt (same as get_bot_session)
+        bot_session = {
+            "bot_id": row.get("bot_id"),
+            "room_url": row.get("room_url"),
+            "room_name": row.get("room_name"),
+            "status": row.get("status"),
+            "started_at": row.get("started_at"),
+            "completed_at": row.get("completed_at"),
+            "process_insights": row.get("process_insights"),
+            "bot_config": row.get("bot_config"),
+            "transcript_text": row.get("transcript_text"),
+            "qa_pairs": row.get("qa_pairs"),
+            "insights": row.get("insights"),
+            "error": row.get("error"),
+            "created_at": row.get("created_at"),
+            "updated_at": row.get("updated_at"),
+        }
+
+        # Decrypt transcript_text if present
+        if bot_session.get("transcript_text"):
+            try:
+                bot_session["transcript_text"] = decrypt_field(
+                    bot_session["transcript_text"]
+                )
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ Could not decrypt transcript_text for room_name {room_name}: {e}"
+                )
+                pass
+
+        # Format timestamps
+        if bot_session.get("started_at"):
+            started_at = bot_session["started_at"]
+            if isinstance(started_at, str) and not started_at.endswith("Z"):
+                bot_session["started_at"] = started_at + "Z"
+        if bot_session.get("completed_at"):
+            completed_at = bot_session["completed_at"]
+            if isinstance(completed_at, str) and not completed_at.endswith("Z"):
+                bot_session["completed_at"] = completed_at + "Z"
+
+        return bot_session
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error retrieving bot session by room_name from Supabase for {room_name}: {e}",
+            exc_info=True,
+        )
+        return None

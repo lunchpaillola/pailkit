@@ -10,6 +10,7 @@ import os
 import signal
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 import requests
@@ -371,6 +372,12 @@ class BotService:
         self._start_lock = (
             asyncio.Lock()
         )  # Lock to prevent race conditions when starting bots
+        # Simple Explanation: bot_id_map tracks which bot_id is associated with each room_name
+        # This allows us to update bot session records when the bot finishes
+        self.bot_id_map: Dict[str, str] = {}
+        # Simple Explanation: bot_config_map stores bot configuration for each room
+        # This includes whether to process insights after the bot finishes
+        self.bot_config_map: Dict[str, Dict[str, Any]] = {}
 
         # Fly.io configuration - read from environment variables
         self.fly_api_host = os.getenv("FLY_API_HOST", "https://api.machines.dev/v1")
@@ -502,6 +509,7 @@ class BotService:
         bot_config: Dict[str, Any],
         room_name: Optional[str] = None,
         use_fly_machines: Optional[bool] = None,
+        bot_id: Optional[str] = None,
     ) -> bool:
         """
         Start a bot instance for the given room.
@@ -554,6 +562,12 @@ class BotService:
 
                 if not should_use_fly:
                     # Direct execution: run bot in current process
+                    # Simple Explanation: Store bot_id and config for this room so we can
+                    # process results when the bot finishes
+                    if bot_id:
+                        self.bot_id_map[room_name] = bot_id
+                    self.bot_config_map[room_name] = bot_config
+
                     bot_task = asyncio.create_task(
                         self._run_bot(room_url, token, bot_config, room_name)
                     )
@@ -785,6 +799,11 @@ IMPORTANT: Your output will be spoken aloud, so:
                 logger.info("🚀 Calling runner.run(task)...")
                 await runner.run(task)
                 logger.info("✅ runner.run(task) completed")
+
+                # Simple Explanation: After the bot finishes, automatically process the transcript
+                # and extract insights if enabled. This happens automatically so the API
+                # can return results via the status endpoint.
+                await self._process_bot_results(room_name, transcript_handler)
             finally:
                 # When the bot task finishes, the Daily.co transport might still have pending callbacks
                 # that try to post to the event loop. We need to properly clean up the transport
@@ -852,6 +871,116 @@ IMPORTANT: Your output will be spoken aloud, so:
                 pass  # Ignore other cleanup errors during error handling
             raise
 
+    async def _process_bot_results(
+        self, room_name: str, transcript_handler: TranscriptHandler
+    ) -> None:
+        """
+        Process transcript and extract insights after bot finishes.
+
+        Simple Explanation: After the bot finishes transcribing, we automatically:
+        1. Process the transcript to extract Q&A pairs
+        2. Extract insights using AI analysis (if enabled)
+        3. Store results in the database so they can be retrieved via the status endpoint
+
+        Args:
+            room_name: Room name for this bot session
+            transcript_handler: The transcript handler that collected the transcript
+        """
+        try:
+            logger.info(f"🔄 Processing results for bot in room: {room_name}")
+
+            # Get bot config to check if insights processing is enabled
+            bot_config = self.bot_config_map.get(room_name, {})
+            process_insights = bot_config.get("process_insights", True)
+
+            # Get transcript text from handler
+            transcript_text = transcript_handler.transcript_text
+
+            if not transcript_text:
+                logger.warning(f"⚠️ No transcript text found for room {room_name}")
+                return
+
+            # Create state dictionary for processing steps
+            # Simple Explanation: The ProcessTranscriptStep and ExtractInsightsStep
+            # expect a state dictionary with transcript and other data. We create
+            # this state object and pass it through the processing steps.
+            from flow.steps.interview.process_transcript import (
+                parse_transcript_to_qa_pairs,
+            )
+            from flow.steps.interview.extract_insights import ExtractInsightsStep
+
+            state = {
+                "room_name": room_name,
+                "interview_transcript": transcript_text,
+            }
+
+            # Parse transcript to extract Q&A pairs
+            logger.info("📝 Parsing transcript to extract Q&A pairs...")
+            qa_pairs = parse_transcript_to_qa_pairs(transcript_text)
+            state["qa_pairs"] = qa_pairs
+            logger.info(f"✅ Extracted {len(qa_pairs)} Q&A pairs")
+
+            # Extract insights if enabled
+            if process_insights:
+                logger.info("🧠 Extracting insights...")
+                extract_insights_step = ExtractInsightsStep()
+                state = await extract_insights_step.execute(state)
+
+                if state.get("error"):
+                    logger.error(f"❌ Error extracting insights: {state.get('error')}")
+                else:
+                    logger.info("✅ Insights extracted successfully")
+
+            # Save results to database
+            # Simple Explanation: We save the transcript, Q&A pairs, and insights
+            # to the database so they can be retrieved via the status endpoint.
+            from flow.db import (
+                get_session_data,
+                save_session_data,
+                get_bot_session_by_room_name,
+                save_bot_session,
+            )
+
+            # Save to rooms table (for backwards compatibility)
+            session_data = get_session_data(room_name) or {}
+            session_data["transcript_text"] = transcript_text
+            session_data["qa_pairs"] = qa_pairs
+            if process_insights and state.get("insights"):
+                session_data["insights"] = state["insights"]
+
+            save_session_data(room_name, session_data)
+            logger.info(
+                f"✅ Saved processing results to rooms table for room: {room_name}"
+            )
+
+            # Also save to bot_sessions table if we have a bot_id
+            # Simple Explanation: We also save results to the bot_sessions table
+            # so the status endpoint can retrieve them directly by bot_id
+            if hasattr(self, "bot_id_map") and room_name in self.bot_id_map:
+                bot_id = self.bot_id_map[room_name]
+                bot_session = get_bot_session_by_room_name(room_name)
+
+                if bot_session and bot_session.get("bot_id") == bot_id:
+                    # Update bot session with results
+                    bot_session["status"] = "completed"
+                    bot_session["completed_at"] = datetime.utcnow().isoformat() + "Z"
+                    bot_session["transcript_text"] = transcript_text
+                    bot_session["qa_pairs"] = qa_pairs
+                    if process_insights and state.get("insights"):
+                        bot_session["insights"] = state["insights"]
+
+                    save_bot_session(bot_id, bot_session)
+                    logger.info(
+                        f"✅ Saved processing results to bot_sessions table for bot_id: {bot_id}"
+                    )
+
+        except Exception as e:
+            logger.error(
+                f"❌ Error processing bot results for room {room_name}: {e}",
+                exc_info=True,
+            )
+            # Don't raise - we don't want to fail the bot cleanup if processing fails
+
     def _cleanup_bot(self, room_name: str) -> None:
         """Clean up a bot that has finished."""
         if room_name in self.active_bots:
@@ -869,6 +998,14 @@ IMPORTANT: Your output will be spoken aloud, so:
                 f"Cleaning up bot for room {room_name} (ran for {runtime_hours:.2f} hours)"
             )
             del self.active_bots[room_name]
+
+            # Clean up bot_id and config mappings
+            # Simple Explanation: Remove the bot_id and config from our tracking maps
+            # since the bot is done and we've processed the results
+            if room_name in self.bot_id_map:
+                del self.bot_id_map[room_name]
+            if room_name in self.bot_config_map:
+                del self.bot_config_map[room_name]
 
     async def stop_bot(self, room_name: str) -> bool:
         """Stop a bot instance for the given room."""

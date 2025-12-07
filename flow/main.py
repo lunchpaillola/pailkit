@@ -21,7 +21,13 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from dotenv import load_dotenv  # noqa: E402
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query  # noqa: E402
+from fastapi import (  # noqa: E402
+    BackgroundTasks,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+)
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
 from mcp.server import FastMCP  # noqa: E402
@@ -42,9 +48,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Note: Sentry is initialized in api/main.py (the entry point)
-# Since this flow module is imported by api/main.py, all errors from flow
-# will be automatically captured by Sentry if it's configured in the main app.
+# Initialize Sentry for error tracking and monitoring
+# Simple Explanation: Sentry captures errors and exceptions automatically
+import sentry_sdk  # noqa: E402
+from sentry_sdk.integrations.fastapi import FastApiIntegration  # noqa: E402
+from sentry_sdk.integrations.logging import LoggingIntegration  # noqa: E402
+
+sentry_dsn = os.getenv("SENTRY_DSN")
+if sentry_dsn:
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
+        release=os.getenv("SENTRY_RELEASE"),
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
+        ],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
+    logger.info("✅ Sentry initialized for error tracking")
+else:
+    logger.info("ℹ️  Sentry not configured (SENTRY_DSN not set)")
 
 app = FastAPI(
     title="PailFlow API",
@@ -183,6 +208,558 @@ class WorkflowRequest(BaseModel):
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy", "service": "pailflow"}
+
+
+# ============================================================================
+# Bot API Router
+# ============================================================================
+# Simple API for joining bots to existing Daily rooms, transcribing, and processing results
+
+import uuid  # noqa: E402
+from datetime import datetime  # noqa: E402
+
+from flow.steps.interview.bot_service import bot_service  # noqa: E402
+from flow.db import save_bot_session, get_bot_session  # noqa: E402
+
+
+# Pydantic models for bot API
+class BotConfig(BaseModel):
+    """Bot configuration for joining a room."""
+
+    bot_prompt: str
+    name: str = "PailBot"
+    video_mode: str = "static"  # "static" or "animated"
+    static_image: str = "robot01.png"
+
+
+class BotJoinRequest(BaseModel):
+    """Request to start a bot in an existing room."""
+
+    room_url: str  # Full Daily.co room URL
+    token: str | None = None  # Optional meeting token
+    bot_config: BotConfig
+    process_insights: bool = True  # Whether to extract insights after bot finishes
+
+
+class BotJoinResponse(BaseModel):
+    """Response when starting a bot."""
+
+    status: str
+    bot_id: str
+    room_url: str
+
+
+class BotStatusResponse(BaseModel):
+    """Response for bot status query."""
+
+    status: str  # "running", "completed", "failed"
+    bot_id: str
+    room_url: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    transcript: str | None = None
+    qa_pairs: list[dict[str, Any]] | None = None
+    insights: dict[str, Any] | None = None
+    error: str | None = None
+
+
+@app.post("/api/bot/join", response_model=BotJoinResponse)
+async def join_bot(request: BotJoinRequest) -> BotJoinResponse:
+    """
+    Start a bot in an existing Daily room.
+
+    **Simple Explanation:**
+    This endpoint starts an AI bot that will join an existing Daily.co video room.
+    The bot will:
+    1. Join the room and start transcribing the conversation
+    2. Have conversations with participants based on the bot_config
+    3. When the meeting ends, optionally process insights
+    4. Store results that can be retrieved via the status endpoint
+
+    **Request:**
+    ```json
+    {
+      "room_url": "https://domain.daily.co/room-name",
+      "token": "optional-meeting-token",
+      "bot_config": {
+        "bot_prompt": "You are a helpful AI assistant...",
+        "name": "BotName",
+        "video_mode": "static",
+        "static_image": "robot01.png"
+      },
+      "process_insights": true
+    }
+    ```
+
+    **Response:**
+    ```json
+    {
+      "status": "started",
+      "bot_id": "uuid",
+      "room_url": "https://domain.daily.co/room-name"
+    }
+    ```
+
+    The bot runs in the background. Use GET /api/bot/{bot_id}/status to check progress.
+    """
+    try:
+        # Generate a unique bot_id for this bot session
+        bot_id = str(uuid.uuid4())
+
+        # Extract room name from URL (last part after the last slash)
+        room_name = request.room_url.split("/")[-1]
+
+        # Convert bot_config to dictionary format expected by bot_service
+        bot_config_dict = {
+            "bot_prompt": request.bot_config.bot_prompt,
+            "name": request.bot_config.name,
+            "video_mode": request.bot_config.video_mode,
+            "static_image": request.bot_config.static_image,
+        }
+
+        # Create bot session record in Supabase database
+        bot_session_data = {
+            "room_url": request.room_url,
+            "room_name": room_name,
+            "status": "running",
+            "started_at": datetime.utcnow().isoformat() + "Z",
+            "completed_at": None,
+            "process_insights": request.process_insights,
+            "bot_config": bot_config_dict,
+            "transcript_text": None,
+            "qa_pairs": None,
+            "insights": None,
+            "error": None,
+        }
+
+        # Save to database
+        if not save_bot_session(bot_id, bot_session_data):
+            logger.error(f"❌ Failed to save bot session to database: bot_id={bot_id}")
+            raise HTTPException(
+                status_code=500, detail="Failed to save bot session to database"
+            )
+
+        # Add process_insights to bot_config so BotService knows to process insights
+        bot_config_dict["process_insights"] = request.process_insights
+
+        # Start the bot asynchronously
+        success = await bot_service.start_bot(
+            room_url=request.room_url,
+            token=request.token or "",
+            bot_config=bot_config_dict,
+            room_name=room_name,
+            bot_id=bot_id,
+        )
+
+        if not success:
+            # Bot failed to start - update database
+            bot_session_data["status"] = "failed"
+            bot_session_data["error"] = "Failed to start bot"
+            bot_session_data["completed_at"] = datetime.utcnow().isoformat() + "Z"
+            save_bot_session(bot_id, bot_session_data)
+            raise HTTPException(status_code=500, detail="Failed to start bot")
+
+        logger.info(f"✅ Bot started: bot_id={bot_id}, room={room_name}")
+
+        return BotJoinResponse(
+            status="started",
+            bot_id=bot_id,
+            room_url=request.room_url,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error starting bot: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error starting bot: {str(e)}")
+
+
+@app.get("/api/bot/{bot_id}/status", response_model=BotStatusResponse)
+async def get_bot_status_by_id(bot_id: str) -> BotStatusResponse:
+    """
+    Get the status and results of a bot session.
+
+    **Simple Explanation:**
+    This endpoint lets you check on a bot that was started via POST /api/bot/join.
+    It retrieves the bot session from the Supabase database and returns:
+    - Current status (running, completed, or failed)
+    - When it started and finished
+    - The transcript, Q&A pairs, and insights (if processing is complete)
+
+    **Response (while running):**
+    ```json
+    {
+      "status": "running",
+      "bot_id": "uuid",
+      "room_url": "https://domain.daily.co/room-name",
+      "started_at": "2025-01-15T10:00:00Z"
+    }
+    ```
+
+    **Response (when finished):**
+    ```json
+    {
+      "status": "completed",
+      "bot_id": "uuid",
+      "room_url": "https://domain.daily.co/room-name",
+      "started_at": "2025-01-15T10:00:00Z",
+      "completed_at": "2025-01-15T10:30:00Z",
+      "transcript": "full transcript text...",
+      "qa_pairs": [...],
+      "insights": {...}
+    }
+    ```
+    """
+    # Get bot session from Supabase database
+    session = get_bot_session(bot_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Bot session {bot_id} not found")
+
+    # Check if bot is still running
+    room_name = session["room_name"]
+    is_running = bot_service.is_bot_running(room_name)
+
+    # Update status if bot finished
+    if session["status"] == "running" and not is_running:
+        # Bot finished - update status in database
+        session["status"] = "completed"
+        session["completed_at"] = datetime.utcnow().isoformat() + "Z"
+
+        # Get results from rooms table (bot_service saves them there)
+        try:
+            from flow.db import get_session_data
+
+            session_data = get_session_data(room_name)
+            if session_data:
+                # Get transcript
+                if session_data.get("transcript_text"):
+                    session["transcript_text"] = session_data["transcript_text"]
+
+                # Get Q&A pairs (if processed)
+                if session_data.get("qa_pairs"):
+                    session["qa_pairs"] = session_data["qa_pairs"]
+
+                # Get insights (if processed)
+                if session_data.get("insights"):
+                    session["insights"] = session_data["insights"]
+                elif session_data.get("candidate_summary"):
+                    # If we have a summary but no insights, create a simple insights object
+                    session["insights"] = {
+                        "summary": session_data["candidate_summary"],
+                    }
+
+            # Update bot session in database with results
+            save_bot_session(bot_id, session)
+
+        except Exception as e:
+            logger.error(f"Error retrieving bot results: {e}", exc_info=True)
+            session["error"] = f"Error retrieving results: {str(e)}"
+            save_bot_session(bot_id, session)
+
+    return BotStatusResponse(
+        status=session["status"],
+        bot_id=session["bot_id"],
+        room_url=session["room_url"],
+        started_at=session.get("started_at"),
+        completed_at=session.get("completed_at"),
+        transcript=session.get("transcript_text"),
+        qa_pairs=session.get("qa_pairs"),
+        insights=session.get("insights"),
+        error=session.get("error"),
+    )
+
+
+# ============================================================================
+# Rooms API Router
+# ============================================================================
+
+from flow.rooms.providers.daily import DailyRooms  # noqa: E402
+
+
+class RoomCreateRequest(BaseModel):
+    """Request model for creating a room."""
+
+    profile: str = "conversation"
+    overrides: dict[str, Any] | None = None
+
+
+def get_rooms_provider(provider_name: str, api_key: str) -> DailyRooms:
+    """Create a provider instance with user-provided API key."""
+    normalized_provider = provider_name.lower().strip()
+
+    if normalized_provider == "daily":
+        return DailyRooms(api_key=api_key)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported provider: {provider_name}. Supported: daily",
+        )
+
+
+@app.post("/api/rooms/create")
+async def create_room(
+    request: RoomCreateRequest,
+    x_provider_auth: str = Header(
+        ..., description="Provider API key (Bearer token or raw key)"
+    ),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
+) -> dict[str, Any]:
+    """
+    Create a new room for video, audio, or live collaboration.
+
+    **Authentication:**
+    Provide your provider API key via the `X-Provider-Auth` header:
+    - Format: `Bearer <your-api-key>` or just `<your-api-key>`
+    - For Daily.co: Get your API key from https://dashboard.daily.co/developers
+
+    **Providers:**
+    Specify provider via `X-Provider` header (default: "daily")
+    - `daily` - Daily.co video rooms
+
+    **Available profiles:**
+    - `conversation` - Standard video chat
+    - `audio_room` - Audio-only conversation
+    - `broadcast` - One-to-many presentation
+    - `podcast` - Audio recording session
+    - `live_stream` - Stream to external platforms
+    - `workshop` - Interactive collaborative session
+    """
+    try:
+        provider_name = x_provider.lower().strip() if x_provider else "daily"
+        api_key = x_provider_auth.strip()
+        if api_key.startswith("Bearer "):
+            api_key = api_key[7:].strip()
+
+        if not api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="X-Provider-Auth header is required. Provide your provider API key.",
+            )
+
+        provider = get_rooms_provider(provider_name, api_key)
+        result: dict[str, Any] = await provider.create_room(
+            profile=request.profile, overrides=request.overrides
+        )
+
+        if not result["success"]:
+            raise HTTPException(status_code=500, detail=result["message"])
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create room: {str(e)}"
+        ) from e
+
+
+@app.delete("/api/rooms/delete/{room_name}")
+async def delete_room(
+    room_name: str,
+    x_provider_auth: str = Header(
+        ..., description="Provider API key (Bearer token or raw key)"
+    ),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
+) -> dict[str, Any]:
+    """Delete a room."""
+    try:
+        provider_name = x_provider.lower().strip() if x_provider else "daily"
+        api_key = x_provider_auth.strip()
+        if api_key.startswith("Bearer "):
+            api_key = api_key[7:].strip()
+
+        if not api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="X-Provider-Auth header is required. Provide your provider API key.",
+            )
+
+        provider_instance = get_rooms_provider(provider_name, api_key)
+        result: dict[str, Any] = await provider_instance.delete_room(room_name)
+
+        if not result["success"]:
+            raise HTTPException(status_code=500, detail=result["message"])
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete room: {str(e)}"
+        ) from e
+
+
+@app.get("/api/rooms/get/{room_name}")
+async def get_room(
+    room_name: str,
+    x_provider_auth: str = Header(
+        ..., description="Provider API key (Bearer token or raw key)"
+    ),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
+) -> dict[str, Any]:
+    """Get room details."""
+    try:
+        provider_name = x_provider.lower().strip() if x_provider else "daily"
+        api_key = x_provider_auth.strip()
+        if api_key.startswith("Bearer "):
+            api_key = api_key[7:].strip()
+
+        if not api_key:
+            raise HTTPException(
+                status_code=401,
+                detail="X-Provider-Auth header is required. Provide your provider API key.",
+            )
+
+        provider_instance = get_rooms_provider(provider_name, api_key)
+        result: dict[str, Any] = await provider_instance.get_room(room_name)
+
+        if not result["success"]:
+            raise HTTPException(status_code=500, detail=result["message"])
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get room: {str(e)}"
+        ) from e
+
+
+# ============================================================================
+# Transcription API Router
+# ============================================================================
+
+from flow.transcribe.config_builder import build_config  # noqa: E402
+from flow.transcribe.providers.base import TranscriptionProvider  # noqa: E402
+
+
+class StartTranscriptionRequest(BaseModel):
+    """Request model for starting a transcription."""
+
+    profile: str = "meeting"
+    audio_url: str | None = None
+    overrides: dict[str, Any] | None = None
+
+
+class StopTranscriptionRequest(BaseModel):
+    """Request model for stopping a transcription."""
+
+    transcription_id: str
+
+
+def extract_provider_api_key(x_provider_auth: str) -> str:
+    """Extract API key from X-Provider-Auth header."""
+    api_key = x_provider_auth.strip()
+    if api_key.startswith("Bearer "):
+        api_key = api_key[7:].strip()
+
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="X-Provider-Auth header is required. Provide your provider API key.",
+        )
+
+    return api_key
+
+
+def get_transcribe_provider(provider_name: str, api_key: str) -> TranscriptionProvider:
+    """Create a transcription provider instance with user-provided API key."""
+    _normalized_provider = provider_name.lower().strip()
+
+    if _normalized_provider == "daily":
+        from flow.transcribe.providers.daily import DailyTranscription
+
+        return DailyTranscription(api_key=api_key)
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Transcription provider not yet implemented: {provider_name}. "
+        "Supported providers: daily. More providers will be added in future updates.",
+    )
+
+
+@app.post("/api/transcribe/start")
+async def start_transcription(
+    request: StartTranscriptionRequest,
+    x_provider_auth: str = Header(
+        ..., description="Provider API key (Bearer token or raw key)"
+    ),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
+) -> dict[str, Any]:
+    """
+    Start a real-time or streaming transcription.
+
+    Begins transcribing audio in real-time from live streams, audio URLs, or direct input.
+    Requires X-Provider-Auth header with provider API key and optional X-Provider header.
+
+    Available profiles: meeting, general, medical, finance, podcast.
+    """
+    try:
+        provider_name = x_provider.lower().strip() if x_provider else "daily"
+        api_key = extract_provider_api_key(x_provider_auth)
+        provider = get_transcribe_provider(provider_name, api_key)
+
+        config = build_config(profile=request.profile, overrides=request.overrides)
+
+        result: dict[str, Any] = await provider.start_transcription(
+            audio_url=request.audio_url, config=config
+        )
+
+        if not result.get("success", False):
+            raise HTTPException(
+                status_code=500, detail=result.get("message", "Unknown error")
+            )
+
+        return result
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start transcription: {str(e)}"
+        ) from e
+
+
+@app.post("/api/transcribe/stop")
+async def stop_transcription(
+    request: StopTranscriptionRequest,
+    x_provider_auth: str = Header(
+        ..., description="Provider API key (Bearer token or raw key)"
+    ),
+    x_provider: str = Header("daily", description="Provider name (default: daily)"),
+) -> dict[str, Any]:
+    """
+    Stop an active transcription session.
+
+    Stops a transcription started with /start and returns the final transcript.
+    Requires X-Provider-Auth header with provider API key.
+    """
+    try:
+        if not request.transcription_id:
+            raise HTTPException(status_code=400, detail="transcription_id is required")
+
+        provider_name = x_provider.lower().strip() if x_provider else "daily"
+        api_key = extract_provider_api_key(x_provider_auth)
+        provider = get_transcribe_provider(provider_name, api_key)
+
+        result: dict[str, Any] = await provider.stop_transcription(
+            request.transcription_id
+        )
+
+        if not result.get("success", False):
+            raise HTTPException(
+                status_code=500, detail=result.get("message", "Unknown error")
+            )
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to stop transcription: {str(e)}"
+        ) from e
 
 
 @app.get("/bots/status")
@@ -810,7 +1387,13 @@ async def handle_transcript_ready_to_download(
 
     try:
         from flow.db import get_session_data
-        from flow.workflows.ai_interviewer import AIInterviewerWorkflow
+
+        # Note: AIInterviewerWorkflow was removed in simplification
+        # New bot system processes automatically when bot finishes
+        try:
+            from flow.workflows.ai_interviewer import AIInterviewerWorkflow
+        except ImportError:
+            AIInterviewerWorkflow = None
 
         # Check if there's a paused workflow for this room
         session_data = get_session_data(room_name) if room_name else None
@@ -844,6 +1427,15 @@ async def handle_transcript_ready_to_download(
             logger.info(f"🔄 Resuming paused workflow with thread_id: {thread_id}")
 
             # Create workflow instance (must use same instance to access same checkpointer)
+            if AIInterviewerWorkflow is None:
+                logger.info(
+                    "⚠️ AIInterviewerWorkflow not available - new simplified bot system processes automatically"
+                )
+                return {
+                    "status": "success",
+                    "room_name": room_name,
+                    "message": "Bot processes automatically - no workflow to resume",
+                }
             workflow = AIInterviewerWorkflow()
 
             # Config with thread_id to resume from checkpoint
@@ -1075,7 +1667,13 @@ async def handle_meeting_ended_webhook(
 
     try:
         from flow.db import get_session_data, save_session_data
-        from flow.workflows.ai_interviewer import AIInterviewerWorkflow
+
+        # Note: AIInterviewerWorkflow was removed in simplification
+        # New bot system processes automatically when bot finishes
+        try:
+            from flow.workflows.ai_interviewer import AIInterviewerWorkflow
+        except ImportError:
+            AIInterviewerWorkflow = None
 
         # Check if there's a paused workflow for this room
         session_data = get_session_data(room_name) if room_name else None
@@ -1135,6 +1733,19 @@ async def handle_meeting_ended_webhook(
 
         # Resume workflow if it was paused, OR if bot was enabled (waiting_for_meeting_ended)
         if (workflow_paused and thread_id) or waiting_for_meeting_ended:
+            # Check if workflow is available (may not be if using new simplified bot system)
+            if AIInterviewerWorkflow is None:
+                logger.info(
+                    "⚠️ AIInterviewerWorkflow not available - new simplified bot system processes automatically"
+                )
+                # For new simplified bot system, processing happens automatically in BotService
+                # when the bot finishes. No need to resume workflow.
+                return {
+                    "status": "success",
+                    "room_name": room_name,
+                    "message": "Bot processes automatically - no workflow to resume",
+                }
+
             # If we have a thread_id, try to resume from checkpoint
             if workflow_paused and thread_id:
                 logger.info(f"🔄 Resuming paused workflow with thread_id: {thread_id}")
@@ -1148,6 +1759,15 @@ async def handle_meeting_ended_webhook(
                     )
 
             # Create workflow instance (must use same instance to access same checkpointer)
+            if AIInterviewerWorkflow is None:
+                logger.info(
+                    "⚠️ AIInterviewerWorkflow not available - new simplified bot system processes automatically"
+                )
+                return {
+                    "status": "success",
+                    "room_name": room_name,
+                    "message": "Bot processes automatically - no workflow to resume",
+                }
             workflow = AIInterviewerWorkflow()
 
             # Config with thread_id to resume from checkpoint (if available)

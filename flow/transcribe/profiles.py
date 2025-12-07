@@ -10,7 +10,7 @@ Each profile represents a complete transcription setup with sensible defaults.
 
 from typing import Any
 
-from api.utils import deep_merge
+from flow.utils import deep_merge
 
 from .config_schema import BASE_TRANSCRIPTION_CONFIG
 
