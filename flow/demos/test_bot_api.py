@@ -127,7 +127,7 @@ Guidelines:
     bot_config = {
         "bot_prompt": bot_prompt,
         "name": "InterviewBot",
-        "video_mode": "static",
+        "video_mode": "animated",
         "static_image": "robot01.png",
     }
 

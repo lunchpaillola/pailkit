@@ -192,8 +192,8 @@ def load_bot_video_frames(
     else:
         sprites_dir = sprites_dir_lower
 
-    # Get video mode from config (default to "static")
-    video_mode = bot_config.get("video_mode", "static")
+    # Get video mode from config (default to "animated")
+    video_mode = bot_config.get("video_mode", "animated")
 
     if video_mode == "static":
         # Load a single static image

@@ -205,7 +205,7 @@ class BotConfig(BaseModel):
 
     bot_prompt: str
     name: str = "PailBot"
-    video_mode: str = "static"  # "static" or "animated"
+    video_mode: str = "animated"  # "static" or "animated"
     static_image: str = "robot01.png"
 
 
