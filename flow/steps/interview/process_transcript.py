@@ -25,7 +25,6 @@ import resend
 
 from flow.steps.interview.base import InterviewStep
 from flow.steps.interview.extract_insights import ExtractInsightsStep
-from flow.steps.interview.generate_summary import GenerateSummaryStep
 
 logger = logging.getLogger(__name__)
 
@@ -953,15 +952,42 @@ class ProcessTranscriptStep(InterviewStep):
             else:
                 logger.info("✅ Insights extracted successfully")
 
-            # Step 8: Generate AI summary
-            logger.info("\n🤖 STEP 8: Generating AI summary")
-            summary_step = GenerateSummaryStep()
-            state = await summary_step.execute(state)
+            # Step 8: Generate summary from insights
+            # Simple Explanation: We create a simple summary from the insights we extracted
+            # This replaces the old GenerateSummaryStep which was removed during simplification
+            logger.info("\n🤖 STEP 8: Generating summary from insights")
+            insights = state.get("insights", {})
 
-            if state.get("error"):
-                return state
+            # Build a simple summary from insights
+            summary_parts = []
+            if candidate_name and candidate_name != "Unknown":
+                summary_parts.append(f"Participant: {candidate_name}")
+            if position and position != "Unknown":
+                summary_parts.append(f"Role: {position}")
+            if interview_type:
+                summary_parts.append(f"Interview Type: {interview_type}")
 
-            candidate_summary = state.get("candidate_summary", "")
+            if insights:
+                overall_score = insights.get("overall_score")
+                if overall_score is not None:
+                    summary_parts.append(f"\nOverall Score: {overall_score}/10")
+
+                strengths = insights.get("strengths", [])
+                if strengths:
+                    summary_parts.append("\nStrengths:")
+                    for strength in strengths[:3]:  # Limit to top 3
+                        summary_parts.append(f"- {strength}")
+
+                weaknesses = insights.get("weaknesses", [])
+                if weaknesses:
+                    summary_parts.append("\nAreas for Improvement:")
+                    for weakness in weaknesses[:3]:  # Limit to top 3
+                        summary_parts.append(f"- {weakness}")
+
+            candidate_summary = (
+                "\n".join(summary_parts) if summary_parts else "Summary pending"
+            )
+            state["candidate_summary"] = candidate_summary
             logger.info(f"✅ Summary generated ({len(candidate_summary)} chars)")
 
             # Step 9: Send results

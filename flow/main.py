@@ -48,29 +48,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize Sentry for error tracking and monitoring
-# Simple Explanation: Sentry captures errors and exceptions automatically
-import sentry_sdk  # noqa: E402
-from sentry_sdk.integrations.fastapi import FastApiIntegration  # noqa: E402
-from sentry_sdk.integrations.logging import LoggingIntegration  # noqa: E402
-
-sentry_dsn = os.getenv("SENTRY_DSN")
-if sentry_dsn:
-    sentry_sdk.init(
-        dsn=sentry_dsn,
-        environment=os.getenv("SENTRY_ENVIRONMENT", "production"),
-        release=os.getenv("SENTRY_RELEASE"),
-        integrations=[
-            FastApiIntegration(transaction_style="endpoint"),
-            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
-        ],
-        traces_sample_rate=0.1,
-        send_default_pii=False,
-    )
-    logger.info("✅ Sentry initialized for error tracking")
-else:
-    logger.info("ℹ️  Sentry not configured (SENTRY_DSN not set)")
-
 app = FastAPI(
     title="PailFlow API",
     description="Workflow orchestration system with MCP integration",
