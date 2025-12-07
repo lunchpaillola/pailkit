@@ -209,7 +209,7 @@ async def download_transcript_vtt(download_link: str) -> str | None:
 
 def get_room_session_data(room_name: str) -> dict[str, Any] | None:
     """
-    Get session data from SQLite database.
+    Get session data from Supabase database.
     """
     from flow.db import get_session_data
 
@@ -829,10 +829,21 @@ class ProcessTranscriptStep(InterviewStep):
                 transcript_text = parse_vtt_to_text(vtt_content)
                 logger.info(f"✅ Extracted text ({len(transcript_text)} chars)")
 
+                # Save transcript_text to database (for non-bot case, bot already saves it)
+                if room_name and transcript_text:
+                    from flow.db import get_session_data, save_session_data
+
+                    current_session = get_session_data(room_name) or {}
+                    current_session["transcript_text"] = transcript_text
+                    save_session_data(room_name, current_session)
+                    logger.info(
+                        f"✅ Saved transcript_text to database ({len(transcript_text)} chars)"
+                    )
+
             # Store transcript in state
             state["interview_transcript"] = transcript_text
 
-            # Step 5: Retrieve session data from SQLite database (if not already retrieved)
+            # Step 5: Retrieve session data from Supabase database (if not already retrieved)
             logger.info("\n📦 STEP 5: Retrieving session data from database")
             if not session_data:
                 session_data = get_room_session_data(room_name) if room_name else None
@@ -1140,14 +1151,35 @@ class ProcessTranscriptStep(InterviewStep):
 
             state["email_sent"] = email_sent
 
-            # Mark transcript as processed to prevent duplicate processing
+            # Save all important fields to database after processing completes
             if room_name:
                 from flow.db import get_session_data, save_session_data
 
                 current_session = get_session_data(room_name) or {}
+
+                # Mark transcript as processed to prevent duplicate processing
                 current_session["transcript_processed"] = True
+
+                # Set transcript_processing back to False (processing is complete)
+                current_session["transcript_processing"] = False
+
+                # Save the candidate_summary that was generated
+                if candidate_summary:
+                    current_session["candidate_summary"] = candidate_summary
+                    logger.info(
+                        f"✅ Saving candidate_summary to database ({len(candidate_summary)} chars)"
+                    )
+
+                # Update meeting_status to "completed" if it's currently "ended"
+                if current_session.get("meeting_status") == "ended":
+                    current_session["meeting_status"] = "completed"
+                    logger.info("✅ Updated meeting_status to 'completed'")
+
+                # Save all updates to database
                 save_session_data(room_name, current_session)
-                logger.info("✅ Marked transcript as processed to prevent duplicates")
+                logger.info(
+                    "✅ Saved all processing results to database (transcript_processed, candidate_summary, meeting_status)"
+                )
 
             state = self.update_status(state, "completed")
 
@@ -1160,4 +1192,21 @@ class ProcessTranscriptStep(InterviewStep):
         except Exception as e:
             error_msg = f"Transcript processing failed: {str(e)}"
             logger.error(f"❌ {error_msg}", exc_info=True)
+
+            # Reset transcript_processing flag even on error
+            room_name = state.get("room_name")
+            if room_name:
+                try:
+                    from flow.db import get_session_data, save_session_data
+
+                    current_session = get_session_data(room_name) or {}
+                    current_session["transcript_processing"] = False
+                    save_session_data(room_name, current_session)
+                    logger.info("✅ Reset transcript_processing flag after error")
+                except Exception as save_error:
+                    logger.error(
+                        f"❌ Failed to reset transcript_processing flag: {save_error}",
+                        exc_info=True,
+                    )
+
             return self.set_error(state, error_msg)

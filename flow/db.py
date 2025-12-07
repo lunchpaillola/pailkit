@@ -2,10 +2,9 @@
 # Licensed under the Apache License, Version 2.0
 
 """
-SQLite Database Helper for PailFlow
+Supabase Database Helper for PailFlow
 
-Simple database to store session data for interview rooms.
-This replaces Daily.co's session data API for better control and reliability.
+Database module for storing session data for interview rooms using Supabase (PostgreSQL).
 
 **Security:**
 Sensitive fields (candidate info, emails, webhooks, transcripts) are encrypted
@@ -15,12 +14,9 @@ environment variable.
 """
 
 import base64
-import json
 import logging
 import os
-import sqlite3
-from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -28,27 +24,9 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 logger = logging.getLogger(__name__)
 
-
-# Database file location
-# - On Fly.io: Uses /data/pailflow.db (persistent volume - survives restarts)
-# - Locally: Uses flow/pailflow.db (in your project directory)
-# - You can override with DB_PATH environment variable
-def get_db_path() -> Path:
-    """Get the database path, checking environment variable first, then Fly volume, then local."""
-    # Check for explicit path override
-    if db_path_env := os.getenv("DB_PATH"):
-        return Path(db_path_env)
-
-    # On Fly.io, use persistent volume at /data
-    fly_data_path = Path("/data/pailflow.db")
-    if fly_data_path.parent.exists():
-        return fly_data_path
-
-    # Local development: use flow/ directory
-    return Path(__file__).parent / "pailflow.db"
-
-
-DB_PATH = get_db_path()
+# Type checking imports (only used for type hints, not at runtime)
+if TYPE_CHECKING:
+    from supabase import Client
 
 # Fields that should be encrypted (sensitive candidate data)
 ENCRYPTED_FIELDS = {
@@ -70,6 +48,17 @@ UNENCRYPTED_FIELDS = {
     "difficulty_level",
     "position",  # Could be encrypted, but keeping unencrypted for now
 }
+
+# Try to import Supabase client
+try:
+    from supabase import create_client, Client
+
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
+    logger.warning(
+        "⚠️ Supabase client not available. Install with: pip install supabase"
+    )
 
 
 def get_encryption_key() -> bytes:
@@ -235,79 +224,58 @@ def decrypt_sensitive_data(data: Dict[str, Any]) -> Dict[str, Any]:
     return decrypted_data
 
 
-def get_db_connection():
+def get_supabase_client() -> "Client | None":
     """
-    Get a regular SQLite database connection with WAL mode enabled.
+    Get a Supabase client instance for database operations.
 
-    WAL (Write-Ahead Logging) mode is enabled for better concurrent access:
-    - Allows multiple readers while one writer is active
-    - Better performance for concurrent transcript updates
-    - Reduces write contention
+    **Environment Variables Required:**
+    - SUPABASE_URL: Your Supabase project URL (e.g., https://xxxxx.supabase.co)
+    - SUPABASE_SERVICE_ROLE_KEY: Secret API key for backend operations (bypasses RLS)
+      - Also called "secret" key in modern Supabase UI
+      - Formerly called "service_role" key (legacy naming)
+      - Use this for backend/server code - never expose in client-side code
+
+    **For Local Development:**
+    When running `supabase start`, you'll get local connection details.
+    Set SUPABASE_URL=http://localhost:54321 and use the service_role key from
+    the supabase start output.
 
     Returns:
-        sqlite3.Connection object with WAL mode enabled
+        Supabase Client instance, or None if configuration is missing
     """
-    conn = sqlite3.connect(str(DB_PATH))
-    # Enable WAL mode for better concurrency (especially important for transcript updates)
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    if not SUPABASE_AVAILABLE:
+        logger.error(
+            "❌ Supabase client not installed. Install with: pip install supabase"
+        )
+        return None
 
+    supabase_url = os.getenv("SUPABASE_URL")
+    # Support both modern and legacy naming
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv(
+        "SUPABASE_SECRET_KEY"
+    )
 
-def init_db() -> None:
-    """
-    Initialize the database and create tables if they don't exist.
+    if not supabase_url or not supabase_key:
+        logger.error(
+            "❌ Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY "
+            "(or SUPABASE_SECRET_KEY) environment variables to use Supabase database."
+        )
+        return None
 
-    **Security:**
-    - Sensitive fields (emails, names, webhooks, transcripts) are encrypted at rest
-    - Operational fields (IDs, timestamps) remain unencrypted for querying
-    - File permissions are set to 0o600 (only owner can read/write)
-    - Encryption key is stored in ENCRYPTION_KEY environment variable
-    """
     try:
-        # Create parent directory if it doesn't exist (for /data on Fly.io)
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-        # Get database connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Create room_sessions table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS room_sessions (
-                room_name TEXT PRIMARY KEY,
-                session_data TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """
-        )
-
-        conn.commit()
-        conn.close()
-
-        # Set restrictive file permissions (only owner can read/write)
-        try:
-            os.chmod(DB_PATH, 0o600)  # rw------- (only owner)
-            logger.info("✅ Database file permissions set to 0o600")
-        except Exception as perm_error:
-            logger.warning(
-                f"⚠️ Could not set file permissions (this is okay on some systems): {perm_error}"
-            )
-
-        logger.info(
-            f"✅ Database initialized at {DB_PATH} (field-level encryption enabled)"
-        )
-
+        client = create_client(supabase_url, supabase_key)
+        logger.debug("✅ Supabase client created successfully")
+        return client
     except Exception as e:
-        logger.error(f"❌ Error initializing database: {e}", exc_info=True)
-        raise
+        logger.error(f"❌ Error creating Supabase client: {e}", exc_info=True)
+        return None
 
 
 def save_session_data(room_name: str, session_data: Dict[str, Any]) -> bool:
     """
-    Save session data for a room to the database with field-level encryption.
+    Save session data for a room to Supabase with field-level encryption.
 
-    If data already exists for this room, it will be replaced (REPLACE INTO).
+    If data already exists for this room, it will be updated (upsert).
 
     Args:
         room_name: The room identifier (e.g., "abc123") - unencrypted
@@ -316,43 +284,72 @@ def save_session_data(room_name: str, session_data: Dict[str, Any]) -> bool:
     Returns:
         True if saved successfully, False otherwise
     """
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot save to Supabase: client not available")
+        return False
 
+    try:
         # Encrypt sensitive fields before saving
         encrypted_data = encrypt_sensitive_data(session_data)
 
-        # Convert session_data dict to JSON string
-        session_json = json.dumps(encrypted_data)
+        # Prepare data for Supabase insert/update
+        # Map session_data keys to database columns
+        db_data = {
+            "room_name": room_name,
+            "session_id": encrypted_data.get("session_id"),
+            "workflow_thread_id": encrypted_data.get("workflow_thread_id"),
+            "meeting_status": encrypted_data.get("meeting_status", "in_progress"),
+            "meeting_start_time": encrypted_data.get("meeting_start_time"),
+            "meeting_end_time": encrypted_data.get("meeting_end_time"),
+            "interview_type": encrypted_data.get("interview_type"),
+            "difficulty_level": encrypted_data.get("difficulty_level"),
+            "position": encrypted_data.get("position"),
+            "bot_enabled": encrypted_data.get("bot_enabled", False),
+            "waiting_for_meeting_ended": encrypted_data.get(
+                "waiting_for_meeting_ended", False
+            ),
+            "waiting_for_transcript_webhook": encrypted_data.get(
+                "waiting_for_transcript_webhook", False
+            ),
+            "transcript_processed": encrypted_data.get("transcript_processed", False),
+            "transcript_processing": encrypted_data.get("transcript_processing", False),
+            "email_sent": encrypted_data.get("email_sent", False),
+            "workflow_paused": encrypted_data.get("workflow_paused", False),
+            # Encrypted fields
+            "webhook_callback_url": encrypted_data.get("webhook_callback_url"),
+            "email_results_to": encrypted_data.get("email_results_to"),
+            "candidate_name": encrypted_data.get("candidate_name"),
+            "candidate_email": encrypted_data.get("candidate_email"),
+            "interviewer_context": encrypted_data.get("interviewer_context"),
+            "analysis_prompt": encrypted_data.get("analysis_prompt"),
+            "summary_format_prompt": encrypted_data.get("summary_format_prompt"),
+            "transcript_text": encrypted_data.get("transcript_text"),
+            "candidate_summary": encrypted_data.get("candidate_summary"),
+        }
 
-        # Use REPLACE to update if exists, insert if new
-        cursor.execute(
-            """
-            REPLACE INTO room_sessions (room_name, session_data)
-            VALUES (?, ?)
-        """,
-            (room_name, session_json),
-        )
+        # Remove None values to avoid overwriting with NULL
+        db_data = {k: v for k, v in db_data.items() if v is not None}
 
-        conn.commit()
-        conn.close()
+        # Use upsert (insert or update) - Supabase handles this with ON CONFLICT
+        client.table("rooms").upsert(db_data, on_conflict="room_name").execute()
 
         logger.info(
-            f"✅ Session data saved for room: {room_name} (sensitive fields encrypted)"
+            f"✅ Session data saved to Supabase for room: {room_name} (sensitive fields encrypted)"
         )
         return True
 
     except Exception as e:
         logger.error(
-            f"❌ Error saving session data for {room_name}: {e}", exc_info=True
+            f"❌ Error saving session data to Supabase for {room_name}: {e}",
+            exc_info=True,
         )
         return False
 
 
 def get_session_data(room_name: str) -> Dict[str, Any] | None:
     """
-    Retrieve session data for a room from the database and decrypt sensitive fields.
+    Retrieve session data for a room from Supabase and decrypt sensitive fields.
 
     Args:
         room_name: The room identifier (e.g., "abc123")
@@ -360,42 +357,74 @@ def get_session_data(room_name: str) -> Dict[str, Any] | None:
     Returns:
         Dictionary with session data (sensitive fields decrypted), or None if not found
     """
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot read from Supabase: client not available")
+        return None
 
-        cursor.execute(
-            """
-            SELECT session_data FROM room_sessions WHERE room_name = ?
-        """,
-            (room_name,),
+    try:
+        response = (
+            client.table("rooms").select("*").eq("room_name", room_name).execute()
         )
 
-        result = cursor.fetchone()
-        conn.close()
-
-        if result:
-            session_data = json.loads(result[0])
-            # Decrypt sensitive fields
-            decrypted_data = decrypt_sensitive_data(session_data)
-            logger.info(
-                f"✅ Retrieved session data for room: {room_name} (sensitive fields decrypted)"
-            )
-            return decrypted_data
-        else:
-            logger.warning(f"⚠️ No session data found for room: {room_name}")
+        if not response.data or len(response.data) == 0:
+            logger.warning(f"⚠️ No session data found in Supabase for room: {room_name}")
             return None
+
+        # Get the first (and should be only) row
+        row = response.data[0]
+
+        # Convert database row back to session_data format
+        session_data = {
+            "session_id": row.get("session_id"),
+            "workflow_thread_id": row.get("workflow_thread_id"),
+            "meeting_status": row.get("meeting_status"),
+            "meeting_start_time": row.get("meeting_start_time"),
+            "meeting_end_time": row.get("meeting_end_time"),
+            "interview_type": row.get("interview_type"),
+            "difficulty_level": row.get("difficulty_level"),
+            "position": row.get("position"),
+            "bot_enabled": row.get("bot_enabled"),
+            "waiting_for_meeting_ended": row.get("waiting_for_meeting_ended"),
+            "waiting_for_transcript_webhook": row.get("waiting_for_transcript_webhook"),
+            "transcript_processed": row.get("transcript_processed"),
+            "transcript_processing": row.get("transcript_processing"),
+            "email_sent": row.get("email_sent"),
+            "workflow_paused": row.get("workflow_paused"),
+            # Encrypted fields (will be decrypted below)
+            "webhook_callback_url": row.get("webhook_callback_url"),
+            "email_results_to": row.get("email_results_to"),
+            "candidate_name": row.get("candidate_name"),
+            "candidate_email": row.get("candidate_email"),
+            "interviewer_context": row.get("interviewer_context"),
+            "analysis_prompt": row.get("analysis_prompt"),
+            "summary_format_prompt": row.get("summary_format_prompt"),
+            "transcript_text": row.get("transcript_text"),
+            "candidate_summary": row.get("candidate_summary"),
+        }
+
+        # Remove None values
+        session_data = {k: v for k, v in session_data.items() if v is not None}
+
+        # Decrypt sensitive fields
+        decrypted_data = decrypt_sensitive_data(session_data)
+
+        logger.info(
+            f"✅ Retrieved session data from Supabase for room: {room_name} (sensitive fields decrypted)"
+        )
+        return decrypted_data
 
     except Exception as e:
         logger.error(
-            f"❌ Error retrieving session data for {room_name}: {e}", exc_info=True
+            f"❌ Error retrieving session data from Supabase for {room_name}: {e}",
+            exc_info=True,
         )
         return None
 
 
 def delete_session_data(room_name: str) -> bool:
     """
-    Delete session data for a room (optional cleanup).
+    Delete session data for a room from Supabase (optional cleanup).
 
     Args:
         room_name: The room identifier (e.g., "abc123")
@@ -403,34 +432,27 @@ def delete_session_data(room_name: str) -> bool:
     Returns:
         True if deleted successfully, False otherwise
     """
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot delete from Supabase: client not available")
+        return False
+
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        response = client.table("rooms").delete().eq("room_name", room_name).execute()
 
-        cursor.execute(
-            """
-            DELETE FROM room_sessions WHERE room_name = ?
-        """,
-            (room_name,),
-        )
-
-        conn.commit()
-        rows_deleted = cursor.rowcount
-        conn.close()
-
-        if rows_deleted > 0:
-            logger.info(f"✅ Session data deleted for room: {room_name}")
+        # Check if any rows were deleted
+        if response.data and len(response.data) > 0:
+            logger.info(f"✅ Session data deleted from Supabase for room: {room_name}")
             return True
         else:
-            logger.warning(f"⚠️ No session data to delete for room: {room_name}")
+            logger.warning(
+                f"⚠️ No session data to delete from Supabase for room: {room_name}"
+            )
             return False
 
     except Exception as e:
         logger.error(
-            f"❌ Error deleting session data for {room_name}: {e}", exc_info=True
+            f"❌ Error deleting session data from Supabase for {room_name}: {e}",
+            exc_info=True,
         )
         return False
-
-
-# Initialize database on module import
-init_db()

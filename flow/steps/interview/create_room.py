@@ -239,9 +239,9 @@ class CreateRoomStep(InterviewStep):
             state = self.update_status(state, "room_created")
             logger.info(f"✅ Video room created: {room_url}")
 
-            # Save session data to SQLite database
-            # in our local SQLite database. This data will be retrieved later by the webhook
-            # handler when the transcript is ready, so it knows where to send results.
+            # Save session data to Supabase database.
+            # This data will be retrieved later by the webhook handler when the transcript
+            # is ready, so it knows where to send results.
             participant_info = state.get("participant_info", {})
 
             # Get interviewer_context from state (if configure_agent already ran) or from interview_config
@@ -335,8 +335,8 @@ class CreateRoomStep(InterviewStep):
                         filtered_data[k] = v
             session_data = filtered_data
 
-            # Save session data to SQLite database
-            # as the key. Later, when Daily.co sends a webhook, we'll use the room_name to look up
+            # Save session data to Supabase database.
+            # Later, when Daily.co sends a webhook, we'll use the room_name to look up
             # this data and know where to send the results.
             if session_data:
                 from flow.db import save_session_data

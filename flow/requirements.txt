@@ -26,6 +26,9 @@ resend>=2.0.0
 # Field-level encryption
 cryptography>=42.0.0
 
+# Supabase client for PostgreSQL database
+supabase>=2.0.0
+
 # HTTP client for Fly.io API calls (synchronous requests)
 requests>=2.31.0
 

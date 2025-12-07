@@ -158,6 +158,7 @@ Make it readable and useful for understanding the candidate's performance."""
             # Bot configuration with prompt-driven behavior
             "bot": {
                 "enabled": True,
+                "name": "Interviewer",  # Bot name that will appear in Daily.co meeting
                 "bot_prompt": bot_prompt,  # This controls what the bot says/does
                 "video_mode": "animated",  # Use animated sprite mode
                 "animation_frames_per_sprite": 1,  # Show each frame once (faster animation)
