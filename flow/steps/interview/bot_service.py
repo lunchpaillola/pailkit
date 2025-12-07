@@ -271,7 +271,7 @@ def load_bot_video_frames(
                 # Duplicate each frame to slow down the animation (like reference implementation)
                 # This makes each frame display longer, creating a smoother, slower animation
                 frames_per_sprite = bot_config.get(
-                    "animation_frames_per_sprite", 3
+                    "animation_frames_per_sprite", 1
                 )  # Default: show each frame 3 times
                 slowed_sprites = []
                 for sprite in sprites:
@@ -759,9 +759,94 @@ IMPORTANT: Your output will be spoken aloud, so:
                 await task.queue_frames([LLMRunFrame()])
                 logger.info("✅ LLMRunFrame queued successfully")
 
+            @transport.event_handler("participant-counts-updated")
+            async def on_participant_counts_updated(transport, event):
+                """
+                Handle participant-counts-updated event from Daily.co.
+
+                Simple Explanation: This event fires when participants join or leave.
+                We log the current participant counts for debugging and monitoring.
+                """
+                try:
+                    # Get participant counts from transport
+                    # Simple Explanation: participantCounts() returns information about
+                    # how many participants are currently in the room (present and hidden).
+                    counts = transport.participantCounts()
+                    if counts:
+                        present = counts.get("present", 0)
+                        hidden = counts.get("hidden", 0)
+                        logger.info(
+                            f"👥 Participant counts updated - Present: {present}, Hidden: {hidden}"
+                        )
+                    else:
+                        logger.debug("Participant counts not available")
+                except Exception as e:
+                    logger.debug(f"Error getting participant counts: {e}")
+
             @transport.event_handler("on_participant_left")
             async def on_participant_left(transport, participant, reason):
-                logger.info(f"Participant left: {participant['id']}, reason: {reason}")
+                """
+                Handle participant left event.
+
+                Simple Explanation: When a participant (including the bot) leaves,
+                we check if there's a workflow waiting to resume. If so, we resume
+                it to continue processing the transcript. Otherwise, we process
+                results directly (legacy behavior).
+                """
+                participant_id = participant.get("id", "unknown")
+                logger.info(f"Participant left: {participant_id}, reason: {reason}")
+
+                # Check if there's a workflow waiting to resume
+                # Simple Explanation: If a workflow was started via the bot_call
+                # workflow, it will have a workflow_thread_id in session_data. We
+                # resume the workflow instead of processing results directly.
+                from flow.db import get_session_data
+
+                session_data = get_session_data(room_name) or {}
+                workflow_thread_id = session_data.get("workflow_thread_id")
+
+                if workflow_thread_id:
+                    # Resume the workflow
+                    # Simple Explanation: The workflow paused after starting the bot.
+                    # Now that the bot has finished, we resume it to continue to the
+                    # process_transcript step.
+                    logger.info(
+                        f"🔄 Resuming workflow with thread_id: {workflow_thread_id}"
+                    )
+                    try:
+                        from flow.workflows.bot_call import BotCallWorkflow
+
+                        workflow = BotCallWorkflow()
+                        config = {"configurable": {"thread_id": workflow_thread_id}}
+
+                        # Simple Explanation: LangGraph automatically resumes from the latest
+                        # checkpoint when you call ainvoke with a config containing a thread_id.
+                        # We just need to pass an empty state dict - LangGraph will load the
+                        # state from the checkpoint automatically.
+                        # Resume the workflow - it will continue to process_transcript node
+                        await workflow.graph.ainvoke({}, config=config)
+                        logger.info("✅ Workflow resumed successfully")
+                    except Exception as e:
+                        logger.error(f"❌ Error resuming workflow: {e}", exc_info=True)
+                        # Fallback to full transcript processing if workflow resume fails
+                        # Simple Explanation: If workflow resume fails, we use ProcessTranscriptStep
+                        # which includes the full pipeline: Q&A parsing, insights, email, webhook
+                        logger.info("   Falling back to full transcript processing...")
+                        await self._process_bot_results_full_pipeline(
+                            room_name, transcript_handler
+                        )
+                else:
+                    # No workflow - use full transcript processing pipeline
+                    # Simple Explanation: Even without a workflow, we should run the full
+                    # ProcessTranscriptStep pipeline to ensure emails and webhooks are sent
+                    logger.info(
+                        "   No workflow_thread_id - processing with full pipeline..."
+                    )
+                    await self._process_bot_results_full_pipeline(
+                        room_name, transcript_handler
+                    )
+
+                # Cancel the task to clean up
                 await task.cancel()
 
             # PipelineRunner tries to set up signal handlers in __init__, but this only works in the main thread.
@@ -800,10 +885,13 @@ IMPORTANT: Your output will be spoken aloud, so:
                 await runner.run(task)
                 logger.info("✅ runner.run(task) completed")
 
-                # Simple Explanation: After the bot finishes, automatically process the transcript
-                # and extract insights if enabled. This happens automatically so the API
-                # can return results via the status endpoint.
-                await self._process_bot_results(room_name, transcript_handler)
+                # Simple Explanation: After the bot finishes, the on_participant_left handler
+                # will either resume the workflow (if workflow_thread_id exists) or process
+                # results directly (legacy behavior). We don't need to call _process_bot_results
+                # here anymore - it's handled in the event handler.
+                # Note: The workflow resume happens in on_participant_left, so we don't need
+                # to do anything here. If there's no workflow, on_participant_left will
+                # call _process_bot_results directly.
             finally:
                 # When the bot task finishes, the Daily.co transport might still have pending callbacks
                 # that try to post to the event loop. We need to properly clean up the transport
@@ -871,16 +959,87 @@ IMPORTANT: Your output will be spoken aloud, so:
                 pass  # Ignore other cleanup errors during error handling
             raise
 
+    async def _process_bot_results_full_pipeline(
+        self, room_name: str, transcript_handler: TranscriptHandler
+    ) -> None:
+        """
+        Process transcript using the full ProcessTranscriptStep pipeline.
+
+        Simple Explanation: After the bot finishes transcribing, we run the complete
+        ProcessTranscriptStep which handles:
+        1. Parsing transcript to extract Q&A pairs
+        2. Extracting insights using AI analysis (if enabled)
+        3. Generating candidate summary
+        4. Sending email (if configured)
+        5. Triggering webhook (if configured)
+        6. Storing results in the database
+
+        Args:
+            room_name: Room name for this bot session
+            transcript_handler: The transcript handler that collected the transcript
+        """
+        try:
+            logger.info(
+                f"🔄 Processing results with full pipeline for bot in room: {room_name}"
+            )
+
+            # Get transcript text from handler
+            transcript_text = transcript_handler.transcript_text
+
+            if not transcript_text:
+                logger.warning(f"⚠️ No transcript text found for room {room_name}")
+                return
+
+            # Use ProcessTranscriptStep for the full pipeline
+            # Simple Explanation: ProcessTranscriptStep.execute() handles the complete
+            # processing pipeline including Q&A parsing, insights, summary, email, and webhook
+            from flow.steps.interview.process_transcript import ProcessTranscriptStep
+
+            # Create state for ProcessTranscriptStep
+            # Simple Explanation: ProcessTranscriptStep expects room_name and will
+            # automatically retrieve transcript_text from the database if not provided
+            state = {
+                "room_name": room_name,
+                # ProcessTranscriptStep will check database for transcript_text automatically
+                # The bot saves it there as it transcribes
+            }
+
+            # Execute the full pipeline
+            logger.info(
+                "   🔄 Calling ProcessTranscriptStep.execute() for full pipeline..."
+            )
+            process_step = ProcessTranscriptStep()
+            result = await process_step.execute(state)
+
+            # Check for errors
+            if result.get("error"):
+                logger.error(f"❌ ProcessTranscriptStep error: {result.get('error')}")
+                return
+
+            logger.info("   ✅ Full transcript processing pipeline complete")
+            logger.info(f"      - Email sent: {result.get('email_sent', False)}")
+            logger.info(f"      - Webhook sent: {result.get('webhook_sent', False)}")
+
+        except Exception as e:
+            logger.error(
+                f"❌ Error processing bot results with full pipeline for room {room_name}: {e}",
+                exc_info=True,
+            )
+            # Don't raise - we don't want to fail the bot cleanup if processing fails
+
     async def _process_bot_results(
         self, room_name: str, transcript_handler: TranscriptHandler
     ) -> None:
         """
-        Process transcript and extract insights after bot finishes.
+        Process transcript and extract insights after bot finishes (legacy method).
 
         Simple Explanation: After the bot finishes transcribing, we automatically:
         1. Process the transcript to extract Q&A pairs
         2. Extract insights using AI analysis (if enabled)
         3. Store results in the database so they can be retrieved via the status endpoint
+
+        Note: This method does NOT send emails or webhooks. Use _process_bot_results_full_pipeline
+        for the complete pipeline including email and webhook.
 
         Args:
             room_name: Room name for this bot session

@@ -309,7 +309,6 @@ Guidelines:
         bot_id = bot_response["bot_id"]
         print("✅ Bot started successfully!")
         print(f"   Bot ID: {bot_id}")
-        print(f"   Status: {bot_response['status']}")
         print(f"   Room URL: {bot_response['room_url']}\n")
 
         # Generate hosted link automatically
@@ -329,6 +328,25 @@ Guidelines:
         print("💡 NOTE: Make sure the server is running:")
         print("   cd flow && python main.py")
         print("   Then open the URL above in your browser\n")
+
+        print("🚀 How It Works (Fully Automatic):")
+        print("   1. Bot joins the room and starts transcribing")
+        print("   2. You have a conversation with the bot")
+        print("   3. When you leave, the workflow automatically:")
+        print("      - Resumes (event-driven, no polling needed)")
+        print("      - Processes transcript (Q&A parsing, insights)")
+        print("      - Sends email/webhook (if configured)")
+        print("   4. That's it! No status checks needed.\n")
+
+        if test_webhook_site:
+            print(f"📬 Results will be sent to your webhook: {test_webhook_site}")
+        if test_email:
+            print(f"📧 Results will be sent to: {test_email}")
+        if not test_webhook_site and not test_email:
+            print(
+                "💡 Tip: Set TEST_WEBHOOK_SITE or TEST_EMAIL to get notified when complete"
+            )
+        print()
     except httpx.HTTPStatusError as e:
         print(f"❌ Failed to start bot: {e}")
         if e.response.status_code == 401:
@@ -341,90 +359,28 @@ Guidelines:
         print(f"❌ Error starting bot: {e}")
         sys.exit(1)
 
-    # Step 3: Poll for status
+    # Step 3: Done! (No status checking needed - workflow is fully automatic)
     print(f"{'='*80}")
-    print("⏳ Polling bot status...")
+    print("✅ Test setup complete!")
     print(f"{'='*80}\n")
-    print("   Join the room and have a conversation with the bot!")
-    print("   Use the hosted URL above to join the meeting")
-    print("   Press Ctrl+C to stop polling (bot will continue running)\n")
 
-    try:
-        last_status = None
-        poll_count = 0
+    print("📝 Summary:")
+    print(f"   Bot ID: {bot_id}")
+    print(f"   Room: {room_name}")
+    print(f"   Join URL: {hosted_url}\n")
 
-        while True:
-            await asyncio.sleep(2)  # Poll every 2 seconds
-            poll_count += 1
+    print("🎯 What Happens Next (Automatic):")
+    print("   1. Join the meeting using the URL above")
+    print("   2. Have a conversation with the bot")
+    print("   3. Leave the meeting")
+    print("   4. Workflow automatically resumes and processes everything")
+    print("   5. You'll receive results via webhook/email (if configured)\n")
 
-            try:
-                status = await get_bot_status(api_base_url, bot_id)
-                current_status = status["status"]
-
-                # Only print if status changed
-                if current_status != last_status:
-                    print(f"   [{poll_count}] Status: {current_status}")
-                    if status.get("started_at"):
-                        print(f"        Started: {status['started_at']}")
-                    if status.get("completed_at"):
-                        print(f"        Completed: {status['completed_at']}")
-                    last_status = current_status
-
-                # Check if bot finished
-                if current_status == "completed":
-                    print(f"\n{'='*80}")
-                    print("✅ Bot completed!")
-                    print(f"{'='*80}\n")
-
-                    # Show results
-                    if status.get("transcript"):
-                        transcript_preview = status["transcript"][:200]
-                        print(f"📝 Transcript (preview): {transcript_preview}...")
-                        print(
-                            f"   Full length: {len(status['transcript'])} characters\n"
-                        )
-
-                    if status.get("qa_pairs"):
-                        print(f"❓ Q&A Pairs: {len(status['qa_pairs'])} pairs found\n")
-                        for i, qa in enumerate(
-                            status["qa_pairs"][:3], 1
-                        ):  # Show first 3
-                            print(f"   {i}. Q: {qa.get('question', 'N/A')[:60]}...")
-                            print(f"      A: {qa.get('answer', 'N/A')[:60]}...\n")
-
-                    if status.get("insights"):
-                        insights = status["insights"]
-                        print("🧠 Insights:")
-                        if insights.get("overall_score") is not None:
-                            print(f"   Overall Score: {insights['overall_score']}/10")
-                        if insights.get("strengths"):
-                            print(f"   Strengths: {len(insights['strengths'])} items")
-                        if insights.get("weaknesses"):
-                            print(f"   Weaknesses: {len(insights['weaknesses'])} items")
-                        print()
-
-                    break
-                elif current_status == "failed":
-                    print(f"\n{'='*80}")
-                    print("❌ Bot failed!")
-                    print(f"{'='*80}\n")
-                    if status.get("error"):
-                        print(f"   Error: {status['error']}\n")
-                    break
-
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 404:
-                    print("   ⚠️ Bot session not found (may have been cleaned up)")
-                    break
-                else:
-                    print(f"   ⚠️ Error checking status: {e}")
-            except Exception as e:
-                print(f"   ⚠️ Error checking status: {e}")
-
-    except KeyboardInterrupt:
-        print("\n\n⏸️  Polling stopped (bot may still be running)")
-        print("   You can check status later with:")
-        print(f"   GET {api_base_url}/api/bot/{bot_id}/status\n")
+    print("💡 Optional: Status Endpoint (for debugging only)")
+    print(
+        f"   If you need to check status manually: GET {api_base_url}/api/bot/{bot_id}/status"
+    )
+    print("   But you don't need to - webhooks/email will notify you automatically!\n")
 
     print(f"{'='*80}")
     print("🎉 Test complete!")

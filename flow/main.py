@@ -243,15 +243,21 @@ class BotStatusResponse(BaseModel):
 @app.post("/api/bot/join", response_model=BotJoinResponse)
 async def join_bot(request: BotJoinRequest) -> BotJoinResponse:
     """
-    Start a bot in an existing Daily room.
+    Start a bot in an existing Daily room using the BotCallWorkflow.
 
     **Simple Explanation:**
     This endpoint starts an AI bot that will join an existing Daily.co video room.
     The bot will:
     1. Join the room and start transcribing the conversation
     2. Have conversations with participants based on the bot_config
-    3. When the meeting ends, optionally process insights
+    3. When the bot finishes, automatically process the transcript (Q&A parsing, insights, email, webhook)
     4. Store results that can be retrieved via the status endpoint
+
+    **Workflow:**
+    This endpoint uses the BotCallWorkflow which orchestrates the complete process:
+    - Starts the bot (workflow pauses)
+    - When bot finishes, automatically resumes to process transcript
+    - ProcessTranscriptStep handles: Q&A parsing, insights, summary, email, webhook
 
     **Request:**
     ```json
@@ -319,24 +325,44 @@ async def join_bot(request: BotJoinRequest) -> BotJoinResponse:
         # Add process_insights to bot_config so BotService knows to process insights
         bot_config_dict["process_insights"] = request.process_insights
 
-        # Start the bot asynchronously
-        success = await bot_service.start_bot(
-            room_url=request.room_url,
-            token=request.token or "",
-            bot_config=bot_config_dict,
-            room_name=room_name,
-            bot_id=bot_id,
-        )
+        # Start the workflow instead of just starting the bot
+        # Simple Explanation: The BotCallWorkflow orchestrates the complete process:
+        # 1. Starts the bot (workflow pauses after this)
+        # 2. When bot finishes, workflow resumes automatically
+        # 3. ProcessTranscriptStep runs the full pipeline (Q&A, insights, email, webhook)
+        from flow.workflows.bot_call import BotCallWorkflow
 
-        if not success:
-            # Bot failed to start - update database
+        workflow = BotCallWorkflow()
+
+        # Prepare workflow context
+        workflow_context = {
+            "room_url": request.room_url,
+            "token": request.token,
+            "room_name": room_name,
+            "bot_config": bot_config_dict,
+            "bot_id": bot_id,
+        }
+
+        # Execute the workflow asynchronously
+        # Simple Explanation: This starts the workflow which will:
+        # 1. Start the bot (join_bot node)
+        # 2. Pause and wait for bot to finish
+        # 3. Resume automatically when bot finishes (via on_participant_left handler)
+        # 4. Process transcript (process_transcript node)
+        result = await workflow.execute_async(workflow_context)
+
+        if not result.get("success"):
+            # Workflow failed to start - update database
+            error_msg = result.get("error", "Failed to start workflow")
             bot_session_data["status"] = "failed"
-            bot_session_data["error"] = "Failed to start bot"
+            bot_session_data["error"] = error_msg
             bot_session_data["completed_at"] = datetime.utcnow().isoformat() + "Z"
             save_bot_session(bot_id, bot_session_data)
-            raise HTTPException(status_code=500, detail="Failed to start bot")
+            raise HTTPException(status_code=500, detail=error_msg)
 
-        logger.info(f"✅ Bot started: bot_id={bot_id}, room={room_name}")
+        logger.info(
+            f"✅ Bot workflow started: bot_id={bot_id}, room={room_name}, thread_id={result.get('thread_id')}"
+        )
 
         return BotJoinResponse(
             status="started",

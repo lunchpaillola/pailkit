@@ -271,6 +271,107 @@ def get_supabase_client() -> "Client | None":
         return None
 
 
+def get_postgres_checkpointer():
+    """
+    Get a LangGraph Postgres checkpointer using the existing Supabase connection.
+
+    **Simple Explanation:**
+    This creates a checkpointer that stores workflow state in Supabase (PostgreSQL).
+    This allows workflows to persist across server restarts and work in multi-instance
+    deployments (like Fly.io with multiple machines).
+
+    **Environment Variables:**
+    Uses the same Supabase configuration as other database functions:
+    - SUPABASE_URL: Your Supabase project URL
+    - SUPABASE_SERVICE_ROLE_KEY: Service role key (or SUPABASE_SECRET_KEY)
+    - SUPABASE_DB_PASSWORD: Database password for direct PostgreSQL connection
+      (optional - can also use connection string via SUPABASE_DB_URL)
+
+    **Alternative:**
+    You can also set SUPABASE_DB_URL directly with a full PostgreSQL connection string:
+    - Format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+
+    Returns:
+        LangGraph PostgresSaver checkpointer instance, or None if configuration is missing
+    """
+    try:
+        from langgraph.checkpoint.postgres import PostgresSaver
+    except ImportError:
+        logger.error(
+            "❌ LangGraph PostgresSaver or psycopg not available. "
+            "Install with: pip install langgraph[postgres] psycopg[binary]"
+        )
+        return None
+
+    # Try to get connection string from environment first
+    db_url = os.getenv("SUPABASE_DB_URL")
+
+    if not db_url:
+        # Construct connection string from Supabase URL and password
+        supabase_url = os.getenv("SUPABASE_URL")
+        db_password = os.getenv("SUPABASE_DB_PASSWORD")
+
+        if not supabase_url or not db_password:
+            logger.error(
+                "❌ Supabase database connection not configured. "
+                "Set either SUPABASE_DB_URL (full connection string) or "
+                "both SUPABASE_URL and SUPABASE_DB_PASSWORD environment variables."
+            )
+            return None
+
+        # Extract project reference from Supabase URL
+        # Format: https://xxxxx.supabase.co -> xxxxx
+        try:
+            # Remove https:// and .supabase.co
+            project_ref = (
+                supabase_url.replace("https://", "")
+                .replace(".supabase.co", "")
+                .replace("http://", "")
+                .replace(":54321", "")
+                .split("/")[0]
+            )
+
+            # Construct PostgreSQL connection string
+            # Format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+            if "localhost" in project_ref or "127.0.0.1" in project_ref:
+                # Local Supabase
+                db_url = f"postgresql://postgres:{db_password}@localhost:54322/postgres"
+            else:
+                # Production Supabase
+                db_url = f"postgresql://postgres:{db_password}@db.{project_ref}.supabase.co:5432/postgres"
+        except Exception as e:
+            logger.error(
+                f"❌ Error constructing Supabase database connection string: {e}"
+            )
+            return None
+
+    try:
+        # Create PostgresSaver with connection string
+        # Simple Explanation: PostgresSaver stores workflow checkpoints in PostgreSQL
+        # The tables should already exist from the migration, but we call setup()
+        # as a safety net to ensure they're created if the migration hasn't run yet
+        checkpointer = PostgresSaver.from_conn_string(db_url)
+
+        # Setup tables if they don't exist (safety net - migration should handle this)
+        # Simple Explanation: setup() creates the necessary tables. We call it once
+        # as a safety net, but the migration file should have already created them.
+        try:
+            checkpointer.setup()
+            logger.debug("✅ Postgres checkpointer tables verified/created")
+        except Exception as setup_error:
+            # If setup fails, it might be because tables already exist (from migration)
+            # or there's a real error. Log it but don't fail - the checkpointer might still work.
+            logger.debug(
+                f"⚠️ Postgres checkpointer setup warning (tables may already exist): {setup_error}"
+            )
+
+        logger.debug("✅ Postgres checkpointer created successfully")
+        return checkpointer
+    except Exception as e:
+        logger.error(f"❌ Error creating Postgres checkpointer: {e}", exc_info=True)
+        return None
+
+
 def save_session_data(room_name: str, session_data: Dict[str, Any]) -> bool:
     """
     Save session data for a room to Supabase with field-level encryption.
