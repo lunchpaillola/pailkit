@@ -1473,8 +1473,11 @@ async def handle_transcript_ready_to_download(
                             if isinstance(latest_checkpoint_tuple, dict)
                             else str(latest_checkpoint_tuple)
                         )
-                    checkpoint = workflow.checkpointer.get(
+                    checkpoint_tuple = await workflow.checkpointer.aget_tuple(
                         config, {"checkpoint_id": latest_checkpoint_id}
+                    )
+                    checkpoint, returned_checkpoint_id, parent_checkpoint_id = (
+                        checkpoint_tuple
                     )
 
                     if checkpoint and checkpoint.get("channel_values"):
@@ -1820,8 +1823,11 @@ async def handle_meeting_ended_webhook(
                                 if isinstance(latest_checkpoint_tuple, dict)
                                 else str(latest_checkpoint_tuple)
                             )
-                        checkpoint = workflow.checkpointer.get(
+                        checkpoint_tuple = await workflow.checkpointer.aget_tuple(
                             config, {"checkpoint_id": latest_checkpoint_id}
+                        )
+                        checkpoint, returned_checkpoint_id, parent_checkpoint_id = (
+                            checkpoint_tuple
                         )
 
                         if checkpoint and checkpoint.get("channel_values"):

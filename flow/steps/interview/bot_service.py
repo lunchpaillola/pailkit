@@ -798,12 +798,24 @@ IMPORTANT: Your output will be spoken aloud, so:
 
                 # Check if there's a workflow waiting to resume
                 # Simple Explanation: If a workflow was started via the bot_call
-                # workflow, it will have a workflow_thread_id in session_data. We
-                # resume the workflow instead of processing results directly.
-                from flow.db import get_session_data
+                # workflow, it will have a workflow_thread_id. We check both session_data
+                # (for backward compatibility) and workflow_threads to find the thread_id.
+                from flow.db import get_session_data, get_workflow_thread_data
 
+                # First try to get workflow_thread_id from session_data (for backward compatibility)
                 session_data = get_session_data(room_name) or {}
                 workflow_thread_id = session_data.get("workflow_thread_id")
+
+                # If not found in session_data, try to find it from workflow_threads by room_name
+                if not workflow_thread_id:
+                    from flow.db import get_workflow_threads_by_room_name
+
+                    threads = get_workflow_threads_by_room_name(room_name)
+                    # Get the most recent paused workflow thread
+                    for thread in threads:
+                        if thread.get("workflow_paused"):
+                            workflow_thread_id = thread.get("workflow_thread_id")
+                            break
 
                 if workflow_thread_id:
                     # Resume the workflow
@@ -818,11 +830,22 @@ IMPORTANT: Your output will be spoken aloud, so:
 
                         workflow = BotCallWorkflow()
 
-                        # Retrieve checkpoint_id from session_data if available
+                        # Retrieve checkpoint_id from workflow_threads if available
                         # Simple Explanation: The checkpoint_id tells LangGraph exactly which
                         # checkpoint to resume from. Without it, LangGraph might resume from
                         # the wrong checkpoint or restart from the beginning.
-                        checkpoint_id = session_data.get("checkpoint_id")
+                        workflow_thread_data = get_workflow_thread_data(
+                            workflow_thread_id
+                        )
+                        checkpoint_id = (
+                            workflow_thread_data.get("checkpoint_id")
+                            if workflow_thread_data
+                            else None
+                        )
+
+                        # Fallback to session_data for backward compatibility
+                        if not checkpoint_id:
+                            checkpoint_id = session_data.get("checkpoint_id")
 
                         # Build config with thread_id and checkpoint_id (if available)
                         config = {"configurable": {"thread_id": workflow_thread_id}}
@@ -848,7 +871,7 @@ IMPORTANT: Your output will be spoken aloud, so:
                         # Simple Explanation: This helps us detect if the checkpoint is missing
                         # (e.g., if using MemorySaver and server restarted, or if checkpointer isn't configured)
                         try:
-                            state_snapshot = graph.get_state(config)
+                            state_snapshot = await graph.aget_state(config)
                             if not state_snapshot or not state_snapshot.values:
                                 raise ValueError(
                                     "Checkpoint state not found. This may happen if: "

@@ -911,6 +911,7 @@ def save_workflow_thread_data(
             - transcript_text: Transcript (encrypted)
             - transcript_processed, email_sent, webhook_sent: Processing state
             - candidate_summary: Summary (encrypted)
+            - checkpoint_id: LangGraph checkpoint ID for resuming workflows (not encrypted)
             - And all other workflow-related fields
 
     Returns:
@@ -967,6 +968,8 @@ def save_workflow_thread_data(
                 "waiting_for_transcript_webhook", False
             ),
             "metadata": encrypted_data.get("metadata"),
+            # checkpoint_id is an operational field (not sensitive), so get it directly from thread_data
+            "checkpoint_id": thread_data.get("checkpoint_id"),
         }
 
         # Remove None values to avoid overwriting with NULL
@@ -1065,6 +1068,8 @@ def get_workflow_thread_data(workflow_thread_id: str) -> Dict[str, Any] | None:
             "waiting_for_meeting_ended": row.get("waiting_for_meeting_ended"),
             "waiting_for_transcript_webhook": row.get("waiting_for_transcript_webhook"),
             "metadata": row.get("metadata"),
+            # checkpoint_id is an operational field (not sensitive), so include it directly
+            "checkpoint_id": row.get("checkpoint_id"),
         }
 
         # Remove None values
@@ -1164,6 +1169,8 @@ def get_workflow_threads_by_room_name(room_name: str) -> list[Dict[str, Any]]:
                     "waiting_for_transcript_webhook"
                 ),
                 "metadata": row.get("metadata"),
+                # checkpoint_id is an operational field (not sensitive), so include it directly
+                "checkpoint_id": row.get("checkpoint_id"),
             }
 
             # Remove None values

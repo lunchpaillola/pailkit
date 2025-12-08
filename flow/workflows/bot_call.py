@@ -507,9 +507,9 @@ class BotCallWorkflow:
             # so we can resume from the exact same checkpoint later.
             try:
                 # Get the state after the workflow pauses
-                # Simple Explanation: graph.get_state() returns the current state snapshot
-                # which includes the checkpoint_id in its config. This is a synchronous call.
-                state = graph.get_state(config)
+                # Simple Explanation: graph.aget_state() returns the current state snapshot
+                # which includes the checkpoint_id in its config. This is an async call.
+                state = await graph.aget_state(config)
 
                 # Extract checkpoint_id from the state's config
                 # Simple Explanation: The checkpoint_id is stored in state.config["configurable"]["checkpoint_id"]
@@ -519,15 +519,24 @@ class BotCallWorkflow:
                 if checkpoint_id:
                     logger.info(f"   ✅ Captured checkpoint_id: {checkpoint_id}")
 
-                    # Save checkpoint_id to session_data so it's available when resuming
-                    # Simple Explanation: We save the checkpoint_id alongside workflow_thread_id
+                    # Save checkpoint_id to workflow_threads so it's available when resuming
+                    # Simple Explanation: We save the checkpoint_id to workflow_threads table
                     # so when the bot finishes, we can resume from the exact checkpoint.
-                    from flow.db import get_session_data, save_session_data
+                    from flow.db import (
+                        get_workflow_thread_data,
+                        save_workflow_thread_data,
+                    )
 
-                    session_data = get_session_data(room_name) or {}
-                    session_data["checkpoint_id"] = checkpoint_id
-                    save_session_data(room_name, session_data)
-                    logger.info("   ✅ Saved checkpoint_id to session_data")
+                    # Get existing workflow thread data or create new dict
+                    workflow_thread_data = get_workflow_thread_data(thread_id) or {}
+                    workflow_thread_data["workflow_thread_id"] = thread_id
+                    workflow_thread_data["checkpoint_id"] = checkpoint_id
+                    # Ensure room_name is set if not already present
+                    if not workflow_thread_data.get("room_name"):
+                        workflow_thread_data["room_name"] = room_name
+
+                    save_workflow_thread_data(thread_id, workflow_thread_data)
+                    logger.info("   ✅ Saved checkpoint_id to workflow_threads")
                 else:
                     logger.warning(
                         "   ⚠️ No checkpoint_id found in state - workflow may restart from beginning"
