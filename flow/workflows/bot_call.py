@@ -252,9 +252,9 @@ class BotCallWorkflow:
         logger.info(f"   Room: {state.get('room_name')}")
 
         try:
-            # Use the thread_id from state (set by execute_async when starting a new workflow)
-            # Simple Explanation: Each API call generates a NEW thread_id in execute_async,
-            # ensuring each workflow run is independent. We use that thread_id here.
+            # Use the thread_id from state (set by execute_async or passed from API)
+            # Simple Explanation: The API endpoint creates the workflow_thread_id and saves
+            # all configuration to workflow_threads. We use that existing entry here.
             thread_id = state.get("workflow_thread_id")
             if not thread_id:
                 # Fallback: generate one if not set (shouldn't happen in normal flow)
@@ -263,56 +263,33 @@ class BotCallWorkflow:
             else:
                 logger.info(f"   Using workflow_thread_id from state: {thread_id}")
 
-            # Store thread_id in session data so we can resume the workflow
-            # when the bot finishes. Also copy important fields from session_data
-            # into the workflow state so they're available in the checkpoint.
+            # Update existing workflow_thread_data with bot configuration
+            # Simple Explanation: The API endpoint already created the workflow_threads entry
+            # with all the candidate/interview configuration. We just need to update it with
+            # the bot configuration (bot_config, bot_id) and mark it as paused.
             from flow.db import (
-                get_session_data,
-                save_session_data,
+                get_workflow_thread_data,
                 save_workflow_thread_data,
             )
 
             room_name = state.get("room_name")
             if room_name:
-                # Load session data and update with NEW workflow_thread_id
-                # Simple Explanation: We save the NEW thread_id to session_data so we can
-                # resume this specific workflow when the bot finishes. This overwrites any
-                # old workflow_thread_id from previous runs, ensuring each API call starts fresh.
-                session_data = get_session_data(room_name) or {}
-                old_thread_id = session_data.get("workflow_thread_id")
-                if old_thread_id and old_thread_id != thread_id:
-                    logger.info(
-                        f"   🔄 Replacing old workflow_thread_id: {old_thread_id} with new: {thread_id}"
-                    )
-                session_data["workflow_thread_id"] = thread_id
-                session_data["workflow_paused"] = True
-                save_session_data(room_name, session_data)
-                logger.info("   ✅ Saved NEW workflow_thread_id to session data")
+                # Get existing workflow_thread_data (created by API endpoint)
+                workflow_thread_data = get_workflow_thread_data(thread_id) or {}
 
-                # Copy important fields from session_data into workflow_thread_data
-                # Simple Explanation: This ensures email_results_to, candidate_name, etc.
-                # are available in the workflow checkpoint, so they're available when resuming.
-                # We save to workflow_threads table so the data persists with the workflow.
-                workflow_thread_data = {
-                    "workflow_thread_id": thread_id,
-                    "room_name": room_name,
-                    "room_url": state.get("room_url"),
-                    "bot_id": state.get("bot_id"),
-                    "bot_config": state.get("bot_config"),
-                    # Copy from session_data so they're in the checkpoint
-                    "email_results_to": session_data.get("email_results_to"),
-                    "webhook_callback_url": session_data.get("webhook_callback_url"),
-                    "candidate_name": session_data.get("candidate_name"),
-                    "candidate_email": session_data.get("candidate_email"),
-                    "interview_type": session_data.get("interview_type"),
-                    "position": session_data.get("position"),
-                    "interviewer_context": session_data.get("interviewer_context"),
-                    "analysis_prompt": session_data.get("analysis_prompt"),
-                    "summary_format_prompt": session_data.get("summary_format_prompt"),
-                }
+                # Update with bot configuration
+                workflow_thread_data["workflow_thread_id"] = thread_id
+                workflow_thread_data["room_name"] = room_name
+                workflow_thread_data["room_url"] = state.get("room_url")
+                workflow_thread_data["bot_id"] = state.get("bot_id")
+                workflow_thread_data["bot_config"] = state.get("bot_config")
+                workflow_thread_data["workflow_paused"] = True
+                workflow_thread_data["meeting_status"] = "in_progress"
+
+                # Save updated workflow_thread_data
                 save_workflow_thread_data(thread_id, workflow_thread_data)
                 logger.info(
-                    "   ✅ Copied session_data fields to workflow_thread_data (email, candidate_name, etc.)"
+                    f"   ✅ Updated workflow_thread_data with bot configuration (workflow_thread_id: {thread_id})"
                 )
 
             # Start the bot
@@ -325,6 +302,7 @@ class BotCallWorkflow:
                 bot_config=state["bot_config"],
                 room_name=room_name,
                 bot_id=bot_id,
+                workflow_thread_id=thread_id,
             )
 
             if not success:
@@ -415,13 +393,16 @@ class BotCallWorkflow:
                 state["transcript_text"] = result.get("transcript_text")
             logger.info("   ✅ Transcript processing complete")
 
-            # Clear workflow_paused flag
-            if room_name:
-                from flow.db import get_session_data, save_session_data
+            # Clear workflow_paused flag in workflow_threads
+            workflow_thread_id = state.get("workflow_thread_id")
+            if workflow_thread_id:
+                from flow.db import get_workflow_thread_data, save_workflow_thread_data
 
-                session_data = get_session_data(room_name) or {}
-                session_data["workflow_paused"] = False
-                save_session_data(room_name, session_data)
+                workflow_thread_data = (
+                    get_workflow_thread_data(workflow_thread_id) or {}
+                )
+                workflow_thread_data["workflow_paused"] = False
+                save_workflow_thread_data(workflow_thread_id, workflow_thread_data)
 
             return state
 
@@ -477,13 +458,28 @@ class BotCallWorkflow:
                 "error": None,
             }
 
-            # Generate thread_id for this workflow run
-            thread_id = str(uuid.uuid4())
+            # Use workflow_thread_id from context if provided (created by API endpoint),
+            # otherwise generate a new one
+            # Simple Explanation:
+            # - workflow_thread_id is OUR custom ID (created in API endpoint)
+            # - We use the SAME value as LangGraph's thread_id (LangGraph's concept for tracking workflow state)
+            # - This allows us to correlate our workflow_threads table data with LangGraph's checkpoints
+            thread_id = context.get("workflow_thread_id")
+            if not thread_id:
+                thread_id = str(uuid.uuid4())
+                logger.info(f"   Generated new workflow_thread_id: {thread_id}")
+            else:
+                logger.info(
+                    f"   Using existing workflow_thread_id from context: {thread_id}"
+                )
             initial_state["workflow_thread_id"] = thread_id
 
             # Create config for LangGraph
-            # Simple Explanation: The config tells LangGraph which thread_id
-            # to use for this workflow run. This allows us to resume it later.
+            # Simple Explanation:
+            # - We pass our workflow_thread_id as LangGraph's thread_id
+            # - LangGraph uses this thread_id to track workflow state in its checkpoint system
+            # - When the workflow pauses, LangGraph creates a checkpoint_id (different from thread_id)
+            # - We save both workflow_thread_id (our ID) and checkpoint_id (LangGraph's checkpoint ID) to workflow_threads
             config = {"configurable": {"thread_id": thread_id}}
 
             # Start the workflow
@@ -512,8 +508,11 @@ class BotCallWorkflow:
                 state = await graph.aget_state(config)
 
                 # Extract checkpoint_id from the state's config
-                # Simple Explanation: The checkpoint_id is stored in state.config["configurable"]["checkpoint_id"]
-                # This tells LangGraph exactly which checkpoint to resume from.
+                # Simple Explanation:
+                # - checkpoint_id is created by LangGraph when the workflow pauses
+                # - It's different from thread_id: thread_id identifies the workflow run, checkpoint_id identifies a specific checkpoint
+                # - We need to save checkpoint_id so we can resume from the exact checkpoint later
+                # - Both workflow_thread_id (our ID) and checkpoint_id (LangGraph's checkpoint ID) are saved to workflow_threads
                 checkpoint_id = state.config["configurable"]["checkpoint_id"]
 
                 if checkpoint_id:

@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.abspath(project_root))
 
 # Import shared components from bot_service
 from flow.steps.interview.bot_service import (  # noqa: E402
+    SpeakerTrackingProcessor,
     TranscriptHandler,
     TalkingAnimation,
     load_bot_video_frames,
@@ -80,7 +81,7 @@ async def run_bot(room_url: str, token: str, bot_config: Dict[str, Any]) -> None
         bot_prompt = bot_config.get(
             "bot_prompt",
             bot_config.get(
-                "system_message",  # Fallback to old field name for backwards compatibility
+                "system_message",
                 "You are a helpful AI assistant. "
                 "Your output will be spoken aloud, so keep language natural and easy to say. "
                 "Do not use special characters. "
@@ -131,7 +132,13 @@ IMPORTANT: Your output will be spoken aloud, so:
         )
 
         # Use Deepgram for Speech-to-Text (STT) to transcribe user speech
-        stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+        # Enable speaker diarization to identify different speakers
+        stt = DeepgramSTTService(
+            api_key=os.getenv("DEEPGRAM_API_KEY"),
+            model="nova-2",
+            diarize=True,
+        )
+        logger.info("🎤 Deepgram STT initialized with diarization")
 
         messages = [
             {
@@ -146,11 +153,19 @@ IMPORTANT: Your output will be spoken aloud, so:
         # Create transcript processor and handler
         transcript = TranscriptProcessor()
 
+        # Create speaker tracking processor to extract speaker IDs from frames
+        speaker_tracker = SpeakerTrackingProcessor()
+
         # Create transcript handler that saves to database
-        transcript_handler = TranscriptHandler(room_name=room_name)
+        transcript_handler = TranscriptHandler(
+            room_name=room_name,
+            bot_name=bot_name,
+            speaker_tracker=speaker_tracker,
+            transport=transport,
+        )
         logger.info(
             f"📝 Transcript will be saved to database for room: {room_name}\n"
-            "   - User speech: Deepgram STT (from pipeline)\n"
+            "   - User speech: Deepgram STT (from pipeline) with speaker diarization\n"
             "   - Bot speech: TranscriptProcessor (from TTS input)"
         )
 
@@ -162,6 +177,7 @@ IMPORTANT: Your output will be spoken aloud, so:
         pipeline_components = [
             transport.input(),  # Transport user input
             stt,  # Deepgram STT - converts user speech to text
+            speaker_tracker,  # Track speaker IDs from frames
             transcript.user(),  # User transcripts (from STT)
             context_aggregator.user(),  # User responses
             llm,  # LLM
@@ -187,13 +203,104 @@ IMPORTANT: Your output will be spoken aloud, so:
 
         @transport.event_handler("on_participant_joined")
         async def on_participant_joined(transport, participant):
-            """Log when any participant (including bot) joins."""
+            """Log when any participant (including bot) joins and update participants map."""
             participant_id = participant.get("id", "unknown")
             participant_name = participant.get("user_name", "unknown")
             is_local = participant.get("local", False)
+            session_id = participant.get("session_id") or participant_id
+
             logger.info(
-                f"🔵 Participant joined - ID: {participant_id}, Name: {participant_name}, Local: {is_local}"
+                f"🔵 Participant joined - ID: {participant_id}, Name: {participant_name}, Local: {is_local}, Session ID: {session_id}"
             )
+
+            # Update participants map
+            # Get all participants from Daily.co
+            try:
+                participants = transport.participants()
+                if not participants:
+                    logger.warning(
+                        "⚠️ No participants returned from transport.participants()"
+                    )
+                    return
+                logger.info(f"👥 Participants from Daily.co: {participants}")
+
+                # Identify bot's session_id (local participant or match by bot_name)
+                bot_session_id = None
+                if is_local:
+                    bot_session_id = session_id
+                    logger.info(
+                        f"🤖 Bot session_id identified (local): {bot_session_id}"
+                    )
+                else:
+                    # Check if this participant matches bot_name
+                    if participant_name == bot_name:
+                        bot_session_id = session_id
+                        logger.info(
+                            f"🤖 Bot session_id identified (by name): {bot_session_id}"
+                        )
+
+                if bot_session_id:
+                    transcript_handler.bot_session_id = bot_session_id
+
+                # Build participants_map for all NON-bot participants
+                participants_map = {}
+                for pid, pdata in participants.items():
+                    if pid == "local":
+                        # Skip local participant (it's the bot)
+                        continue
+                    p_session_id = pdata.get("session_id") or pid
+                    # Skip bot if we've identified it
+                    if bot_session_id and p_session_id == bot_session_id:
+                        continue
+                    # Skip if this is the bot by name
+                    p_name = pdata.get("user_name") or pdata.get("name") or ""
+                    if p_name == bot_name:
+                        continue
+
+                    participants_map[p_session_id] = {
+                        "name": p_name,
+                        "user_id": pdata.get("user_id"),
+                        "session_id": p_session_id,
+                        "id": pid,
+                    }
+                    logger.info(
+                        f"   - session_id: {p_session_id}, name: {p_name}, user_id: {pdata.get('user_id')}"
+                    )
+
+                transcript_handler.participants_map = participants_map
+                logger.info(f"📋 Participants map (excluding bot): {participants_map}")
+            except Exception as e:
+                logger.warning(f"⚠️ Error updating participants map: {e}", exc_info=True)
+
+        # Register event handler for active speaker changes
+        @transport.event_handler("active-speaker-change")
+        async def on_active_speaker_change(transport, event):
+            """Handle active speaker change events to map Deepgram speaker IDs to Daily.co participants."""
+            active_speaker = event.get("activeSpeaker", {})
+            peer_id = active_speaker.get("peerId")
+
+            if not peer_id:
+                logger.warning(f"⚠️ Active speaker change event missing peerId: {event}")
+                return
+
+            logger.info(f"🔊 Active speaker changed: session_id={peer_id}")
+
+            # Get current/recent Deepgram speaker ID from tracker
+            deepgram_speaker_id = speaker_tracker.get_current_speaker_id()
+
+            if deepgram_speaker_id is not None:
+                logger.info(f"   Current Deepgram speaker ID: {deepgram_speaker_id}")
+                # Map Deepgram speaker ID to Daily.co session_id
+                speaker_tracker.map_speaker_to_participant(deepgram_speaker_id, peer_id)
+                logger.info(
+                    f"✅ Mapped Deepgram speaker {deepgram_speaker_id} → Daily.co session_id {peer_id}"
+                )
+                # Log mapping summary
+                speaker_tracker.log_mapping_summary()
+            else:
+                logger.warning(
+                    "⚠️ Active speaker changed but no recent Deepgram transcription found"
+                )
 
         # Register event handler for transcript updates from TranscriptProcessor
         @transcript.event_handler("on_transcript_update")
@@ -236,10 +343,7 @@ IMPORTANT: Your output will be spoken aloud, so:
         finally:
             # Clean up the transport
             try:
-                if hasattr(transport, "cleanup") and callable(transport.cleanup):
-                    await transport.cleanup()
-                elif hasattr(transport, "close") and callable(transport.close):
-                    await transport.close()
+                await transport.cleanup()
                 logger.info("✅ Transport cleaned up successfully")
             except (RuntimeError, asyncio.CancelledError) as cleanup_error:
                 error_msg = str(cleanup_error)

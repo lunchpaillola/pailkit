@@ -227,6 +227,16 @@ class BotJoinRequest(BaseModel):
     bot_config: BotConfig
     process_insights: bool = True  # Whether to extract insights after bot finishes
 
+    # Optional: Candidate/interview configuration
+    candidate_name: str | None = None  # Candidate/participant name
+    candidate_email: str | None = None  # Email to send results to
+    interview_type: str | None = None  # Type of interview (e.g., "Technical Interview")
+    position: str | None = None  # Job position being interviewed for
+    interviewer_context: str | None = None  # Context about the interviewer/interview
+    analysis_prompt: str | None = None  # Custom prompt for AI analysis
+    summary_format_prompt: str | None = None  # Custom prompt for summary formatting
+    webhook_callback_url: str | None = None  # Webhook URL to send results to
+
 
 class BotJoinResponse(BaseModel):
     """Response when starting a bot."""
@@ -302,6 +312,71 @@ async def join_bot(request: BotJoinRequest) -> BotJoinResponse:
         # Extract room name from URL (last part after the last slash)
         room_name = request.room_url.split("/")[-1]
 
+        # Generate workflow_thread_id and save all configuration directly to workflow_threads
+        # Simple Explanation:
+        # - workflow_thread_id is OUR custom ID for tracking this workflow in our workflow_threads table
+        # - We create it here BEFORE starting LangGraph, so we can save config to the database first
+        # - This same ID will be used as LangGraph's thread_id (LangGraph uses it for checkpointing)
+        # - LangGraph will also create a checkpoint_id when it pauses, which we'll save separately
+        #
+        # UUID4 Collision Safety:
+        # - UUID4 has 2^122 possible values (5.3 x 10^36) - collision probability is astronomically low
+        # - Database has PRIMARY KEY constraint on workflow_thread_id (enforces uniqueness)
+        # - save_workflow_thread_data uses upsert, so collisions would update instead of fail
+        # - We retry with a new UUID if save fails (extra safety)
+        from flow.db import save_workflow_thread_data, get_workflow_thread_data
+
+        # Retry logic for UUID collision (extremely unlikely but safe)
+        max_retries = 3
+        workflow_thread_id = None
+        for attempt in range(max_retries):
+            workflow_thread_id = str(uuid.uuid4())
+
+            # Check if this ID already exists (extra safety check before saving)
+            existing = get_workflow_thread_data(workflow_thread_id)
+            if existing:
+                logger.warning(
+                    f"⚠️ UUID collision detected (attempt {attempt + 1}/{max_retries}): {workflow_thread_id} - generating new UUID"
+                )
+                continue  # Try again with new UUID
+
+            # Build workflow_thread_data with all configuration
+            workflow_thread_data = {
+                "workflow_thread_id": workflow_thread_id,
+                "room_name": room_name,
+                "room_url": request.room_url,
+                "bot_id": bot_id,  # bot_id is defined above (line 310)
+                # Candidate/interview configuration
+                "candidate_name": request.candidate_name,
+                "candidate_email": request.candidate_email,
+                "email_results_to": request.candidate_email,  # Use candidate_email as email_results_to
+                "interview_type": request.interview_type,
+                "position": request.position,
+                "interviewer_context": request.interviewer_context,
+                "analysis_prompt": request.analysis_prompt,
+                "summary_format_prompt": request.summary_format_prompt,
+                "webhook_callback_url": request.webhook_callback_url,
+                # Bot configuration will be added in the workflow
+                "meeting_status": "in_progress",
+            }
+
+            # Save to workflow_threads table
+            if save_workflow_thread_data(workflow_thread_id, workflow_thread_data):
+                logger.info(
+                    f"✅ Saved configuration to workflow_threads: workflow_thread_id={workflow_thread_id}"
+                )
+                break  # Success - exit retry loop
+            else:
+                logger.warning(
+                    f"⚠️ Failed to save workflow_thread_data (attempt {attempt + 1}/{max_retries}) - retrying with new UUID"
+                )
+
+        if not workflow_thread_id:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create workflow_thread_id after multiple attempts",
+            )
+
         # Convert bot_config to dictionary format expected by bot_service
         bot_config_dict = {
             "bot_prompt": request.bot_config.bot_prompt,
@@ -345,12 +420,15 @@ async def join_bot(request: BotJoinRequest) -> BotJoinResponse:
         workflow = BotCallWorkflow()
 
         # Prepare workflow context
+        # Simple Explanation: We pass the workflow_thread_id so the workflow uses the existing
+        # entry in workflow_threads instead of creating a new one.
         workflow_context = {
             "room_url": request.room_url,
             "token": request.token,
             "room_name": room_name,
             "bot_config": bot_config_dict,
             "bot_id": bot_id,
+            "workflow_thread_id": workflow_thread_id,  # Pass existing workflow_thread_id
         }
 
         # Execute the workflow asynchronously

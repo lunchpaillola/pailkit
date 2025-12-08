@@ -206,15 +206,6 @@ async def download_transcript_vtt(download_link: str) -> str | None:
         return None
 
 
-def get_room_session_data(room_name: str) -> dict[str, Any] | None:
-    """
-    Get session data from Supabase database.
-    """
-    from flow.db import get_session_data
-
-    return get_session_data(room_name)
-
-
 async def send_webhook(url: str, payload: dict[str, Any]) -> bool:
     """Send results to webhook URL."""
     try:
@@ -777,24 +768,27 @@ class ProcessTranscriptStep(InterviewStep):
             logger.info(f"🧵 Workflow Thread ID: {workflow_thread_id}")
 
         try:
-            # Step 1: Check if transcript exists in database (bot-enabled case)
-            logger.info("\n📦 STEP 1: Checking database for transcript")
-            session_data = get_room_session_data(room_name) if room_name else None
+            # Step 1: Check if transcript exists in workflow_threads (bot-enabled case)
+            logger.info("\n📦 STEP 1: Checking workflow_threads for transcript")
             transcript_text = None
 
-            if session_data and session_data.get("transcript_text"):
-                # Transcript exists in DB (bot was enabled)
-                transcript_text = session_data.get("transcript_text")
+            if workflow_thread_id:
+                from flow.db import get_workflow_thread_data
+
+                workflow_thread_data = get_workflow_thread_data(workflow_thread_id)
+                if workflow_thread_data and workflow_thread_data.get("transcript_text"):
+                    transcript_text = workflow_thread_data.get("transcript_text")
+                    logger.info(
+                        f"✅ Found transcript in workflow_threads ({len(transcript_text)} chars)"
+                    )
+                    logger.info(
+                        "   🤖 Using bot-generated transcript (includes both user and bot)"
+                    )
+
+            if not transcript_text:
+                # No transcript in workflow_threads - need to download from Daily.co
                 logger.info(
-                    f"✅ Found transcript in database ({len(transcript_text)} chars)"
-                )
-                logger.info(
-                    "   🤖 Using bot-generated transcript (includes both user and bot)"
-                )
-            else:
-                # No transcript in DB - need to download from Daily.co
-                logger.info(
-                    "   📥 No transcript in database, will download from Daily.co"
+                    "   📥 No transcript in workflow_threads, will download from Daily.co"
                 )
 
                 if not transcript_id:
@@ -831,34 +825,41 @@ class ProcessTranscriptStep(InterviewStep):
                 transcript_text = parse_vtt_to_text(vtt_content)
                 logger.info(f"✅ Extracted text ({len(transcript_text)} chars)")
 
-                # Save transcript_text to database (for non-bot case, bot already saves it)
-                if room_name and transcript_text:
-                    from flow.db import get_session_data, save_session_data
+                # Save transcript_text to workflow_threads (for non-bot case, bot already saves it)
+                if workflow_thread_id and transcript_text:
+                    from flow.db import (
+                        get_workflow_thread_data,
+                        save_workflow_thread_data,
+                    )
 
-                    current_session = get_session_data(room_name) or {}
-                    current_session["transcript_text"] = transcript_text
-                    save_session_data(room_name, current_session)
+                    workflow_thread_data = (
+                        get_workflow_thread_data(workflow_thread_id) or {}
+                    )
+                    workflow_thread_data["workflow_thread_id"] = workflow_thread_id
+                    workflow_thread_data["transcript_text"] = transcript_text
+                    save_workflow_thread_data(workflow_thread_id, workflow_thread_data)
                     logger.info(
-                        f"✅ Saved transcript_text to database ({len(transcript_text)} chars)"
+                        f"✅ Saved transcript_text to workflow_threads ({len(transcript_text)} chars)"
                     )
 
             # Store transcript in state
             state["interview_transcript"] = transcript_text
 
-            # Step 5: Retrieve session data from Supabase database
-            # Simple Explanation: If we have a workflow_thread_id, we use the workflow_threads table
-            # which organizes everything by workflow run. Otherwise, we fall back to the rooms table.
-            logger.info("\n📦 STEP 5: Retrieving session data from database")
+            # Step 5: Retrieve session data from workflow_threads
+            # Simple Explanation: All data is stored in workflow_threads table, organized by workflow_thread_id.
+            logger.info("\n📦 STEP 5: Retrieving session data from workflow_threads")
 
-            # Get workflow_thread_id from state or try to get from rooms table
-            if not workflow_thread_id and room_name:
-                from flow.db import get_session_data
+            if not workflow_thread_id:
+                # Try to find workflow_thread_id by room_name
+                from flow.db import get_workflow_threads_by_room_name
 
-                room_session = get_session_data(room_name)
-                if room_session:
-                    workflow_thread_id = room_session.get("workflow_thread_id")
+                threads = get_workflow_threads_by_room_name(room_name)
+                # Get the most recent paused workflow thread
+                for thread in threads:
+                    if thread.get("workflow_paused"):
+                        workflow_thread_id = thread.get("workflow_thread_id")
+                        break
 
-            # Use workflow_threads table if we have a workflow_thread_id
             if workflow_thread_id:
                 from flow.db import get_workflow_thread_data
 
@@ -870,51 +871,23 @@ class ProcessTranscriptStep(InterviewStep):
                         f"✅ Retrieved workflow thread data for workflow_thread_id: {workflow_thread_id}"
                     )
                 else:
-                    # Workflow thread doesn't exist yet, try to get from rooms table
-                    # Simple Explanation: When a workflow is first resumed, the workflow_thread_data
-                    # might not exist yet. We check the rooms table (session_data) to get email,
-                    # candidate_name, etc. that were saved before the workflow started.
-                    session_data = get_room_session_data(room_name) if room_name else {}
-                    if not session_data:
-                        session_data = {}
-                    logger.info(
-                        f"⚠️ Workflow thread not found, will create new entry for workflow_thread_id: {workflow_thread_id}"
+                    logger.warning(
+                        f"⚠️ Workflow thread not found for workflow_thread_id: {workflow_thread_id}"
                     )
-                    logger.info(
-                        "   Using session_data from rooms table as fallback (email, candidate_name, etc.)"
-                    )
-            else:
-                # Fall back to rooms table (legacy behavior)
-                if not session_data:
-                    session_data = (
-                        get_room_session_data(room_name) if room_name else None
-                    )
-                if not session_data:
-                    logger.warning("⚠️ No session data found")
                     session_data = {}
+            else:
+                logger.warning(
+                    "⚠️ No workflow_thread_id found - cannot retrieve session data"
+                )
+                session_data = {}
 
             # Check if transcript was already processed for this workflow run
-            # Simple Explanation: When using workflow_threads table, processing status is stored
-            # directly in the thread_data. When using rooms table, we check processing_status_by_key.
-            if workflow_thread_id and "transcript_processed" in session_data:
-                # Using workflow_threads table - status is directly in thread_data
-                transcript_already_processed = session_data.get(
-                    "transcript_processed", False
-                )
-                email_already_sent = session_data.get("email_sent", False)
-                webhook_already_sent = session_data.get("webhook_sent", False)
-            else:
-                # Using rooms table - check processing_status_by_key
-                processing_key = workflow_thread_id or room_name
-                processing_status_by_key = session_data.get(
-                    "processing_status_by_key", {}
-                )
-                processing_status = processing_status_by_key.get(processing_key, {})
-                transcript_already_processed = processing_status.get(
-                    "transcript_processed", False
-                )
-                email_already_sent = processing_status.get("email_sent", False)
-                webhook_already_sent = processing_status.get("webhook_sent", False)
+            # Simple Explanation: Processing status is stored directly in workflow_thread_data.
+            transcript_already_processed = session_data.get(
+                "transcript_processed", False
+            )
+            email_already_sent = session_data.get("email_sent", False)
+            webhook_already_sent = session_data.get("webhook_sent", False)
 
             # If transcript was already processed AND email/webhook were already sent,
             # skip everything to prevent duplicate processing
@@ -1262,9 +1235,8 @@ class ProcessTranscriptStep(InterviewStep):
 
             state["email_sent"] = email_sent
 
-            # Save all important fields to database after processing completes
-            # Simple Explanation: If we have a workflow_thread_id, we save to workflow_threads table.
-            # Otherwise, we fall back to the rooms table for backwards compatibility.
+            # Save all important fields to workflow_threads after processing completes
+            # Simple Explanation: All data is saved to workflow_threads table, organized by workflow_thread_id.
             if workflow_thread_id:
                 # Use workflow_threads table - this is the primary way to store workflow data
                 from flow.db import save_workflow_thread_data, get_workflow_thread_data
@@ -1330,49 +1302,9 @@ class ProcessTranscriptStep(InterviewStep):
                 logger.info(
                     f"✅ Saved all processing results to workflow_threads table for workflow_thread_id: {workflow_thread_id}"
                 )
-            elif room_name:
-                # Fall back to rooms table (legacy behavior for non-workflow cases)
-                from flow.db import get_session_data, save_session_data
-
-                current_session = get_session_data(room_name) or {}
-
-                # Mark transcript as processed to prevent duplicate processing
-                # Simple Explanation: We save processing status keyed by room_name
-                # (since we don't have a workflow_thread_id in this case)
-                processing_key = room_name
-                if "processing_status_by_key" not in current_session:
-                    current_session["processing_status_by_key"] = {}
-                if processing_key not in current_session["processing_status_by_key"]:
-                    current_session["processing_status_by_key"][processing_key] = {}
-                current_session["processing_status_by_key"][processing_key][
-                    "transcript_processed"
-                ] = True
-                current_session["processing_status_by_key"][processing_key][
-                    "email_sent"
-                ] = email_sent
-                current_session["processing_status_by_key"][processing_key][
-                    "webhook_sent"
-                ] = webhook_sent
-
-                # Set transcript_processing back to False (processing is complete)
-                current_session["transcript_processing"] = False
-
-                # Save the candidate_summary that was generated
-                if candidate_summary:
-                    current_session["candidate_summary"] = candidate_summary
-                    logger.info(
-                        f"✅ Saving candidate_summary to database ({len(candidate_summary)} chars)"
-                    )
-
-                # Update meeting_status to "completed" if it's currently "ended"
-                if current_session.get("meeting_status") == "ended":
-                    current_session["meeting_status"] = "completed"
-                    logger.info("✅ Updated meeting_status to 'completed'")
-
-                # Save all updates to database
-                save_session_data(room_name, current_session)
-                logger.info(
-                    "✅ Saved all processing results to rooms table (legacy fallback)"
+            else:
+                logger.warning(
+                    "⚠️ No workflow_thread_id - cannot save processing results to workflow_threads"
                 )
 
             state = self.update_status(state, "completed")
@@ -1388,14 +1320,20 @@ class ProcessTranscriptStep(InterviewStep):
             logger.error(f"❌ {error_msg}", exc_info=True)
 
             # Reset transcript_processing flag even on error
-            room_name = state.get("room_name")
-            if room_name:
+            workflow_thread_id = state.get("workflow_thread_id")
+            if workflow_thread_id:
                 try:
-                    from flow.db import get_session_data, save_session_data
+                    from flow.db import (
+                        get_workflow_thread_data,
+                        save_workflow_thread_data,
+                    )
 
-                    current_session = get_session_data(room_name) or {}
-                    current_session["transcript_processing"] = False
-                    save_session_data(room_name, current_session)
+                    workflow_thread_data = (
+                        get_workflow_thread_data(workflow_thread_id) or {}
+                    )
+                    workflow_thread_data["workflow_thread_id"] = workflow_thread_id
+                    workflow_thread_data["transcript_processing"] = False
+                    save_workflow_thread_data(workflow_thread_id, workflow_thread_data)
                     logger.info("✅ Reset transcript_processing flag after error")
                 except Exception as save_error:
                     logger.error(
