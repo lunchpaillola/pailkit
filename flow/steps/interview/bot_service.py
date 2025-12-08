@@ -10,8 +10,11 @@ import os
 import signal
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Any, Dict, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pipecat.transports.daily.transport import DailyTransport
 
 import requests
 from PIL import Image
@@ -35,6 +38,7 @@ from pipecat.frames.frames import (
     TranscriptionMessage,
     TranscriptionUpdateFrame,
 )
+
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -64,36 +68,88 @@ class TranscriptHandler:
         messages: List of all processed transcript messages
         room_name: Room name for saving to database
         transcript_text: Accumulated transcript text
+        bot_name: Bot's name (for assistant messages)
+        speaker_tracker: Reference to SpeakerTrackingProcessor
+        transport: DailyTransport instance
+        participants_map: Dict mapping session_id -> participant info
+        bot_session_id: Bot's own session_id
     """
 
-    def __init__(self, room_name: str):
+    def __init__(
+        self,
+        room_name: str,
+        bot_name: Optional[str] = None,
+        speaker_tracker: Optional["SpeakerTrackingProcessor"] = None,
+        transport: Optional["DailyTransport"] = None,
+        workflow_thread_id: Optional[str] = None,
+    ):
         """
         Initialize handler with database storage.
 
         Args:
             room_name: Room name for saving transcript to database
+            bot_name: Bot's name (for assistant messages)
+            speaker_tracker: Reference to SpeakerTrackingProcessor
+            transport: DailyTransport instance to access participants()
+            workflow_thread_id: Optional workflow_thread_id to save transcript to workflow_threads
         """
         self.messages: list[TranscriptionMessage] = []
         self.room_name: str = room_name
         self.transcript_text: str = ""
-        logger.info(f"TranscriptHandler initialized for room: {room_name}")
+        self.bot_name: str = bot_name or "Assistant"
+        self.speaker_tracker: Optional["SpeakerTrackingProcessor"] = speaker_tracker
+        self.transport: Optional["DailyTransport"] = transport
+        self.participants_map: Dict[str, Dict[str, Any]] = {}
+        self.participant_join_order: list[str] = (
+            []
+        )  # Track participant join order for mapping
+        self.bot_session_id: Optional[str] = None
+        self.workflow_thread_id: Optional[str] = workflow_thread_id
+        logger.info(
+            f"TranscriptHandler initialized for room: {room_name}, bot_name: {self.bot_name}, workflow_thread_id: {workflow_thread_id}"
+        )
+
+    def _normalize_timestamp(
+        self, timestamp: Optional[Union[str, float, int]]
+    ) -> Optional[str]:
+        """
+        Convert timestamp to ISO format string.
+
+        Args:
+            timestamp: Timestamp as string, float (Unix timestamp), int, or None
+
+        Returns:
+            ISO format timestamp string, or None if timestamp is None
+        """
+        if timestamp is None:
+            return None
+        if isinstance(timestamp, str):
+            return timestamp  # Assume already formatted
+        if isinstance(timestamp, (int, float)):
+            # Convert Unix timestamp to ISO format
+            return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        return None
 
     def _format_transcript_line(
-        self, role: str, content: str, timestamp: Optional[str] = None
+        self,
+        speaker_name: str,
+        content: str,
+        timestamp: Optional[Union[str, float, int]] = None,
     ) -> str:
         """
         Format a transcript message as a line of text.
 
         Args:
-            role: Role of speaker (user/assistant)
+            speaker_name: Name of the speaker (bot name or participant name)
             content: The transcript text
-            timestamp: Optional timestamp string
+            timestamp: Optional timestamp (string, float, or int) - will be normalized to ISO format
 
         Returns:
             Formatted line string
         """
-        timestamp_str = f"[{timestamp}] " if timestamp else ""
-        return f"{timestamp_str}{role}: {content}"
+        normalized_timestamp = self._normalize_timestamp(timestamp)
+        timestamp_str = f"[{normalized_timestamp}] " if normalized_timestamp else ""
+        return f"{timestamp_str}{speaker_name}: {content}"
 
     def add_daily_transcript(
         self, participant_id: str, text: str, is_final: bool = False
@@ -116,17 +172,58 @@ class TranscriptHandler:
         Save accumulated transcript to database.
         """
         try:
-            from flow.db import get_session_data, save_session_data
+            # Save to workflow_threads table if we have a workflow_thread_id
+            if self.workflow_thread_id:
+                from flow.db import get_workflow_thread_data, save_workflow_thread_data
 
-            # Get existing session data
-            session_data = get_session_data(self.room_name) or {}
+                workflow_thread_data = (
+                    get_workflow_thread_data(self.workflow_thread_id) or {}
+                )
+                workflow_thread_data["workflow_thread_id"] = self.workflow_thread_id
+                workflow_thread_data["transcript_text"] = self.transcript_text
 
-            # Update transcript text
-            session_data["transcript_text"] = self.transcript_text
+                save_workflow_thread_data(self.workflow_thread_id, workflow_thread_data)
+                logger.debug(
+                    f"✅ Transcript saved to workflow_threads: workflow_thread_id={self.workflow_thread_id}"
+                )
+            else:
+                # Fallback: try to find workflow_thread_id by room_name
+                from flow.db import get_workflow_threads_by_room_name
 
-            # Save back to database
-            save_session_data(self.room_name, session_data)
-            logger.debug(f"✅ Transcript saved to database for room: {self.room_name}")
+                threads = get_workflow_threads_by_room_name(self.room_name)
+                # Get the most recent paused workflow thread
+                for thread in threads:
+                    if thread.get("workflow_paused"):
+                        workflow_thread_id = thread.get("workflow_thread_id")
+                        if workflow_thread_id:
+                            from flow.db import (
+                                get_workflow_thread_data,
+                                save_workflow_thread_data,
+                            )
+
+                            workflow_thread_data = (
+                                get_workflow_thread_data(workflow_thread_id) or {}
+                            )
+                            workflow_thread_data["workflow_thread_id"] = (
+                                workflow_thread_id
+                            )
+                            workflow_thread_data["transcript_text"] = (
+                                self.transcript_text
+                            )
+
+                            save_workflow_thread_data(
+                                workflow_thread_id, workflow_thread_data
+                            )
+                            logger.debug(
+                                f"✅ Transcript saved to workflow_threads (found by room_name): workflow_thread_id={workflow_thread_id}"
+                            )
+                            # Cache the workflow_thread_id for future saves
+                            self.workflow_thread_id = workflow_thread_id
+                            break
+                else:
+                    logger.warning(
+                        f"⚠️ No workflow_thread_id found for room: {self.room_name} - transcript not saved"
+                    )
         except Exception as e:
             logger.error(f"Error saving transcript to database: {e}", exc_info=True)
 
@@ -140,22 +237,66 @@ class TranscriptHandler:
             processor: The TranscriptProcessor that emitted the update
             frame: TranscriptionUpdateFrame containing new messages
         """
-        logger.debug(
-            f"Received transcript update with {len(frame.messages)} new messages"
-        )
+        logger.info(f"📝 Received transcript update: {len(frame.messages)} messages")
 
         for msg in frame.messages:
             # Capture both user and assistant messages from TranscriptProcessor
             # User messages come from Deepgram STT, assistant messages from TTS
             self.messages.append(msg)
 
-            # Format and add to transcript text
-            role_label = "user" if msg.role == "user" else "assistant"
-            line = self._format_transcript_line(role_label, msg.content, msg.timestamp)
-            self.transcript_text += line + "\n"
+            # Get user_id from message (Daily.co participant ID)
+            msg_user_id = getattr(msg, "user_id", None)
 
-            # Log the message
-            logger.info(f"Transcript ({role_label.capitalize()}): {line}")
+            # Determine speaker name based on role
+            if msg.role == "assistant":
+                # Assistant messages = bot speaking - always use bot name
+                speaker_name = self.bot_name
+            else:
+                # User messages = human participants - lookup by user_id
+                speaker_name = "User"  # Default fallback
+
+                participant_info = None
+
+                # Try to find participant by user_id
+                if msg_user_id:
+                    # Try direct lookup by user_id as session_id
+                    participant_info = self.participants_map.get(msg_user_id)
+                    if not participant_info:
+                        # Search for participant where user_id or id matches
+                        for sid, p_info in self.participants_map.items():
+                            p_user_id = p_info.get("user_id")
+                            p_id = p_info.get("id")
+                            if p_user_id == msg_user_id or p_id == msg_user_id:
+                                participant_info = p_info
+                                break
+
+                # If found, use participant name
+                if participant_info:
+                    speaker_name = (
+                        participant_info.get("name")
+                        or participant_info.get("user_name")
+                        or "User"
+                    )
+                else:
+                    # Fallback: If only one participant, use their name
+                    if len(self.participants_map) == 1:
+                        single_participant = list(self.participants_map.values())[0]
+                        speaker_name = (
+                            single_participant.get("name")
+                            or single_participant.get("user_name")
+                            or "User"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ Could not resolve speaker name for user_id: {msg_user_id}, "
+                            f"participants_map has {len(self.participants_map)} participants. Using default 'User'"
+                        )
+
+            # Format and add to transcript text
+            line = self._format_transcript_line(
+                speaker_name, msg.content, msg.timestamp
+            )
+            self.transcript_text += line + "\n"
 
             # Save to database (updates session data with latest transcript)
             await self._save_to_database()
@@ -184,13 +325,7 @@ def load_bot_video_frames(
     """
     script_dir = os.path.dirname(__file__)
     hosting_dir = os.path.join(os.path.dirname(os.path.dirname(script_dir)), "hosting")
-    # Try both lowercase and capitalized directory names (case-insensitive)
-    sprites_dir_lower = os.path.join(hosting_dir, "sprites")
-    sprites_dir_upper = os.path.join(hosting_dir, "Sprites")
-    if os.path.exists(sprites_dir_upper):
-        sprites_dir = sprites_dir_upper
-    else:
-        sprites_dir = sprites_dir_lower
+    sprites_dir = os.path.join(hosting_dir, "sprites")
 
     # Get video mode from config (default to "animated")
     video_mode = bot_config.get("video_mode", "animated")
@@ -302,6 +437,100 @@ def load_bot_video_frames(
         return (None, None)
 
 
+class SpeakerTrackingProcessor(FrameProcessor):
+    """
+    Tracks speaker IDs from frames with speaker information.
+
+    Extracts speaker IDs from frames (e.g., from Deepgram STT with diarization enabled).
+    Maintains a mapping between speaker IDs and Daily.co participants.
+    """
+
+    def __init__(self, transcript_handler: Optional["TranscriptHandler"] = None):
+        super().__init__()
+        # Mapping: Deepgram speaker ID -> Daily.co session_id
+        self.speaker_to_session_map: Dict[int, str] = {}
+        # Track the last seen speaker ID from frames
+        self.last_speaker: Optional[int] = None
+        # Reference to transcript handler for participant order mapping
+        self.transcript_handler: Optional["TranscriptHandler"] = transcript_handler
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        """Process incoming frames and extract speaker IDs from frames with speaker information."""
+        await super().process_frame(frame, direction)
+
+        frame_type = type(frame).__name__
+        logger.debug(f"📦 Frame received: {frame_type}")
+
+        # Check if frame has speaker information (from Deepgram STT with diarization enabled)
+        speaker_id = getattr(frame, "speaker", None) or getattr(
+            frame, "speaker_id", None
+        )
+
+        # Log frame details when speaker info is present
+        if speaker_id is not None:
+            self.last_speaker = speaker_id
+            logger.debug(f"📢 Frame with speaker ID: {speaker_id}, type: {frame_type}")
+
+            # If this speaker ID isn't mapped yet, try to map it using participant order
+            if (
+                speaker_id not in self.speaker_to_session_map
+                and self.transcript_handler
+            ):
+                # Get unmapped participants in join order
+                mapped_session_ids = set(self.speaker_to_session_map.values())
+                unmapped_participants = [
+                    session_id
+                    for session_id in self.transcript_handler.participant_join_order
+                    if session_id not in mapped_session_ids
+                    and session_id in self.transcript_handler.participants_map
+                ]
+
+                if unmapped_participants:
+                    # Map to first unmapped participant
+                    session_id = unmapped_participants[0]
+                    self.map_speaker_to_participant(speaker_id, session_id)
+                    logger.debug(
+                        f"✅ Auto-mapped Deepgram speaker {speaker_id} → Daily.co session_id {session_id} "
+                        f"(using participant order: {self.transcript_handler.participant_join_order})"
+                    )
+
+        # Pass frame through to next processor
+        await self.push_frame(frame, direction)
+
+    def map_speaker_to_participant(
+        self, deepgram_speaker_id: int, daily_session_id: str
+    ):
+        """
+        Map a Deepgram speaker ID to a Daily.co session_id.
+
+        Args:
+            deepgram_speaker_id: The speaker ID from Deepgram (0, 1, 2, etc.)
+            daily_session_id: The session_id from Daily.co (peerId)
+        """
+        self.speaker_to_session_map[deepgram_speaker_id] = daily_session_id
+        logger.info(
+            f"✅ Speaker mapping: Deepgram {deepgram_speaker_id} → Daily.co {daily_session_id}"
+        )
+
+    def get_current_speaker_id(self) -> Optional[int]:
+        """
+        Get the last seen Deepgram speaker ID.
+
+        Returns:
+            The last seen speaker ID, or None if no speaker has been seen yet
+        """
+        return self.last_speaker
+
+    def get_all_mappings(self) -> Dict[int, str]:
+        """Get all current speaker ID to session_id mappings."""
+        return self.speaker_to_session_map.copy()
+
+    def log_mapping_summary(self):
+        """Log a summary of current speaker mappings for diagnostics."""
+        logger.info(f"📊 Current speaker mappings: {self.speaker_to_session_map}")
+        logger.debug(f"   Last seen speaker ID: {self.last_speaker}")
+
+
 class TalkingAnimation(FrameProcessor):
     """Manages the bot's visual animation states.
 
@@ -346,9 +575,15 @@ class TalkingAnimation(FrameProcessor):
 class BotProcess:
     """Represents a single bot process with proper lifecycle management."""
 
-    def __init__(self, room_name: str, task: asyncio.Task):
+    def __init__(
+        self,
+        room_name: str,
+        task: asyncio.Task,
+        transport: Optional["DailyTransport"] = None,
+    ):
         self.room_name = room_name
         self.task = task
+        self.transport = transport  # Store transport reference for cleanup
         self.process_id = str(uuid.uuid4())
         self.start_time = asyncio.get_event_loop().time()
 
@@ -378,6 +613,9 @@ class BotService:
         # Simple Explanation: bot_config_map stores bot configuration for each room
         # This includes whether to process insights after the bot finishes
         self.bot_config_map: Dict[str, Dict[str, Any]] = {}
+        # Simple Explanation: transport_map stores DailyTransport instances for each room
+        # This allows us to explicitly leave the room during cleanup
+        self.transport_map: Dict[str, "DailyTransport"] = {}
 
         # Fly.io configuration - read from environment variables
         self.fly_api_host = os.getenv("FLY_API_HOST", "https://api.machines.dev/v1")
@@ -510,6 +748,7 @@ class BotService:
         room_name: Optional[str] = None,
         use_fly_machines: Optional[bool] = None,
         bot_id: Optional[str] = None,
+        workflow_thread_id: Optional[str] = None,
     ) -> bool:
         """
         Start a bot instance for the given room.
@@ -520,6 +759,8 @@ class BotService:
             bot_config: Bot configuration dictionary
             room_name: Optional room name (extracted from URL if not provided)
             use_fly_machines: Whether to use Fly.io machines (None = auto-detect from config)
+            bot_id: Optional bot ID for tracking
+            workflow_thread_id: Optional workflow thread ID to associate with this bot session
         """
         try:
             if not room_name:
@@ -569,7 +810,9 @@ class BotService:
                     self.bot_config_map[room_name] = bot_config
 
                     bot_task = asyncio.create_task(
-                        self._run_bot(room_url, token, bot_config, room_name)
+                        self._run_bot(
+                            room_url, token, bot_config, room_name, workflow_thread_id
+                        )
                     )
 
                     # Track the bot BEFORE it starts running (so concurrent requests see it)
@@ -604,7 +847,12 @@ class BotService:
             return False
 
     async def _run_bot(
-        self, room_url: str, token: str, bot_config: Dict[str, Any], room_name: str
+        self,
+        room_url: str,
+        token: str,
+        bot_config: Dict[str, Any],
+        room_name: str,
+        workflow_thread_id: Optional[str] = None,
     ) -> None:
         """
         Run the Pipecat bot directly without subprocess.
@@ -614,6 +862,7 @@ class BotService:
             token: Meeting token for authentication
             bot_config: Bot configuration dictionary
             room_name: Room name for saving transcript to database
+            workflow_thread_id: Optional workflow thread ID to associate with this bot session
         """
         try:
 
@@ -622,7 +871,7 @@ class BotService:
             bot_prompt = bot_config.get(
                 "bot_prompt",
                 bot_config.get(
-                    "system_message",  # Fallback to old field name for backwards compatibility
+                    "system_message",
                     "You are a helpful AI assistant. "
                     "Your output will be spoken aloud, so keep language natural and easy to say. "
                     "Do not use special characters. "
@@ -658,9 +907,30 @@ IMPORTANT: Your output will be spoken aloud, so:
                 ),
             )
 
+            # Store transport reference so we can explicitly leave the room during cleanup
+            self.transport_map[room_name] = transport
+
             logger.info(
                 f"Bot transport initialized for room: {room_url}, bot_name: {bot_name}"
             )
+
+            # Load participants immediately after transport creation
+            # This ensures we know all participants even if they joined before the bot
+            initial_participants = transport.participants() or {}
+            participants_map = {}
+            for pid, pdata in initial_participants.items():
+                if pid == "local":
+                    continue
+                session_id = pdata.get("session_id") or pid
+                # Extract name from nested info object - Daily.co always provides info.userName
+                info = pdata.get("info", {})
+                name = info.get("userName") or f"Participant {session_id}"
+                participants_map[session_id] = {
+                    "session_id": session_id,
+                    "name": name,
+                    "user_id": pdata.get("user_id"),
+                }
+            logger.info(f"📋 Participants loaded at startup: {participants_map}")
 
             # Use OpenAI for both LLM and TTS
             llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
@@ -672,7 +942,20 @@ IMPORTANT: Your output will be spoken aloud, so:
             )
 
             # Use Deepgram for Speech-to-Text (STT) to transcribe user speech
-            stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+            # Enable speaker diarization to identify different speakers
+            # utterances=True is required for proper speaker segments
+            stt = DeepgramSTTService(
+                api_key=os.getenv("DEEPGRAM_API_KEY"),
+                model="nova-2",
+                diarize=True,
+                utterances=True,
+            )
+            logger.info("🎤 Deepgram STT initialized with diarization and utterances")
+            logger.info("   🔍 DEBUG: Deepgram STT configuration:")
+            logger.info("      - model: nova-2")
+            logger.info("      - diarize: True")
+            logger.info("      - utterances: True")
+            logger.info(f"      - STT service type: {type(stt)}")
 
             messages = [
                 {
@@ -687,11 +970,47 @@ IMPORTANT: Your output will be spoken aloud, so:
             # Create transcript processor and handler
             transcript = TranscriptProcessor()
 
-            # Create transcript handler that saves to database
-            transcript_handler = TranscriptHandler(room_name=room_name)
+            # Get workflow_thread_id for this room (if workflow is running)
+            # Simple Explanation: We need to find the workflow_thread_id so we can save
+            # the transcript to workflow_threads table. Use the passed parameter if available,
+            # otherwise look for a paused workflow for this room as fallback.
+            if not workflow_thread_id:
+                try:
+                    from flow.db import get_workflow_threads_by_room_name
+
+                    threads = get_workflow_threads_by_room_name(room_name)
+                    # Get the most recent paused workflow thread
+                    for thread in threads:
+                        if thread.get("workflow_paused"):
+                            workflow_thread_id = thread.get("workflow_thread_id")
+                            break
+                except Exception as e:
+                    logger.debug(
+                        f"Could not find workflow_thread_id for room {room_name}: {e}"
+                    )
+
+            # Create transcript handler first (needed for speaker tracker)
+            transcript_handler = TranscriptHandler(
+                room_name=room_name,
+                bot_name=bot_name,
+                speaker_tracker=None,  # Will be set after creation
+                transport=transport,
+                workflow_thread_id=workflow_thread_id,
+            )
+
+            # Create speaker tracking processor to extract speaker IDs from frames
+            # Pass transcript_handler reference for participant order mapping
+            speaker_tracker = SpeakerTrackingProcessor(
+                transcript_handler=transcript_handler
+            )
+
+            # Now set the speaker_tracker reference in transcript_handler
+            transcript_handler.speaker_tracker = speaker_tracker
+            # Set participants_map that was loaded at startup
+            transcript_handler.participants_map = participants_map
             logger.info(
                 f"📝 Transcript will be saved to database for room: {room_name}\n"
-                "   - User speech: Deepgram STT (from pipeline)\n"
+                "   - User speech: Deepgram STT (from pipeline) with speaker diarization\n"
                 "   - Bot speech: TranscriptProcessor (from TTS input)"
             )
 
@@ -703,6 +1022,7 @@ IMPORTANT: Your output will be spoken aloud, so:
             pipeline_components = [
                 transport.input(),  # Transport user input
                 stt,  # Deepgram STT - converts user speech to text
+                speaker_tracker,  # Track speaker IDs from frames
                 transcript.user(),  # User transcripts (from STT)
                 context_aggregator.user(),  # User responses
                 llm,  # LLM
@@ -728,13 +1048,118 @@ IMPORTANT: Your output will be spoken aloud, so:
 
             @transport.event_handler("on_participant_joined")
             async def on_participant_joined(transport, participant):
-                """Log when any participant (including bot) joins."""
+                """Log when any participant (including bot) joins and update participants map."""
                 participant_id = participant.get("id", "unknown")
                 participant_name = participant.get("user_name", "unknown")
                 is_local = participant.get("local", False)
+                session_id = participant.get("session_id") or participant_id
+
                 logger.info(
-                    f"🔵 Participant joined - ID: {participant_id}, Name: {participant_name}, Local: {is_local}"
+                    f"🔵 Participant joined - ID: {participant_id}, Name: {participant_name}, Local: {is_local}, Session ID: {session_id}"
                 )
+
+                # Update participants map
+                # Get all participants from Daily.co
+                try:
+                    participants = transport.participants()
+                    if not participants:
+                        logger.warning(
+                            "⚠️ No participants returned from transport.participants()"
+                        )
+                        return
+
+                    # Identify bot's session_id (local participant or match by bot_name)
+                    bot_session_id = None
+                    if is_local:
+                        bot_session_id = session_id
+                    else:
+                        # Check if this participant matches bot_name
+                        if participant_name == bot_name:
+                            bot_session_id = session_id
+
+                    if bot_session_id:
+                        transcript_handler.bot_session_id = bot_session_id
+
+                    # Build participants_map for all NON-bot participants
+                    participants_map = {}
+                    for pid, pdata in participants.items():
+                        if pid == "local":
+                            # Skip local participant (it's the bot)
+                            continue
+                        p_session_id = pdata.get("session_id") or pid
+                        # Skip bot if we've identified it
+                        if bot_session_id and p_session_id == bot_session_id:
+                            continue
+                        # Skip if this is the bot by name
+                        # Extract name from nested info object - Daily.co always provides info.userName
+                        info = pdata.get("info", {})
+                        p_name = info.get("userName") or ""
+                        if p_name == bot_name:
+                            continue
+
+                        participants_map[p_session_id] = {
+                            "name": p_name,
+                            "user_name": p_name,  # Add for consistency/backward compatibility
+                            "user_id": pdata.get("user_id"),
+                            "session_id": p_session_id,
+                            "id": pid,
+                        }
+
+                    transcript_handler.participants_map = participants_map
+                    # Update participant join order (preserve existing order, add new participants)
+                    for session_id in participants_map.keys():
+                        if session_id not in transcript_handler.participant_join_order:
+                            transcript_handler.participant_join_order.append(session_id)
+                    logger.info(
+                        f"📋 Participants map updated: {len(participants_map)} participant(s)"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️ Error updating participants map: {e}", exc_info=True
+                    )
+
+            # Register event handler for active speaker changes
+            @transport.event_handler("on_active_speaker_changed")
+            async def on_active_speaker_changed(transport, event):
+                """Handle active speaker change events to map Deepgram speaker IDs to Daily.co participants."""
+                active_speaker = (
+                    event.get("activeSpeaker", {})
+                    if isinstance(event, dict)
+                    else getattr(event, "activeSpeaker", {})
+                )
+
+                # Try to get peer_id from activeSpeaker.peerId first
+                peer_id = (
+                    active_speaker.get("peerId")
+                    if isinstance(active_speaker, dict)
+                    else getattr(active_speaker, "peerId", None)
+                )
+
+                # Fallback: Use event.id (Daily.co participant ID) if peerId not available
+                if not peer_id:
+                    event_id = (
+                        event.get("id")
+                        if isinstance(event, dict)
+                        else getattr(event, "id", None)
+                    )
+                    if event_id:
+                        peer_id = event_id
+                    else:
+                        logger.debug(
+                            "No peerId or event.id in on_active_speaker_changed event"
+                        )
+                        return
+
+                # Get current Deepgram speaker ID
+                deepgram_speaker_id = speaker_tracker.get_current_speaker_id()
+
+                if deepgram_speaker_id is not None:
+                    speaker_tracker.map_speaker_to_participant(
+                        deepgram_speaker_id, peer_id
+                    )
+                    logger.debug(
+                        f"Mapped Deepgram speaker {deepgram_speaker_id} → Daily.co session_id {peer_id}"
+                    )
 
             # Register event handler for transcript updates from TranscriptProcessor
             @transcript.event_handler("on_transcript_update")
@@ -767,21 +1192,18 @@ IMPORTANT: Your output will be spoken aloud, so:
                 Simple Explanation: This event fires when participants join or leave.
                 We log the current participant counts for debugging and monitoring.
                 """
-                try:
-                    # Get participant counts from transport
-                    # Simple Explanation: participantCounts() returns information about
-                    # how many participants are currently in the room (present and hidden).
-                    counts = transport.participantCounts()
-                    if counts:
-                        present = counts.get("present", 0)
-                        hidden = counts.get("hidden", 0)
-                        logger.info(
-                            f"👥 Participant counts updated - Present: {present}, Hidden: {hidden}"
-                        )
-                    else:
-                        logger.debug("Participant counts not available")
-                except Exception as e:
-                    logger.debug(f"Error getting participant counts: {e}")
+                # Get participant counts from transport
+                # Simple Explanation: participantCounts() returns information about
+                # how many participants are currently in the room (present and hidden).
+                counts = transport.participantCounts()
+                if counts:
+                    present = counts.get("present", 0)
+                    hidden = counts.get("hidden", 0)
+                    logger.info(
+                        f"👥 Participant counts updated - Present: {present}, Hidden: {hidden}"
+                    )
+                else:
+                    logger.debug("Participant counts not available")
 
             @transport.event_handler("on_participant_left")
             async def on_participant_left(transport, participant, reason):
@@ -798,15 +1220,24 @@ IMPORTANT: Your output will be spoken aloud, so:
 
                 # Check if there's a workflow waiting to resume
                 # Simple Explanation: If a workflow was started via the bot_call
-                # workflow, it will have a workflow_thread_id. We check both session_data
-                # (for backward compatibility) and workflow_threads to find the thread_id.
+                # workflow, it will have a workflow_thread_id. First try to use the
+                # workflow_thread_id stored in transcript_handler (most reliable), then
+                # check session_data (for backward compatibility), and finally lookup by room_name.
                 from flow.db import get_session_data, get_workflow_thread_data
 
-                # First try to get workflow_thread_id from session_data (for backward compatibility)
-                session_data = get_session_data(room_name) or {}
-                workflow_thread_id = session_data.get("workflow_thread_id")
+                # First try to use workflow_thread_id from transcript_handler (most reliable)
+                workflow_thread_id = (
+                    transcript_handler.workflow_thread_id
+                    if transcript_handler.workflow_thread_id
+                    else None
+                )
 
-                # If not found in session_data, try to find it from workflow_threads by room_name
+                # If not found, try to get workflow_thread_id from session_data (for backward compatibility)
+                if not workflow_thread_id:
+                    session_data = get_session_data(room_name) or {}
+                    workflow_thread_id = session_data.get("workflow_thread_id")
+
+                # If still not found, try to find it from workflow_threads by room_name (fallback)
                 if not workflow_thread_id:
                     from flow.db import get_workflow_threads_by_room_name
 
@@ -842,10 +1273,6 @@ IMPORTANT: Your output will be spoken aloud, so:
                             if workflow_thread_data
                             else None
                         )
-
-                        # Fallback to session_data for backward compatibility
-                        if not checkpoint_id:
-                            checkpoint_id = session_data.get("checkpoint_id")
 
                         # Build config with thread_id and checkpoint_id (if available)
                         config = {"configurable": {"thread_id": workflow_thread_id}}
@@ -982,11 +1409,9 @@ IMPORTANT: Your output will be spoken aloud, so:
                 # that try to post to the event loop. We need to properly clean up the transport
                 # to prevent "Event loop is closed" errors.
                 try:
-                    # Clean up the transport to prevent callbacks after task completion
-                    if hasattr(transport, "cleanup") and callable(transport.cleanup):
-                        await transport.cleanup()
-                    elif hasattr(transport, "close") and callable(transport.close):
-                        await transport.close()
+                    # Explicitly leave the room before cleanup
+                    logger.info(f"🚪 Leaving Daily.co room: {room_name}")
+                    await transport.cleanup()
                     logger.info("✅ Transport cleaned up successfully")
                 except (RuntimeError, asyncio.CancelledError) as cleanup_error:
                     # Ignore cleanup errors - transport might already be closed
@@ -1005,43 +1430,52 @@ IMPORTANT: Your output will be spoken aloud, so:
                 except Exception as cleanup_error:
                     # Other cleanup errors - log but don't fail
                     logger.debug(f"Transport cleanup warning: {cleanup_error}")
+                finally:
+                    # Remove transport from map after cleanup
+                    self.transport_map.pop(room_name, None)
 
         except asyncio.CancelledError:
-            # Task was cancelled - this is expected when participant leaves
-            logger.info("🛑 Bot task was cancelled (participant left)")
-            # Ensure transport is cleaned up even on cancellation
+            # Task was cancelled - this is expected when participant leaves or during shutdown
+            logger.info("🛑 Bot task was cancelled - ensuring bot leaves the room")
+            # Ensure transport is cleaned up even on cancellation - this is critical to leave the room
             try:
-                if (
-                    "transport" in locals()
-                    and hasattr(transport, "cleanup")
-                    and callable(transport.cleanup)
-                ):
+                if "transport" in locals():
+                    logger.info(
+                        f"🚪 Leaving Daily.co room on cancellation: {room_name}"
+                    )
                     await transport.cleanup()
+                    logger.info("✅ Transport cleaned up after cancellation")
             except (RuntimeError, asyncio.CancelledError) as e:
                 # Ignore "Event loop is closed" errors during cancellation - these are expected
                 if "Event loop is closed" not in str(e):
                     logger.debug(f"Transport cleanup during cancellation: {e}")
-            except Exception:
-                pass  # Ignore other cleanup errors during cancellation
+            except Exception as e:
+                logger.warning(f"Error during transport cleanup on cancellation: {e}")
+            finally:
+                # Remove transport from map after cleanup
+                self.transport_map.pop(room_name, None)
             raise
         except Exception as e:
             logger.error(f"❌ Bot process error: {e}", exc_info=True)
             logger.error(f"   Error type: {type(e).__name__}")
             logger.error(f"   Error message: {str(e)}")
-            # Ensure transport is cleaned up even on error
+            # Ensure transport is cleaned up even on error - must leave the room
             try:
-                if (
-                    "transport" in locals()
-                    and hasattr(transport, "cleanup")
-                    and callable(transport.cleanup)
-                ):
+                if "transport" in locals():
+                    logger.info(f"🚪 Leaving Daily.co room after error: {room_name}")
                     await transport.cleanup()
+                    logger.info("✅ Transport cleaned up after error")
             except (RuntimeError, asyncio.CancelledError) as cleanup_e:
                 # Ignore "Event loop is closed" errors during error handling - these are expected
                 if "Event loop is closed" not in str(cleanup_e):
                     logger.debug(f"Transport cleanup during error: {cleanup_e}")
-            except Exception:
-                pass  # Ignore other cleanup errors during error handling
+            except Exception as cleanup_e:
+                logger.warning(
+                    f"Error during transport cleanup after error: {cleanup_e}"
+                )
+            finally:
+                # Remove transport from map after cleanup
+                self.transport_map.pop(room_name, None)
             raise
 
     async def _process_bot_results_full_pipeline(
@@ -1207,7 +1641,7 @@ IMPORTANT: Your output will be spoken aloud, so:
             # Also save to bot_sessions table if we have a bot_id
             # Simple Explanation: We also save results to the bot_sessions table
             # so the status endpoint can retrieve them directly by bot_id
-            if hasattr(self, "bot_id_map") and room_name in self.bot_id_map:
+            if room_name in self.bot_id_map:
                 bot_id = self.bot_id_map[room_name]
                 bot_session = get_bot_session_by_room_name(room_name)
 
@@ -1355,22 +1789,58 @@ IMPORTANT: Your output will be spoken aloud, so:
         return stopped_count
 
     async def cleanup(self) -> None:
-        """Stop all running bots."""
+        """Stop all running bots and ensure they leave the room."""
         logger.info(f"Cleaning up {len(self.active_bots)} bots...")
+
+        # First, try to explicitly leave the room for each bot before cancelling
+        # This ensures the bot leaves the Daily.co room even if cancellation is abrupt
+        for room_name, bot_process in list(self.active_bots.items()):
+            transport = self.transport_map.get(room_name)
+            if transport and bot_process.is_running:
+                try:
+                    logger.info(
+                        f"🚪 Explicitly leaving Daily.co room before cancellation: {room_name}"
+                    )
+                    # Give a short timeout to leave the room
+                    await asyncio.wait_for(transport.cleanup(), timeout=2.0)
+                    logger.info(f"✅ Successfully left room: {room_name}")
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"⚠️ Timeout leaving room {room_name}, proceeding with cancellation"
+                    )
+                except (RuntimeError, asyncio.CancelledError) as e:
+                    # Ignore "Event loop is closed" errors - these are expected during shutdown
+                    if "Event loop is closed" not in str(e):
+                        logger.debug(f"Error leaving room {room_name}: {e}")
+                except Exception as e:
+                    logger.warning(f"Error leaving room {room_name}: {e}")
 
         # Cancel all bot tasks
         for room_name, bot_process in self.active_bots.items():
             if bot_process.is_running:
+                logger.info(f"🛑 Cancelling bot task for room: {room_name}")
                 bot_process.task.cancel()
 
-        # Wait for all tasks to complete
+        # Wait for all tasks to complete (with a timeout to prevent hanging)
         if self.active_bots:
-            await asyncio.gather(
-                *[bot_process.task for bot_process in self.active_bots.values()],
-                return_exceptions=True,
-            )
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        *[
+                            bot_process.task
+                            for bot_process in self.active_bots.values()
+                        ],
+                        return_exceptions=True,
+                    ),
+                    timeout=5.0,  # Give tasks 5 seconds to complete cleanup
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "⚠️ Timeout waiting for bot tasks to complete, proceeding with cleanup"
+                )
 
         self.active_bots.clear()
+        self.transport_map.clear()  # Clear transport map
         logger.info("All bots cleaned up")
 
     @asynccontextmanager
@@ -1399,7 +1869,29 @@ def _setup_signal_handlers():
 
     def signal_handler(signum, frame):
         logger.info(f"Received signal {signum}, initiating cleanup...")
-        asyncio.create_task(bot_service.cleanup())
+        try:
+            # Try to get the current event loop
+            loop = asyncio.get_running_loop()
+            # Schedule cleanup task - the cleanup() method will explicitly leave rooms
+            # before cancelling tasks, which should ensure bots leave properly
+            loop.create_task(bot_service.cleanup())
+            logger.info(
+                "Cleanup task scheduled - bots will leave rooms before shutdown"
+            )
+            # Note: We can't easily wait for the task here since we're in a signal handler,
+            # but the cleanup() method now explicitly leaves rooms before cancelling,
+            # which should ensure proper cleanup even if the process exits quickly
+        except RuntimeError:
+            # No event loop running - can't do async cleanup
+            # This shouldn't happen in normal operation, but handle it gracefully
+            logger.warning(
+                "No event loop available for cleanup - bots may not leave rooms properly"
+            )
+            # Try to run cleanup in a new event loop as a last resort
+            try:
+                asyncio.run(bot_service.cleanup())
+            except Exception as e:
+                logger.error(f"Failed to run cleanup: {e}")
 
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)

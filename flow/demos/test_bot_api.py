@@ -138,6 +138,18 @@ Guidelines:
         "process_insights": True,  # Enable automatic insight extraction
     }
 
+    # Add optional candidate/interview configuration to payload
+    if candidate_name:
+        payload["candidate_name"] = candidate_name
+    if candidate_email:
+        payload["candidate_email"] = candidate_email
+    if interview_type:
+        payload["interview_type"] = interview_type
+    if analysis_prompt:
+        payload["analysis_prompt"] = analysis_prompt
+    if webhook_url:
+        payload["webhook_callback_url"] = webhook_url
+
     # Get API key from environment (Unkey PailKit API key)
     api_key = os.getenv("UNKEY_PAILKIT_SECRET", "test-key")
 
@@ -149,40 +161,6 @@ Guidelines:
         )
         response.raise_for_status()
         bot_response = response.json()
-
-        # Save session data to database (for email, webhook, interview context)
-        # Simple Explanation: We save candidate info, email, and analysis prompts
-        # to the database so they can be used when processing the transcript
-        if candidate_name or candidate_email or interview_type:
-            room_name = room_url.split("/")[-1]
-            try:
-                from flow.db import get_session_data, save_session_data
-
-                session_data = get_session_data(room_name) or {}
-                if candidate_name:
-                    session_data["candidate_name"] = candidate_name
-                if candidate_email:
-                    session_data["email_results_to"] = candidate_email
-                if interview_type:
-                    session_data["interview_type"] = interview_type
-                if analysis_prompt:
-                    session_data["analysis_prompt"] = analysis_prompt
-                if webhook_url:
-                    session_data["webhook_callback_url"] = webhook_url
-
-                # Also set position and interviewer_context for better summaries
-                if interview_type:
-                    session_data["position"] = "Senior Software Engineer"  # Default
-                    session_data["interviewer_context"] = (
-                        "Technical interview focusing on software engineering skills"
-                    )
-
-                save_session_data(room_name, session_data)
-                print(
-                    "   ✅ Saved session data (candidate info, email, prompts) to database"
-                )
-            except Exception as e:
-                print(f"   ⚠️ Warning: Could not save session data: {e}")
 
         return bot_response
 
