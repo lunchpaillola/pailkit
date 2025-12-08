@@ -40,13 +40,23 @@ from flow.workflows import (  # noqa: E402
     get_workflows,
 )
 
-load_dotenv()
-
+# Setup logging first so we can use logger
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Load .env from flow/ directory
+# Simple Explanation: This loads environment variables from .env file in the flow/ directory
+env_path = Path(__file__).parent / ".env"  # flow/.env
+if env_path.exists():
+    load_dotenv(env_path)
+    logger.info(f"✅ Loaded .env from: {env_path}")
+else:
+    logger.warning(f"⚠️ .env file not found at: {env_path}")
+    # Fallback: try loading from current directory
+    load_dotenv()
 
 app = FastAPI(
     title="PailFlow API",

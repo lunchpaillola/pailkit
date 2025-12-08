@@ -271,38 +271,18 @@ def get_supabase_client() -> "Client | None":
         return None
 
 
-def get_postgres_checkpointer():
+def _get_db_connection_string() -> str | None:
     """
-    Get a LangGraph Postgres checkpointer using the existing Supabase connection.
+    Get the PostgreSQL connection string from environment variables.
 
     **Simple Explanation:**
-    This creates a checkpointer that stores workflow state in Supabase (PostgreSQL).
-    This allows workflows to persist across server restarts and work in multi-instance
-    deployments (like Fly.io with multiple machines).
-
-    **Environment Variables:**
-    Uses the same Supabase configuration as other database functions:
-    - SUPABASE_URL: Your Supabase project URL
-    - SUPABASE_SERVICE_ROLE_KEY: Service role key (or SUPABASE_SECRET_KEY)
-    - SUPABASE_DB_PASSWORD: Database password for direct PostgreSQL connection
-      (optional - can also use connection string via SUPABASE_DB_URL)
-
-    **Alternative:**
-    You can also set SUPABASE_DB_URL directly with a full PostgreSQL connection string:
-    - Format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+    This helper function extracts the database connection string from environment
+    variables. It supports both SUPABASE_DB_URL (full connection string) and
+    SUPABASE_URL + SUPABASE_DB_PASSWORD (constructs the connection string).
 
     Returns:
-        LangGraph PostgresSaver checkpointer instance, or None if configuration is missing
+        PostgreSQL connection string, or None if configuration is missing
     """
-    try:
-        from langgraph.checkpoint.postgres import PostgresSaver
-    except ImportError:
-        logger.error(
-            "❌ LangGraph PostgresSaver or psycopg not available. "
-            "Install with: pip install langgraph[postgres] psycopg[binary]"
-        )
-        return None
-
     # Try to get connection string from environment first
     db_url = os.getenv("SUPABASE_DB_URL")
 
@@ -345,6 +325,47 @@ def get_postgres_checkpointer():
             )
             return None
 
+    return db_url
+
+
+def get_postgres_checkpointer():
+    """
+    Get a LangGraph Postgres checkpointer using the existing Supabase connection.
+
+    **Simple Explanation:**
+    This creates a SYNC checkpointer that stores workflow state in Supabase (PostgreSQL).
+    This allows workflows to persist across server restarts and work in multi-instance
+    deployments (like Fly.io with multiple machines).
+
+    **Note:** For async workflows, use `get_async_postgres_checkpointer()` instead.
+
+    **Environment Variables:**
+    Uses the same Supabase configuration as other database functions:
+    - SUPABASE_URL: Your Supabase project URL
+    - SUPABASE_SERVICE_ROLE_KEY: Service role key (or SUPABASE_SECRET_KEY)
+    - SUPABASE_DB_PASSWORD: Database password for direct PostgreSQL connection
+      (optional - can also use connection string via SUPABASE_DB_URL)
+
+    **Alternative:**
+    You can also set SUPABASE_DB_URL directly with a full PostgreSQL connection string:
+    - Format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+
+    Returns:
+        LangGraph PostgresSaver checkpointer instance, or None if configuration is missing
+    """
+    try:
+        from langgraph.checkpoint.postgres import PostgresSaver
+    except ImportError:
+        logger.error(
+            "❌ LangGraph PostgresSaver or psycopg not available. "
+            "Install with: pip install langgraph[postgres] psycopg[binary]"
+        )
+        return None
+
+    db_url = _get_db_connection_string()
+    if not db_url:
+        return None
+
     try:
         # Create PostgresSaver with connection string
         # Simple Explanation: PostgresSaver stores workflow checkpoints in PostgreSQL
@@ -369,6 +390,84 @@ def get_postgres_checkpointer():
         return checkpointer
     except Exception as e:
         logger.error(f"❌ Error creating Postgres checkpointer: {e}", exc_info=True)
+        return None
+
+
+async def get_async_postgres_checkpointer():
+    """
+    Get an async LangGraph Postgres checkpointer using the existing Supabase connection.
+
+    **Simple Explanation:**
+    This creates an ASYNC checkpointer that stores workflow state in Supabase (PostgreSQL).
+    This is the correct checkpointer to use for async workflows (like BotCallWorkflow).
+
+    The checkpointer uses AsyncPostgresSaver which properly handles async operations.
+    You should use this within an async context manager pattern.
+
+    **Environment Variables:**
+    Uses the same Supabase configuration as other database functions:
+    - SUPABASE_URL: Your Supabase project URL
+    - SUPABASE_SERVICE_ROLE_KEY: Service role key (or SUPABASE_SECRET_KEY)
+    - SUPABASE_DB_PASSWORD: Database password for direct PostgreSQL connection
+      (optional - can also use connection string via SUPABASE_DB_URL)
+
+    **Alternative:**
+    You can also set SUPABASE_DB_URL directly with a full PostgreSQL connection string:
+    - Format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+
+    Returns:
+        LangGraph AsyncPostgresSaver checkpointer instance (async context manager),
+        or None if configuration is missing
+
+    Example:
+        ```python
+        checkpointer = await get_async_postgres_checkpointer()
+        if checkpointer:
+            async with checkpointer:
+                # Use checkpointer here
+                graph = builder.compile(checkpointer=checkpointer)
+        ```
+    """
+    try:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    except ImportError:
+        logger.error(
+            "❌ LangGraph AsyncPostgresSaver or psycopg not available. "
+            "Install with: pip install langgraph[postgres] psycopg[binary,pool]"
+        )
+        return None
+
+    db_url = _get_db_connection_string()
+    if not db_url:
+        return None
+
+    try:
+        # Create AsyncPostgresSaver with connection string
+        # Simple Explanation: AsyncPostgresSaver stores workflow checkpoints in PostgreSQL
+        # using async operations. This is the correct checkpointer for async workflows.
+        # The tables should already exist from the migration, but we call setup()
+        # as a safety net to ensure they're created if the migration hasn't run yet
+        checkpointer = AsyncPostgresSaver.from_conn_string(db_url)
+
+        # Setup tables if they don't exist (safety net - migration should handle this)
+        # Simple Explanation: setup() creates the necessary tables. We call it once
+        # as a safety net, but the migration file should have already created them.
+        try:
+            await checkpointer.setup()
+            logger.debug("✅ Async Postgres checkpointer tables verified/created")
+        except Exception as setup_error:
+            # If setup fails, it might be because tables already exist (from migration)
+            # or there's a real error. Log it but don't fail - the checkpointer might still work.
+            logger.debug(
+                f"⚠️ Async Postgres checkpointer setup warning (tables may already exist): {setup_error}"
+            )
+
+        logger.debug("✅ Async Postgres checkpointer created successfully")
+        return checkpointer
+    except Exception as e:
+        logger.error(
+            f"❌ Error creating Async Postgres checkpointer: {e}", exc_info=True
+        )
         return None
 
 

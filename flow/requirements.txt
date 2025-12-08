@@ -28,8 +28,10 @@ cryptography>=42.0.0
 
 # Supabase client for PostgreSQL database
 supabase>=2.0.0
-# PostgreSQL driver for LangGraph checkpointer
-psycopg[binary]>=3.1.0
+# PostgreSQL driver for LangGraph checkpointer (pool extra needed for async)
+psycopg[binary,pool]>=3.1.0
+# LangGraph PostgreSQL checkpointer (async support)
+langgraph-checkpoint-postgres>=0.1.0
 
 # HTTP client for Fly.io API calls (synchronous requests)
 requests>=2.31.0

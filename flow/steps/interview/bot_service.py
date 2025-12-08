@@ -817,17 +817,34 @@ IMPORTANT: Your output will be spoken aloud, so:
                         from flow.workflows.bot_call import BotCallWorkflow
 
                         workflow = BotCallWorkflow()
-                        config = {"configurable": {"thread_id": workflow_thread_id}}
 
-                        # Simple Explanation: LangGraph automatically resumes from the latest
-                        # checkpoint when you call ainvoke with a config containing a thread_id.
-                        # However, LangGraph requires that we write to at least one state field.
-                        # We pass room_name to satisfy this requirement - LangGraph will merge
-                        # this with the checkpoint state automatically.
+                        # Retrieve checkpoint_id from session_data if available
+                        # Simple Explanation: The checkpoint_id tells LangGraph exactly which
+                        # checkpoint to resume from. Without it, LangGraph might resume from
+                        # the wrong checkpoint or restart from the beginning.
+                        checkpoint_id = session_data.get("checkpoint_id")
+
+                        # Build config with thread_id and checkpoint_id (if available)
+                        config = {"configurable": {"thread_id": workflow_thread_id}}
+                        if checkpoint_id:
+                            config["configurable"]["checkpoint_id"] = checkpoint_id
+                            logger.info(
+                                f"   📍 Resuming from checkpoint_id: {checkpoint_id}"
+                            )
+                        else:
+                            logger.warning(
+                                "   ⚠️ No checkpoint_id found - workflow may restart from beginning"
+                            )
+
+                        # Simple Explanation: LangGraph automatically resumes from the specified
+                        # checkpoint when you call ainvoke with a config containing both thread_id
+                        # and checkpoint_id. When resuming, we should pass an empty dict {} -
+                        # LangGraph will use the state from the checkpoint. The checkpoint already
+                        # has all the state from when the workflow paused, so we don't need to pass anything.
                         # Resume the workflow - it will continue to process_transcript node
-                        await workflow.graph.ainvoke(
-                            {"room_name": room_name}, config=config
-                        )
+                        graph = await workflow.graph
+                        # Pass empty dict to resume from checkpoint - LangGraph will use checkpoint state
+                        await graph.ainvoke({}, config=config)
                         logger.info("✅ Workflow resumed successfully")
                     except Exception as e:
                         logger.error(f"❌ Error resuming workflow: {e}", exc_info=True)
