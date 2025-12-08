@@ -133,12 +133,14 @@ IMPORTANT: Your output will be spoken aloud, so:
 
         # Use Deepgram for Speech-to-Text (STT) to transcribe user speech
         # Enable speaker diarization to identify different speakers
+        # utterances=True is required for proper speaker segments
         stt = DeepgramSTTService(
             api_key=os.getenv("DEEPGRAM_API_KEY"),
             model="nova-2",
             diarize=True,
+            utterances=True,
         )
-        logger.info("🎤 Deepgram STT initialized with diarization")
+        logger.info("🎤 Deepgram STT initialized with diarization and utterances")
 
         messages = [
             {

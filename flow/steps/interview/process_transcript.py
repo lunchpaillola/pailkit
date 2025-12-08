@@ -294,17 +294,24 @@ def format_json_summary_html(summary_json: Dict[str, Any]) -> str:
     return "\n".join(html_parts)
 
 
-def format_transcript_html(transcript_text: str) -> str:
+def format_transcript_html(transcript_text: str, bot_name: str) -> str:
     """
     Format transcript text into HTML with alternating speaker colors.
 
     This function parses the transcript and formats it nicely:
     - Alternating background colors for assistant vs user messages
     - Timestamps styled subtly
-    - Clear speaker labels
+    - Clear speaker labels using actual speaker names
+
+    Args:
+        transcript_text: The transcript text to format
+        bot_name: The bot's name (used to identify assistant messages)
     """
     if not transcript_text:
         return "<p><em>No transcript available</em></p>"
+
+    if not bot_name:
+        return "<p><em>Error: Process transcript needs the bot config name.</em></p>"
 
     lines = transcript_text.strip().split("\n")
     html_parts = []
@@ -314,35 +321,38 @@ def format_transcript_html(transcript_text: str) -> str:
         if not line:
             continue
 
-        # Match format: [timestamp] role: content
-        # Or simpler: role: content (if no timestamp)
-        timestamp_match = re.match(
-            r"^\[(.+?)\]\s*(assistant|user):\s*(.+)$", line, re.IGNORECASE
-        )
+        # Match format: [timestamp] SpeakerName: content
+        # Or simpler: SpeakerName: content (if no timestamp)
+        timestamp_match = re.match(r"^\[(.+?)\]\s*([^:]+):\s*(.+)$", line)
         if timestamp_match:
             timestamp = timestamp_match.group(1)
-            role = timestamp_match.group(2).lower()
+            speaker_name = timestamp_match.group(2).strip()
             content = timestamp_match.group(3)
         else:
             # Try without timestamp
-            role_match = re.match(r"^(assistant|user):\s*(.+)$", line, re.IGNORECASE)
-            if role_match:
+            speaker_match = re.match(r"^([^:]+):\s*(.+)$", line)
+            if speaker_match:
                 timestamp = None
-                role = role_match.group(1).lower()
-                content = role_match.group(2)
+                speaker_name = speaker_match.group(1).strip()
+                content = speaker_match.group(2)
             else:
                 # Plain text line - escape and add it
                 escaped_line = html.escape(line)
                 html_parts.append(f"<p>{escaped_line}</p>")
                 continue
 
+        # Determine if this is an assistant message by comparing speaker name with bot_name
+        is_assistant = speaker_name == bot_name
+
         # Determine speaker label and styling (using brand colors)
-        if role == "assistant":
-            speaker_label = "Assistant"
+        if is_assistant:
+            speaker_label = speaker_name  # Use actual bot name
             bg_color = "#f0f4ff"
             border_color = "#1f2de6"
         else:
-            speaker_label = "User"
+            speaker_label = (
+                speaker_name  # Use actual participant name (no "User" fallback)
+            )
             bg_color = "#f8f9fa"
             border_color = "#64748b"
 
@@ -355,7 +365,7 @@ def format_transcript_html(transcript_text: str) -> str:
         header_style = "font-weight: 600; color: {}; font-size: 12px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;".format(
             border_color
         )
-        message_html += f'<div style="{header_style}">{speaker_label}'
+        message_html += f'<div style="{header_style}">{html.escape(speaker_label)}'
         if timestamp:
             # Format timestamp nicely (remove timezone if present)
             clean_timestamp = timestamp.split("+")[0].split(".")[
@@ -569,6 +579,7 @@ def generate_html_email(
     candidate_name: str = "Unknown",
     interview_type: str = "Interview",
     insights: Dict[str, Any] | None = None,
+    bot_name: str = None,
 ) -> str:
     """
     Generate a beautiful HTML email from summary and transcript.
@@ -578,10 +589,18 @@ def generate_html_email(
     - Formatted summary sections
     - Nicely styled transcript with speaker differentiation
     - Responsive design that works in email clients
+
+    Args:
+        summary_text: The summary text to include
+        transcript_text: The transcript text to format
+        candidate_name: Name of the candidate
+        interview_type: Type of interview
+        insights: Optional insights dictionary
+        bot_name: The bot's name (required for transcript formatting)
     """
     # Format the summary and transcript
     summary_html = format_summary_html(summary_text)
-    transcript_html = format_transcript_html(transcript_text)
+    transcript_html = format_transcript_html(transcript_text, bot_name)
 
     # Use sensible defaults if values are missing
     if not interview_type or interview_type == "Unknown":
@@ -666,6 +685,7 @@ async def send_email(
     interview_type: str = "Interview",
     transcript_text: str = "",
     insights: Dict[str, Any] | None = None,
+    bot_name: str = None,
 ) -> bool:
     """
     Send results via email using Resend with beautiful HTML formatting.
@@ -673,6 +693,16 @@ async def send_email(
     This function now generates a professional HTML email instead of plain text.
     The body parameter is treated as the summary text, and transcript_text is
     formatted separately for better presentation.
+
+    Args:
+        to_email: Recipient email address
+        subject: Email subject line
+        body: Summary text (body of email)
+        candidate_name: Name of the candidate
+        interview_type: Type of interview
+        transcript_text: Transcript text to include
+        insights: Optional insights dictionary
+        bot_name: The bot's name (required for transcript formatting)
     """
     try:
         # Get Resend API key from environment
@@ -700,6 +730,7 @@ async def send_email(
             candidate_name=candidate_name,
             interview_type=interview_type,
             insights=insights,
+            bot_name=bot_name,
         )
 
         params: resend.Emails.SendParams = {
@@ -880,6 +911,15 @@ class ProcessTranscriptStep(InterviewStep):
                     "⚠️ No workflow_thread_id found - cannot retrieve session data"
                 )
                 session_data = {}
+
+            # Extract bot_name from bot_config (required for transcript formatting)
+            bot_config = session_data.get("bot_config", {})
+            bot_name = bot_config.get("name") if bot_config else None
+            if not bot_name:
+                error_msg = "Process transcript needs the bot config name."
+                logger.error(f"❌ {error_msg}")
+                state["error"] = error_msg
+                return state
 
             # Check if transcript was already processed for this workflow run
             # Simple Explanation: Processing status is stored directly in workflow_thread_data.
@@ -1224,6 +1264,7 @@ class ProcessTranscriptStep(InterviewStep):
                     interview_type=email_interview_type,
                     transcript_text=email_transcript,  # Transcript formatted separately
                     insights=insights,  # Include insights for potential JSON formatting
+                    bot_name=bot_name,  # Bot name for transcript formatting
                 )
 
                 # Note: email_sent status will be saved at the end with all other processing results

@@ -10,8 +10,8 @@ import os
 import signal
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pipecat.transports.daily.transport import DailyTransport
@@ -106,8 +106,32 @@ class TranscriptHandler:
             f"TranscriptHandler initialized for room: {room_name}, bot_name: {self.bot_name}, workflow_thread_id: {workflow_thread_id}"
         )
 
+    def _normalize_timestamp(
+        self, timestamp: Optional[Union[str, float, int]]
+    ) -> Optional[str]:
+        """
+        Convert timestamp to ISO format string.
+
+        Args:
+            timestamp: Timestamp as string, float (Unix timestamp), int, or None
+
+        Returns:
+            ISO format timestamp string, or None if timestamp is None
+        """
+        if timestamp is None:
+            return None
+        if isinstance(timestamp, str):
+            return timestamp  # Assume already formatted
+        if isinstance(timestamp, (int, float)):
+            # Convert Unix timestamp to ISO format
+            return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        return None
+
     def _format_transcript_line(
-        self, speaker_name: str, content: str, timestamp: Optional[str] = None
+        self,
+        speaker_name: str,
+        content: str,
+        timestamp: Optional[Union[str, float, int]] = None,
     ) -> str:
         """
         Format a transcript message as a line of text.
@@ -115,12 +139,13 @@ class TranscriptHandler:
         Args:
             speaker_name: Name of the speaker (bot name or participant name)
             content: The transcript text
-            timestamp: Optional timestamp string
+            timestamp: Optional timestamp (string, float, or int) - will be normalized to ISO format
 
         Returns:
             Formatted line string
         """
-        timestamp_str = f"[{timestamp}] " if timestamp else ""
+        normalized_timestamp = self._normalize_timestamp(timestamp)
+        timestamp_str = f"[{normalized_timestamp}] " if normalized_timestamp else ""
         return f"{timestamp_str}{speaker_name}: {content}"
 
     def add_daily_transcript(
@@ -224,80 +249,27 @@ class TranscriptHandler:
             if msg.role == "assistant":
                 # Assistant messages = bot speaking - always use bot name
                 speaker_name = self.bot_name
-                logger.info(f"   Assistant message → using bot_name: {speaker_name}")
             else:
-                # User messages = human participants - need to identify which participant
+                # User messages = human participants - simple lookup chain
                 speaker_name = "User"  # Default fallback
 
                 if self.speaker_tracker:
-                    logger.info("   User message → Looking up speaker ID...")
-                    # Get speaker ID from tracker
-                    speaker_id = self.speaker_tracker.get_speaker_id_for_text(
-                        msg.content, msg.timestamp
-                    )
-
-                    if speaker_id is not None:
-                        logger.info(
-                            f"   User message → Deepgram speaker ID: {speaker_id}"
-                        )
+                    # Get current Deepgram speaker ID
+                    deepgram_speaker_id = self.speaker_tracker.get_current_speaker_id()
+                    if deepgram_speaker_id is not None:
                         # Look up Daily.co session_id from mapping
                         session_id = self.speaker_tracker.speaker_to_session_map.get(
-                            speaker_id
+                            deepgram_speaker_id
                         )
-
                         if session_id:
-                            logger.info(
-                                f"   Speaker ID {speaker_id} → Daily.co session_id: {session_id}"
-                            )
                             # Get participant name from participants_map
                             participant_info = self.participants_map.get(session_id)
                             if participant_info:
-                                participant_name = (
+                                speaker_name = (
                                     participant_info.get("name")
                                     or participant_info.get("user_name")
-                                    or f"Participant {session_id}"
-                                )
-                                speaker_name = participant_name
-                                logger.info(
-                                    f"   Session ID {session_id} → Participant name: {participant_name}"
-                                )
-                            else:
-                                logger.warning(
-                                    f"⚠️ No participant name found for session_id {session_id}, using fallback"
-                                )
-                                speaker_name = f"Participant {session_id}"
-                        else:
-                            logger.warning(
-                                f"⚠️ No speaker ID mapping found for speaker {speaker_id}, using fallback"
-                            )
-                            # Fallback: use first available participant
-                            if self.participants_map:
-                                first_participant = next(
-                                    iter(self.participants_map.values())
-                                )
-                                speaker_name = (
-                                    first_participant.get("name")
-                                    or first_participant.get("user_name")
                                     or "User"
                                 )
-                    else:
-                        logger.warning(
-                            "⚠️ No speaker ID found for user message, using fallback"
-                        )
-                        # Fallback: use first available participant
-                        if self.participants_map:
-                            first_participant = next(
-                                iter(self.participants_map.values())
-                            )
-                            speaker_name = (
-                                first_participant.get("name")
-                                or first_participant.get("user_name")
-                                or "User"
-                            )
-                else:
-                    logger.debug(
-                        f"   No speaker_tracker available, using default: {speaker_name}"
-                    )
 
             # Format and add to transcript text
             line = self._format_transcript_line(
@@ -457,13 +429,10 @@ class SpeakerTrackingProcessor(FrameProcessor):
 
     def __init__(self):
         super().__init__()
-        # Track recent transcript segments with their speaker IDs
-        # Format: list of (timestamp, speaker_id, text) tuples
-        self.recent_segments: list[tuple[float, Optional[int], str]] = []
         # Mapping: Deepgram speaker ID -> Daily.co session_id
         self.speaker_to_session_map: Dict[int, str] = {}
-        # Maximum number of recent segments to keep (for memory management)
-        self.max_recent_segments = 100
+        # Track the last seen speaker ID from frames
+        self.last_speaker: Optional[int] = None
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         """Process incoming frames and extract speaker IDs from frames with speaker information."""
@@ -473,22 +442,12 @@ class SpeakerTrackingProcessor(FrameProcessor):
         speaker_id = getattr(frame, "speaker", None) or getattr(
             frame, "speaker_id", None
         )
-        text = getattr(frame, "text", "") or getattr(frame, "message", "")
 
-        # If frame has speaker info, extract and store it
+        # If frame has speaker info, store it as the last seen speaker
         if speaker_id is not None:
-            timestamp = getattr(frame, "timestamp", asyncio.get_event_loop().time())
+            self.last_speaker = speaker_id
             logger.debug(
-                f"📢 Frame with speaker ID: {speaker_id}, text: {text[:50]}..., type: {type(frame).__name__}"
-            )
-
-            # Store in recent segments
-            self.recent_segments.append((timestamp, speaker_id, text))
-            # Keep only recent segments (remove oldest if over limit)
-            if len(self.recent_segments) > self.max_recent_segments:
-                self.recent_segments.pop(0)
-            logger.debug(
-                f"   Recent segments tracked: {len(self.recent_segments)} segments"
+                f"📢 Frame with speaker ID: {speaker_id}, type: {type(frame).__name__}"
             )
 
         # Pass frame through to next processor
@@ -511,63 +470,12 @@ class SpeakerTrackingProcessor(FrameProcessor):
 
     def get_current_speaker_id(self) -> Optional[int]:
         """
-        Get the most recent Deepgram speaker ID from recent segments.
+        Get the last seen Deepgram speaker ID.
 
         Returns:
-            The most recent speaker ID, or None if no segments available
+            The last seen speaker ID, or None if no speaker has been seen yet
         """
-        if not self.recent_segments:
-            return None
-        # Get the most recent segment with a speaker ID
-        for timestamp, speaker_id, text in reversed(self.recent_segments):
-            if speaker_id is not None:
-                return speaker_id
-        return None
-
-    def get_speaker_id_for_text(
-        self, text: str, timestamp: Optional[float] = None
-    ) -> Optional[int]:
-        """
-        Match transcript text to recent segments to get speaker ID.
-
-        Args:
-            text: The transcript text to match
-            timestamp: Optional timestamp to help with matching
-
-        Returns:
-            The speaker ID if found, None otherwise
-        """
-        logger.debug(
-            f"🔎 Looking up speaker for text: {text[:30]}..., timestamp: {timestamp}"
-        )
-
-        # Try to match by text content (fuzzy match)
-        # Look for segments with similar text
-        text_lower = text.lower().strip()
-        for seg_timestamp, speaker_id, seg_text in reversed(self.recent_segments):
-            seg_text_lower = seg_text.lower().strip()
-            # Check if text matches or is contained in segment
-            if text_lower in seg_text_lower or seg_text_lower in text_lower:
-                logger.info(f"   Found speaker ID: {speaker_id} (matched by text)")
-                return speaker_id
-            # Also check if timestamps are close (within 2 seconds)
-            if timestamp and speaker_id is not None:
-                time_diff = abs(timestamp - seg_timestamp)
-                if time_diff < 2.0 and text_lower in seg_text_lower:
-                    logger.info(
-                        f"   Found speaker ID: {speaker_id} (matched by text and timestamp)"
-                    )
-                    return speaker_id
-
-        # If no match found, return most recent speaker ID as fallback
-        current_speaker = self.get_current_speaker_id()
-        if current_speaker is not None:
-            logger.debug(
-                f"   Using most recent speaker ID as fallback: {current_speaker}"
-            )
-        else:
-            logger.debug("   No speaker ID found")
-        return current_speaker
+        return self.last_speaker
 
     def get_all_mappings(self) -> Dict[int, str]:
         """Get all current speaker ID to session_id mappings."""
@@ -576,9 +484,7 @@ class SpeakerTrackingProcessor(FrameProcessor):
     def log_mapping_summary(self):
         """Log a summary of current speaker mappings for diagnostics."""
         logger.info(f"📊 Current speaker mappings: {self.speaker_to_session_map}")
-        logger.debug(
-            f"   Recent segments: {len(self.recent_segments)} segments tracked"
-        )
+        logger.debug(f"   Last seen speaker ID: {self.last_speaker}")
 
 
 class TalkingAnimation(FrameProcessor):
@@ -964,6 +870,24 @@ IMPORTANT: Your output will be spoken aloud, so:
                 f"Bot transport initialized for room: {room_url}, bot_name: {bot_name}"
             )
 
+            # Load participants immediately after transport creation
+            # This ensures we know all participants even if they joined before the bot
+            initial_participants = transport.participants() or {}
+            participants_map = {}
+            for pid, pdata in initial_participants.items():
+                if pid == "local":
+                    continue
+                session_id = pdata.get("session_id") or pid
+                # Extract name from nested info object - Daily.co always provides info.userName
+                info = pdata.get("info", {})
+                name = info.get("userName") or f"Participant {session_id}"
+                participants_map[session_id] = {
+                    "session_id": session_id,
+                    "name": name,
+                    "user_id": pdata.get("user_id"),
+                }
+            logger.info(f"📋 Participants loaded at startup: {participants_map}")
+
             # Use OpenAI for both LLM and TTS
             llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
             tts = OpenAITTSService(
@@ -975,12 +899,14 @@ IMPORTANT: Your output will be spoken aloud, so:
 
             # Use Deepgram for Speech-to-Text (STT) to transcribe user speech
             # Enable speaker diarization to identify different speakers
+            # utterances=True is required for proper speaker segments
             stt = DeepgramSTTService(
                 api_key=os.getenv("DEEPGRAM_API_KEY"),
                 model="nova-2",
                 diarize=True,
+                utterances=True,
             )
-            logger.info("🎤 Deepgram STT initialized with diarization")
+            logger.info("🎤 Deepgram STT initialized with diarization and utterances")
 
             messages = [
                 {
@@ -1025,6 +951,8 @@ IMPORTANT: Your output will be spoken aloud, so:
                 transport=transport,
                 workflow_thread_id=workflow_thread_id,
             )
+            # Set participants_map that was loaded at startup
+            transcript_handler.participants_map = participants_map
             logger.info(
                 f"📝 Transcript will be saved to database for room: {room_name}\n"
                 "   - User speech: Deepgram STT (from pipeline) with speaker diarization\n"
@@ -1115,7 +1043,9 @@ IMPORTANT: Your output will be spoken aloud, so:
                         if bot_session_id and p_session_id == bot_session_id:
                             continue
                         # Skip if this is the bot by name
-                        p_name = pdata.get("user_name") or pdata.get("name") or ""
+                        # Extract name from nested info object - Daily.co always provides info.userName
+                        info = pdata.get("info", {})
+                        p_name = info.get("userName") or ""
                         if p_name == bot_name:
                             continue
 
@@ -1142,33 +1072,18 @@ IMPORTANT: Your output will be spoken aloud, so:
             @transport.event_handler("active-speaker-change")
             async def on_active_speaker_change(transport, event):
                 """Handle active speaker change events to map Deepgram speaker IDs to Daily.co participants."""
-                active_speaker = event.get("activeSpeaker", {})
-                peer_id = active_speaker.get("peerId")
-
+                peer_id = event.get("activeSpeaker", {}).get("peerId")
                 if not peer_id:
-                    logger.warning(
-                        f"⚠️ Active speaker change event missing peerId: {event}"
-                    )
                     return
 
-                logger.info(f"🔊 Active speaker changed: session_id={peer_id}")
-
-                # Get current/recent Deepgram speaker ID from tracker
                 deepgram_speaker_id = speaker_tracker.get_current_speaker_id()
-
                 if deepgram_speaker_id is not None:
-                    logger.info(
-                        f"   Current Deepgram speaker ID: {deepgram_speaker_id}"
-                    )
-                    # Map Deepgram speaker ID to Daily.co session_id
                     speaker_tracker.map_speaker_to_participant(
                         deepgram_speaker_id, peer_id
                     )
                     logger.info(
                         f"✅ Mapped Deepgram speaker {deepgram_speaker_id} → Daily.co session_id {peer_id}"
                     )
-                    # Log mapping summary
-                    speaker_tracker.log_mapping_summary()
                 else:
                     logger.warning(
                         "⚠️ Active speaker changed but no recent Deepgram transcription found"
