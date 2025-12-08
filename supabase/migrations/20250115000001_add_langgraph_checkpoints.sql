@@ -1,0 +1,21 @@
+-- Copyright 2025 Lunch Pail Labs, LLC
+-- Licensed under the Apache License, Version 2.0
+--
+-- LangGraph Checkpointer Tables
+--
+-- NOTE: This migration is optional. LangGraph's PostgresSaver.setup() method
+-- will automatically create the necessary tables when first used.
+--
+-- However, if you want to run the migration explicitly, you can call:
+--   python -c "from flow.db import get_postgres_checkpointer; get_postgres_checkpointer()"
+--
+-- This will create the following tables automatically:
+--   - checkpoints: Stores workflow checkpoint metadata
+--   - checkpoint_blobs: Stores large binary data for checkpoints
+--   - checkpoint_writes: Tracks checkpoint write operations (concurrency control)
+--
+-- The tables are created automatically by PostgresSaver.setup() when the checkpointer
+-- is first initialized. No manual migration is required - the code handles it.
+--
+-- If you prefer to manage migrations explicitly, you can inspect the tables
+-- created by setup() and add them here, but it's not necessary.

@@ -1,7 +1,7 @@
-# fly.toml app configuration file for PailKit (monorepo: API + Flow)
+# fly.toml app configuration file for PailKit
 #
-# This configuration deploys both the API and Flow services together as a single application.
-# The API (api/main.py) imports and includes all Flow routes, so everything runs in one process.
+# This configuration deploys the Flow service which includes all API routes.
+# All routes (bot, rooms, transcribe, workflows, webhooks) are in flow/main.py.
 #
 # This is the main HTTP service that handles API requests. When bots are enabled,
 # they can be spawned as separate Fly.io machines (see bot_service.py) for better

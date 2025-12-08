@@ -25,7 +25,6 @@ import resend
 
 from flow.steps.interview.base import InterviewStep
 from flow.steps.interview.extract_insights import ExtractInsightsStep
-from flow.steps.interview.generate_summary import GenerateSummaryStep
 
 logger = logging.getLogger(__name__)
 
@@ -770,9 +769,12 @@ class ProcessTranscriptStep(InterviewStep):
         room_name = state.get("room_name")
         room_id = state.get("room_id")
         duration = state.get("duration")
+        workflow_thread_id = state.get("workflow_thread_id")
 
         logger.info(f"📋 Transcript ID: {transcript_id or 'N/A (using DB transcript)'}")
         logger.info(f"🏠 Room Name: {room_name}")
+        if workflow_thread_id:
+            logger.info(f"🧵 Workflow Thread ID: {workflow_thread_id}")
 
         try:
             # Step 1: Check if transcript exists in database (bot-enabled case)
@@ -843,28 +845,111 @@ class ProcessTranscriptStep(InterviewStep):
             # Store transcript in state
             state["interview_transcript"] = transcript_text
 
-            # Step 5: Retrieve session data from Supabase database (if not already retrieved)
+            # Step 5: Retrieve session data from Supabase database
+            # Simple Explanation: If we have a workflow_thread_id, we use the workflow_threads table
+            # which organizes everything by workflow run. Otherwise, we fall back to the rooms table.
             logger.info("\n📦 STEP 5: Retrieving session data from database")
-            if not session_data:
-                session_data = get_room_session_data(room_name) if room_name else None
 
-            if not session_data:
-                logger.warning("⚠️ No session data found")
-                session_data = {}
+            # Get workflow_thread_id from state or try to get from rooms table
+            if not workflow_thread_id and room_name:
+                from flow.db import get_session_data
 
-            # Check if transcript was already processed to prevent duplicate processing
-            transcript_already_processed = session_data.get(
-                "transcript_processed", False
-            )
-            if transcript_already_processed:
+                room_session = get_session_data(room_name)
+                if room_session:
+                    workflow_thread_id = room_session.get("workflow_thread_id")
+
+            # Use workflow_threads table if we have a workflow_thread_id
+            if workflow_thread_id:
+                from flow.db import get_workflow_thread_data
+
+                thread_data = get_workflow_thread_data(workflow_thread_id)
+                if thread_data:
+                    # Use workflow thread data
+                    session_data = thread_data
+                    logger.info(
+                        f"✅ Retrieved workflow thread data for workflow_thread_id: {workflow_thread_id}"
+                    )
+                else:
+                    # Workflow thread doesn't exist yet, try to get from rooms table
+                    # Simple Explanation: When a workflow is first resumed, the workflow_thread_data
+                    # might not exist yet. We check the rooms table (session_data) to get email,
+                    # candidate_name, etc. that were saved before the workflow started.
+                    session_data = get_room_session_data(room_name) if room_name else {}
+                    if not session_data:
+                        session_data = {}
+                    logger.info(
+                        f"⚠️ Workflow thread not found, will create new entry for workflow_thread_id: {workflow_thread_id}"
+                    )
+                    logger.info(
+                        "   Using session_data from rooms table as fallback (email, candidate_name, etc.)"
+                    )
+            else:
+                # Fall back to rooms table (legacy behavior)
+                if not session_data:
+                    session_data = (
+                        get_room_session_data(room_name) if room_name else None
+                    )
+                if not session_data:
+                    logger.warning("⚠️ No session data found")
+                    session_data = {}
+
+            # Check if transcript was already processed for this workflow run
+            # Simple Explanation: When using workflow_threads table, processing status is stored
+            # directly in the thread_data. When using rooms table, we check processing_status_by_key.
+            if workflow_thread_id and "transcript_processed" in session_data:
+                # Using workflow_threads table - status is directly in thread_data
+                transcript_already_processed = session_data.get(
+                    "transcript_processed", False
+                )
+                email_already_sent = session_data.get("email_sent", False)
+                webhook_already_sent = session_data.get("webhook_sent", False)
+            else:
+                # Using rooms table - check processing_status_by_key
+                processing_key = workflow_thread_id or room_name
+                processing_status_by_key = session_data.get(
+                    "processing_status_by_key", {}
+                )
+                processing_status = processing_status_by_key.get(processing_key, {})
+                transcript_already_processed = processing_status.get(
+                    "transcript_processed", False
+                )
+                email_already_sent = processing_status.get("email_sent", False)
+                webhook_already_sent = processing_status.get("webhook_sent", False)
+
+            # If transcript was already processed AND email/webhook were already sent,
+            # skip everything to prevent duplicate processing
+            if (
+                transcript_already_processed
+                and email_already_sent
+                and webhook_already_sent
+            ):
                 logger.warning(
-                    "⚠️ Transcript was already processed for this room - skipping duplicate processing"
+                    f"⚠️ Transcript was already processed for {'workflow ' + workflow_thread_id if workflow_thread_id else 'room ' + room_name} - skipping duplicate processing"
                 )
                 logger.info(
-                    "   If you need to reprocess, clear the transcript_processed flag in session_data"
+                    "   If you need to reprocess, clear the processing_status_by_key entry in session_data"
                 )
+                # Set transcript_text in state for langgraph compatibility
+                transcript_text_for_state = (
+                    state.get("interview_transcript")
+                    or session_data.get("transcript_text")
+                    or ""
+                )
+                state["transcript_text"] = transcript_text_for_state
                 state = self.update_status(state, "already_completed")
+                state["email_sent"] = email_already_sent
+                state["webhook_sent"] = webhook_already_sent
                 return state
+
+            # If transcript was processed but email/webhook weren't sent, continue processing
+            # This can happen if processing completed but email sending failed or was skipped
+            if transcript_already_processed:
+                logger.warning(
+                    f"⚠️ Transcript was already processed for {'workflow ' + workflow_thread_id if workflow_thread_id else 'room ' + room_name}, but email/webhook may not have been sent"
+                )
+                logger.info(
+                    "   Continuing with processing to ensure email/webhook are sent..."
+                )
 
             webhook_callback_url = session_data.get("webhook_callback_url")
             email_results_to = session_data.get("email_results_to")
@@ -880,12 +965,8 @@ class ProcessTranscriptStep(InterviewStep):
             logger.info(f"   💼 Position: {position}")
             logger.info(f"   📋 Interview Type: {interview_type}")
 
-            # Check if we already sent email to prevent duplicates
-            email_already_sent = session_data.get("email_sent", False)
-            if email_already_sent:
-                logger.warning(
-                    "⚠️ Email was already sent for this room - skipping duplicate send"
-                )
+            # Note: email_already_sent and webhook_already_sent are already checked above
+            # using the processing_status_by_key structure
 
             # Build participant_info from session_data
             # Note: session_data uses "candidate_name" for backwards compatibility with existing DB records
@@ -953,15 +1034,42 @@ class ProcessTranscriptStep(InterviewStep):
             else:
                 logger.info("✅ Insights extracted successfully")
 
-            # Step 8: Generate AI summary
-            logger.info("\n🤖 STEP 8: Generating AI summary")
-            summary_step = GenerateSummaryStep()
-            state = await summary_step.execute(state)
+            # Step 8: Generate summary from insights
+            # Simple Explanation: We create a simple summary from the insights we extracted
+            # This replaces the old GenerateSummaryStep which was removed during simplification
+            logger.info("\n🤖 STEP 8: Generating summary from insights")
+            insights = state.get("insights", {})
 
-            if state.get("error"):
-                return state
+            # Build a simple summary from insights
+            summary_parts = []
+            if candidate_name and candidate_name != "Unknown":
+                summary_parts.append(f"Participant: {candidate_name}")
+            if position and position != "Unknown":
+                summary_parts.append(f"Role: {position}")
+            if interview_type:
+                summary_parts.append(f"Interview Type: {interview_type}")
 
-            candidate_summary = state.get("candidate_summary", "")
+            if insights:
+                overall_score = insights.get("overall_score")
+                if overall_score is not None:
+                    summary_parts.append(f"\nOverall Score: {overall_score}/10")
+
+                strengths = insights.get("strengths", [])
+                if strengths:
+                    summary_parts.append("\nStrengths:")
+                    for strength in strengths[:3]:  # Limit to top 3
+                        summary_parts.append(f"- {strength}")
+
+                weaknesses = insights.get("weaknesses", [])
+                if weaknesses:
+                    summary_parts.append("\nAreas for Improvement:")
+                    for weakness in weaknesses[:3]:  # Limit to top 3
+                        summary_parts.append(f"- {weakness}")
+
+            candidate_summary = (
+                "\n".join(summary_parts) if summary_parts else "Summary pending"
+            )
+            state["candidate_summary"] = candidate_summary
             logger.info(f"✅ Summary generated ({len(candidate_summary)} chars)")
 
             # Step 9: Send results
@@ -980,11 +1088,19 @@ class ProcessTranscriptStep(InterviewStep):
                 "insights": state.get("insights"),
             }
 
-            # Send webhook
+            # Send webhook (only if not already sent)
             webhook_sent = False
-            if webhook_callback_url:
+            if webhook_callback_url and not webhook_already_sent:
                 logger.info(f"🔗 Sending webhook to: {webhook_callback_url}")
                 webhook_sent = await send_webhook(webhook_callback_url, results_payload)
+
+                # Note: webhook_sent status will be saved at the end with all other processing results
+                # No need to save individually here - we'll save everything together
+            elif webhook_already_sent:
+                logger.info("🔗 Webhook already sent - skipping duplicate")
+                webhook_sent = True  # Mark as sent since it was already sent
+            elif not webhook_callback_url:
+                logger.info("🔗 No webhook URL configured - skipping webhook")
 
             state["webhook_sent"] = webhook_sent
 
@@ -1137,13 +1253,8 @@ class ProcessTranscriptStep(InterviewStep):
                     insights=insights,  # Include insights for potential JSON formatting
                 )
 
-                # Mark as sent in session_data to prevent duplicates
-                if email_sent and room_name:
-                    from flow.db import get_session_data, save_session_data
-
-                    current_session = get_session_data(room_name) or {}
-                    current_session["email_sent"] = True
-                    save_session_data(room_name, current_session)
+                # Note: email_sent status will be saved at the end with all other processing results
+                # No need to save individually here - we'll save everything together
             elif email_already_sent:
                 logger.info("📧 Email already sent - skipping duplicate")
             elif not email_results_to:
@@ -1152,13 +1263,96 @@ class ProcessTranscriptStep(InterviewStep):
             state["email_sent"] = email_sent
 
             # Save all important fields to database after processing completes
-            if room_name:
+            # Simple Explanation: If we have a workflow_thread_id, we save to workflow_threads table.
+            # Otherwise, we fall back to the rooms table for backwards compatibility.
+            if workflow_thread_id:
+                # Use workflow_threads table - this is the primary way to store workflow data
+                from flow.db import save_workflow_thread_data, get_workflow_thread_data
+
+                # Get existing thread data or create new
+                thread_data = get_workflow_thread_data(workflow_thread_id) or {}
+
+                # Update with all the data we have
+                thread_data.update(
+                    {
+                        "workflow_thread_id": workflow_thread_id,
+                        "room_name": room_name,
+                        "room_url": state.get("room_url")
+                        or thread_data.get("room_url"),
+                        "room_id": room_id or thread_data.get("room_id"),
+                        "transcript_text": transcript_text
+                        or thread_data.get("transcript_text"),
+                        "transcript_id": transcript_id
+                        or thread_data.get("transcript_id"),
+                        "duration": duration or thread_data.get("duration"),
+                        "transcript_processed": True,
+                        "transcript_processing": False,
+                        "email_sent": email_sent,
+                        "webhook_sent": webhook_sent,
+                        "candidate_summary": candidate_summary
+                        or thread_data.get("candidate_summary"),
+                        "insights": state.get("insights")
+                        or thread_data.get("insights"),
+                        "qa_pairs": state.get("qa_pairs")
+                        or thread_data.get("qa_pairs"),
+                    }
+                )
+
+                # Update meeting_status to "completed" if it's currently "ended"
+                if thread_data.get("meeting_status") == "ended":
+                    thread_data["meeting_status"] = "completed"
+                    logger.info("✅ Updated meeting_status to 'completed'")
+
+                # Merge in any existing session_data fields that might not be in thread_data yet
+                # (like candidate_name, email_results_to, etc.)
+                for key in [
+                    "candidate_name",
+                    "candidate_email",
+                    "email_results_to",
+                    "webhook_callback_url",
+                    "interview_type",
+                    "position",
+                    "interviewer_context",
+                    "analysis_prompt",
+                    "summary_format_prompt",
+                    "bot_enabled",
+                    "bot_id",
+                    "bot_config",
+                    "meeting_start_time",
+                    "meeting_end_time",
+                    "session_id",
+                ]:
+                    if key in session_data and key not in thread_data:
+                        thread_data[key] = session_data[key]
+
+                # Save to workflow_threads table
+                save_workflow_thread_data(workflow_thread_id, thread_data)
+                logger.info(
+                    f"✅ Saved all processing results to workflow_threads table for workflow_thread_id: {workflow_thread_id}"
+                )
+            elif room_name:
+                # Fall back to rooms table (legacy behavior for non-workflow cases)
                 from flow.db import get_session_data, save_session_data
 
                 current_session = get_session_data(room_name) or {}
 
                 # Mark transcript as processed to prevent duplicate processing
-                current_session["transcript_processed"] = True
+                # Simple Explanation: We save processing status keyed by room_name
+                # (since we don't have a workflow_thread_id in this case)
+                processing_key = room_name
+                if "processing_status_by_key" not in current_session:
+                    current_session["processing_status_by_key"] = {}
+                if processing_key not in current_session["processing_status_by_key"]:
+                    current_session["processing_status_by_key"][processing_key] = {}
+                current_session["processing_status_by_key"][processing_key][
+                    "transcript_processed"
+                ] = True
+                current_session["processing_status_by_key"][processing_key][
+                    "email_sent"
+                ] = email_sent
+                current_session["processing_status_by_key"][processing_key][
+                    "webhook_sent"
+                ] = webhook_sent
 
                 # Set transcript_processing back to False (processing is complete)
                 current_session["transcript_processing"] = False
@@ -1178,7 +1372,7 @@ class ProcessTranscriptStep(InterviewStep):
                 # Save all updates to database
                 save_session_data(room_name, current_session)
                 logger.info(
-                    "✅ Saved all processing results to database (transcript_processed, candidate_summary, meeting_status)"
+                    "✅ Saved all processing results to rooms table (legacy fallback)"
                 )
 
             state = self.update_status(state, "completed")

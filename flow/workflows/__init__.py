@@ -5,8 +5,7 @@
 
 from typing import Any, Protocol
 
-from flow.workflows.ai_interviewer import AIInterviewerWorkflow
-from flow.workflows.one_time_meeting import OneTimeMeetingWorkflow
+from flow.workflows.bot_call import BotCallWorkflow
 from flow.workflows.order_food import OrderFoodWorkflow
 
 
@@ -32,9 +31,8 @@ class WorkflowNotFoundError(Exception):
 def get_workflows() -> dict[str, Workflow]:
     """Return all available workflows."""
     return {
+        "bot_call": BotCallWorkflow(),
         "order_food": OrderFoodWorkflow(),
-        "ai_interviewer": AIInterviewerWorkflow(),
-        "one_time_meeting": OneTimeMeetingWorkflow(),
     }
 
 
@@ -55,8 +53,7 @@ def get_workflow(name: str) -> Workflow:
 
 __all__ = [
     "Workflow",
-    "AIInterviewerWorkflow",
-    "OneTimeMeetingWorkflow",
+    "BotCallWorkflow",
     "OrderFoodWorkflow",
     "get_workflows",
     "get_workflow",
