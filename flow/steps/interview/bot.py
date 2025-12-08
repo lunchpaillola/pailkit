@@ -217,10 +217,6 @@ IMPORTANT: Your output will be spoken aloud, so:
         @transport.event_handler("on_participant_joined")
         async def on_participant_joined(transport, participant):
             """Log when any participant (including bot) joins and update participants map."""
-            logger.info("🔵 DEBUG: on_participant_joined event received")
-            logger.info(f"   - Full participant data: {participant}")
-            logger.info(f"   - Participant type: {type(participant)}")
-
             participant_id = participant.get("id", "unknown")
             participant_name = participant.get("user_name", "unknown")
             is_local = participant.get("local", False)
@@ -239,22 +235,15 @@ IMPORTANT: Your output will be spoken aloud, so:
                         "⚠️ No participants returned from transport.participants()"
                     )
                     return
-                logger.info(f"👥 Participants from Daily.co: {participants}")
 
                 # Identify bot's session_id (local participant or match by bot_name)
                 bot_session_id = None
                 if is_local:
                     bot_session_id = session_id
-                    logger.info(
-                        f"🤖 Bot session_id identified (local): {bot_session_id}"
-                    )
                 else:
                     # Check if this participant matches bot_name
                     if participant_name == bot_name:
                         bot_session_id = session_id
-                        logger.info(
-                            f"🤖 Bot session_id identified (by name): {bot_session_id}"
-                        )
 
                 if bot_session_id:
                     transcript_handler.bot_session_id = bot_session_id
@@ -283,26 +272,15 @@ IMPORTANT: Your output will be spoken aloud, so:
                         "session_id": p_session_id,
                         "id": pid,
                     }
-                    logger.info(
-                        f"   - session_id: {p_session_id}, name: {p_name}, user_id: {pdata.get('user_id')}"
-                    )
 
                 transcript_handler.participants_map = participants_map
                 # Update participant join order (preserve existing order, add new participants)
                 for session_id in participants_map.keys():
                     if session_id not in transcript_handler.participant_join_order:
                         transcript_handler.participant_join_order.append(session_id)
-                logger.info(f"📋 Participants map (excluding bot): {participants_map}")
                 logger.info(
-                    f"   📋 Participant join order: {transcript_handler.participant_join_order}"
+                    f"📋 Participants map updated: {len(participants_map)} participant(s)"
                 )
-                logger.info("   🔍 DEBUG: Full participants_map structure:")
-                for session_id, info in participants_map.items():
-                    logger.info(f"      - session_id: {session_id}")
-                    logger.info(f"        - name: {info.get('name')}")
-                    logger.info(f"        - user_name: {info.get('user_name')}")
-                    logger.info(f"        - user_id: {info.get('user_id')}")
-                    logger.info(f"        - id: {info.get('id')}")
             except Exception as e:
                 logger.warning(f"⚠️ Error updating participants map: {e}", exc_info=True)
 
@@ -310,36 +288,11 @@ IMPORTANT: Your output will be spoken aloud, so:
         @transport.event_handler("on_active_speaker_changed")
         async def on_active_speaker_changed(transport, event):
             """Handle active speaker change events to map Deepgram speaker IDs to Daily.co participants."""
-            logger.info("🔊 DEBUG: on_active_speaker_changed event received")
-
-            # Log ENTIRE event object
-            logger.info(f"   - Full event object: {event}")
-            logger.info(f"   - Event type: {type(event)}")
-            logger.info(
-                f"   - Event dict: {event.__dict__ if hasattr(event, '__dict__') else event}"
-            )
-
-            # Log all event keys/attributes
-            if isinstance(event, dict):
-                logger.info("   - All event keys and values:")
-                for key, value in event.items():
-                    logger.info(f"      - {key}: {value}")
-            else:
-                logger.info("   - All event attributes:")
-                for attr in dir(event):
-                    if not attr.startswith("_"):
-                        try:
-                            value = getattr(event, attr)
-                            logger.info(f"      - {attr}: {value}")
-                        except Exception as e:
-                            logger.info(f"      - {attr}: <error accessing: {e}>")
-
             active_speaker = (
                 event.get("activeSpeaker", {})
                 if isinstance(event, dict)
                 else getattr(event, "activeSpeaker", {})
             )
-            logger.info(f"   - activeSpeaker: {active_speaker}")
 
             # Try to get peer_id from activeSpeaker.peerId first
             peer_id = (
@@ -357,48 +310,20 @@ IMPORTANT: Your output will be spoken aloud, so:
                 )
                 if event_id:
                     peer_id = event_id
-                    logger.info(f"   - Using event.id as peer_id: {peer_id}")
                 else:
-                    logger.warning(
-                        f"⚠️ on_active_speaker_changed event missing peerId and event.id: {event}"
+                    logger.debug(
+                        "No peerId or event.id in on_active_speaker_changed event"
                     )
                     return
 
-            logger.info(f"   - peerId (Daily participant ID): {peer_id}")
-
-            logger.info(f"🔊 Active speaker changed: session_id={peer_id}")
-
             # Get current/recent Deepgram speaker ID from tracker
             deepgram_speaker_id = speaker_tracker.get_current_speaker_id()
-            logger.info(
-                f"   - Current Deepgram speaker ID from tracker: {deepgram_speaker_id}"
-            )
-            logger.info(
-                f"   - Current speaker mappings: {speaker_tracker.speaker_to_session_map}"
-            )
 
             if deepgram_speaker_id is not None:
-                logger.info(f"   Current Deepgram speaker ID: {deepgram_speaker_id}")
                 # Map Deepgram speaker ID to Daily.co session_id
                 speaker_tracker.map_speaker_to_participant(deepgram_speaker_id, peer_id)
-                logger.info(
-                    f"✅ Mapped Deepgram speaker {deepgram_speaker_id} → Daily.co session_id {peer_id}"
-                )
-                logger.info(
-                    f"   - Updated mappings: {speaker_tracker.speaker_to_session_map}"
-                )
-                # Log mapping summary
-                speaker_tracker.log_mapping_summary()
-
-                # Also log participant info for this peer_id
-                participant_info = transcript_handler.participants_map.get(peer_id)
-                logger.info(f"   - Participant info for {peer_id}: {participant_info}")
-            else:
-                logger.warning(
-                    "⚠️ Active speaker changed but no recent Deepgram transcription found"
-                )
-                logger.warning(
-                    f"   - This means we can't map Daily participant {peer_id} to a Deepgram speaker yet"
+                logger.debug(
+                    f"Mapped Deepgram speaker {deepgram_speaker_id} → Daily.co session_id {peer_id}"
                 )
 
         # Register event handler for transcript updates from TranscriptProcessor
