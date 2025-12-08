@@ -861,8 +861,9 @@ IMPORTANT: Your output will be spoken aloud, so:
 
                         # Simple Explanation: LangGraph automatically resumes from the specified
                         # checkpoint when you call ainvoke with a config containing both thread_id
-                        # and checkpoint_id. When resuming, we should pass an empty dict {} -
-                        # LangGraph will use the state from the checkpoint. The checkpoint already
+                        # and checkpoint_id. When resuming from a static interrupt (interrupt_after),
+                        # you should pass None - LangGraph will use the state from the checkpoint
+                        # and continue to the next node (process_transcript). The checkpoint already
                         # has all the state from when the workflow paused, so we don't need to pass anything.
                         # Resume the workflow - it will continue to process_transcript node
                         graph = await workflow.graph
@@ -892,8 +893,8 @@ IMPORTANT: Your output will be spoken aloud, so:
                             )
                             raise
 
-                        # Pass empty dict to resume from checkpoint - LangGraph will use checkpoint state
-                        await graph.ainvoke({}, config=config)
+                        # Pass None to resume from static interrupt - LangGraph will use checkpoint state and continue to next node
+                        await graph.ainvoke(None, config=config)
                         logger.info("✅ Workflow resumed successfully")
                     except Exception as e:
                         error_msg = str(e)
