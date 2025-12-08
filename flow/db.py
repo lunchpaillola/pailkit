@@ -427,6 +427,9 @@ def save_session_data(room_name: str, session_data: Dict[str, Any]) -> bool:
             "summary_format_prompt": encrypted_data.get("summary_format_prompt"),
             "transcript_text": encrypted_data.get("transcript_text"),
             "candidate_summary": encrypted_data.get("candidate_summary"),
+            # processing_status_by_key stores processing status per workflow_thread_id or room_name
+            # This allows rooms to be reused without conflicts
+            "processing_status_by_key": encrypted_data.get("processing_status_by_key"),
         }
 
         # Remove None values to avoid overwriting with NULL
@@ -502,6 +505,8 @@ def get_session_data(room_name: str) -> Dict[str, Any] | None:
             "summary_format_prompt": row.get("summary_format_prompt"),
             "transcript_text": row.get("transcript_text"),
             "candidate_summary": row.get("candidate_summary"),
+            # processing_status_by_key stores processing status per workflow_thread_id or room_name
+            "processing_status_by_key": row.get("processing_status_by_key"),
         }
 
         # Remove None values
@@ -795,3 +800,300 @@ def get_bot_session_by_room_name(room_name: str) -> Dict[str, Any] | None:
             exc_info=True,
         )
         return None
+
+
+def save_workflow_thread_data(
+    workflow_thread_id: str, thread_data: Dict[str, Any]
+) -> bool:
+    """
+    Save workflow thread data to Supabase with field-level encryption.
+
+    **Simple Explanation:**
+    This function saves all data for a workflow run, keyed by workflow_thread_id.
+    This allows rooms to be reused - each workflow run gets its own row in the database.
+
+    The workflow_thread_id is the primary key, so multiple workflow runs can use
+    the same room_name without conflicts.
+
+    Args:
+        workflow_thread_id: Unique workflow thread identifier (UUID string)
+        thread_data: Dictionary containing workflow thread information:
+            - room_name: Room name this workflow is using
+            - room_url: Full Daily.co room URL
+            - candidate_name, candidate_email: User/candidate info (encrypted)
+            - transcript_text: Transcript (encrypted)
+            - transcript_processed, email_sent, webhook_sent: Processing state
+            - candidate_summary: Summary (encrypted)
+            - And all other workflow-related fields
+
+    Returns:
+        True if saved successfully, False otherwise
+    """
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot save workflow thread to Supabase: client not available")
+        return False
+
+    try:
+        # Encrypt sensitive fields before saving
+        encrypted_data = encrypt_sensitive_data(thread_data)
+
+        # Prepare data for Supabase insert/update
+        # Map thread_data keys to database columns
+        db_data = {
+            "workflow_thread_id": workflow_thread_id,
+            "room_name": encrypted_data.get("room_name"),
+            "room_url": encrypted_data.get("room_url"),
+            "room_id": encrypted_data.get("room_id"),
+            "session_id": encrypted_data.get("session_id"),
+            "candidate_name": encrypted_data.get("candidate_name"),
+            "candidate_email": encrypted_data.get("candidate_email"),
+            "interview_type": encrypted_data.get("interview_type"),
+            "position": encrypted_data.get("position"),
+            "difficulty_level": encrypted_data.get("difficulty_level"),
+            "interviewer_context": encrypted_data.get("interviewer_context"),
+            "analysis_prompt": encrypted_data.get("analysis_prompt"),
+            "summary_format_prompt": encrypted_data.get("summary_format_prompt"),
+            "bot_enabled": encrypted_data.get("bot_enabled", False),
+            "bot_id": encrypted_data.get("bot_id"),
+            "bot_config": encrypted_data.get("bot_config"),
+            "meeting_status": encrypted_data.get("meeting_status", "in_progress"),
+            "meeting_start_time": encrypted_data.get("meeting_start_time"),
+            "meeting_end_time": encrypted_data.get("meeting_end_time"),
+            "duration": encrypted_data.get("duration"),
+            "transcript_text": encrypted_data.get("transcript_text"),
+            "transcript_id": encrypted_data.get("transcript_id"),
+            "transcript_processed": encrypted_data.get("transcript_processed", False),
+            "transcript_processing": encrypted_data.get("transcript_processing", False),
+            "email_sent": encrypted_data.get("email_sent", False),
+            "webhook_sent": encrypted_data.get("webhook_sent", False),
+            "candidate_summary": encrypted_data.get("candidate_summary"),
+            "insights": encrypted_data.get("insights"),
+            "qa_pairs": encrypted_data.get("qa_pairs"),
+            "webhook_callback_url": encrypted_data.get("webhook_callback_url"),
+            "email_results_to": encrypted_data.get("email_results_to"),
+            "workflow_paused": encrypted_data.get("workflow_paused", False),
+            "waiting_for_meeting_ended": encrypted_data.get(
+                "waiting_for_meeting_ended", False
+            ),
+            "waiting_for_transcript_webhook": encrypted_data.get(
+                "waiting_for_transcript_webhook", False
+            ),
+            "metadata": encrypted_data.get("metadata"),
+        }
+
+        # Remove None values to avoid overwriting with NULL
+        db_data = {k: v for k, v in db_data.items() if v is not None}
+
+        # Use upsert (insert or update) - Supabase handles this with ON CONFLICT
+        client.table("workflow_threads").upsert(
+            db_data, on_conflict="workflow_thread_id"
+        ).execute()
+
+        logger.info(
+            f"✅ Workflow thread data saved to Supabase: workflow_thread_id={workflow_thread_id} (sensitive fields encrypted)"
+        )
+        return True
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error saving workflow thread data to Supabase for {workflow_thread_id}: {e}",
+            exc_info=True,
+        )
+        return False
+
+
+def get_workflow_thread_data(workflow_thread_id: str) -> Dict[str, Any] | None:
+    """
+    Retrieve workflow thread data from Supabase and decrypt sensitive fields.
+
+    **Simple Explanation:**
+    This function retrieves all data for a specific workflow run by its workflow_thread_id.
+    This is the primary way to get workflow data - each workflow run has its own row.
+
+    Args:
+        workflow_thread_id: Unique workflow thread identifier (UUID string)
+
+    Returns:
+        Dictionary with workflow thread data (sensitive fields decrypted), or None if not found
+    """
+    client = get_supabase_client()
+    if not client:
+        logger.error(
+            "❌ Cannot read workflow thread from Supabase: client not available"
+        )
+        return None
+
+    try:
+        response = (
+            client.table("workflow_threads")
+            .select("*")
+            .eq("workflow_thread_id", workflow_thread_id)
+            .execute()
+        )
+
+        if not response.data or len(response.data) == 0:
+            logger.warning(
+                f"⚠️ No workflow thread data found in Supabase for workflow_thread_id: {workflow_thread_id}"
+            )
+            return None
+
+        # Get the first (and should be only) row
+        row = response.data[0]
+
+        # Convert database row back to thread_data format
+        thread_data = {
+            "workflow_thread_id": row.get("workflow_thread_id"),
+            "room_name": row.get("room_name"),
+            "room_url": row.get("room_url"),
+            "room_id": row.get("room_id"),
+            "session_id": row.get("session_id"),
+            "candidate_name": row.get("candidate_name"),
+            "candidate_email": row.get("candidate_email"),
+            "interview_type": row.get("interview_type"),
+            "position": row.get("position"),
+            "difficulty_level": row.get("difficulty_level"),
+            "interviewer_context": row.get("interviewer_context"),
+            "analysis_prompt": row.get("analysis_prompt"),
+            "summary_format_prompt": row.get("summary_format_prompt"),
+            "bot_enabled": row.get("bot_enabled"),
+            "bot_id": row.get("bot_id"),
+            "bot_config": row.get("bot_config"),
+            "meeting_status": row.get("meeting_status"),
+            "meeting_start_time": row.get("meeting_start_time"),
+            "meeting_end_time": row.get("meeting_end_time"),
+            "duration": row.get("duration"),
+            "transcript_text": row.get("transcript_text"),
+            "transcript_id": row.get("transcript_id"),
+            "transcript_processed": row.get("transcript_processed"),
+            "transcript_processing": row.get("transcript_processing"),
+            "email_sent": row.get("email_sent"),
+            "webhook_sent": row.get("webhook_sent"),
+            "candidate_summary": row.get("candidate_summary"),
+            "insights": row.get("insights"),
+            "qa_pairs": row.get("qa_pairs"),
+            "webhook_callback_url": row.get("webhook_callback_url"),
+            "email_results_to": row.get("email_results_to"),
+            "workflow_paused": row.get("workflow_paused"),
+            "waiting_for_meeting_ended": row.get("waiting_for_meeting_ended"),
+            "waiting_for_transcript_webhook": row.get("waiting_for_transcript_webhook"),
+            "metadata": row.get("metadata"),
+        }
+
+        # Remove None values
+        thread_data = {k: v for k, v in thread_data.items() if v is not None}
+
+        # Decrypt sensitive fields
+        decrypted_data = decrypt_sensitive_data(thread_data)
+
+        logger.info(
+            f"✅ Retrieved workflow thread data from Supabase: workflow_thread_id={workflow_thread_id} (sensitive fields decrypted)"
+        )
+        return decrypted_data
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error retrieving workflow thread data from Supabase for {workflow_thread_id}: {e}",
+            exc_info=True,
+        )
+        return None
+
+
+def get_workflow_threads_by_room_name(room_name: str) -> list[Dict[str, Any]]:
+    """
+    Get all workflow threads for a given room_name.
+
+    **Simple Explanation:**
+    This function retrieves all workflow runs that used a specific room.
+    Useful for finding all workflow threads associated with a room, since
+    rooms can be reused across multiple workflow runs.
+
+    Args:
+        room_name: Room name to search for
+
+    Returns:
+        List of workflow thread data dictionaries (sensitive fields decrypted), empty list if none found
+    """
+    client = get_supabase_client()
+    if not client:
+        logger.error(
+            "❌ Cannot read workflow threads from Supabase: client not available"
+        )
+        return []
+
+    try:
+        response = (
+            client.table("workflow_threads")
+            .select("*")
+            .eq("room_name", room_name)
+            .order("created_at", desc=True)
+            .execute()
+        )
+
+        if not response.data or len(response.data) == 0:
+            logger.debug(
+                f"No workflow threads found in Supabase for room_name: {room_name}"
+            )
+            return []
+
+        # Convert all rows and decrypt sensitive fields
+        threads = []
+        for row in response.data:
+            thread_data = {
+                "workflow_thread_id": row.get("workflow_thread_id"),
+                "room_name": row.get("room_name"),
+                "room_url": row.get("room_url"),
+                "room_id": row.get("room_id"),
+                "session_id": row.get("session_id"),
+                "candidate_name": row.get("candidate_name"),
+                "candidate_email": row.get("candidate_email"),
+                "interview_type": row.get("interview_type"),
+                "position": row.get("position"),
+                "difficulty_level": row.get("difficulty_level"),
+                "interviewer_context": row.get("interviewer_context"),
+                "analysis_prompt": row.get("analysis_prompt"),
+                "summary_format_prompt": row.get("summary_format_prompt"),
+                "bot_enabled": row.get("bot_enabled"),
+                "bot_id": row.get("bot_id"),
+                "bot_config": row.get("bot_config"),
+                "meeting_status": row.get("meeting_status"),
+                "meeting_start_time": row.get("meeting_start_time"),
+                "meeting_end_time": row.get("meeting_end_time"),
+                "duration": row.get("duration"),
+                "transcript_text": row.get("transcript_text"),
+                "transcript_id": row.get("transcript_id"),
+                "transcript_processed": row.get("transcript_processed"),
+                "transcript_processing": row.get("transcript_processing"),
+                "email_sent": row.get("email_sent"),
+                "webhook_sent": row.get("webhook_sent"),
+                "candidate_summary": row.get("candidate_summary"),
+                "insights": row.get("insights"),
+                "qa_pairs": row.get("qa_pairs"),
+                "webhook_callback_url": row.get("webhook_callback_url"),
+                "email_results_to": row.get("email_results_to"),
+                "workflow_paused": row.get("workflow_paused"),
+                "waiting_for_meeting_ended": row.get("waiting_for_meeting_ended"),
+                "waiting_for_transcript_webhook": row.get(
+                    "waiting_for_transcript_webhook"
+                ),
+                "metadata": row.get("metadata"),
+            }
+
+            # Remove None values
+            thread_data = {k: v for k, v in thread_data.items() if v is not None}
+
+            # Decrypt sensitive fields
+            decrypted_data = decrypt_sensitive_data(thread_data)
+            threads.append(decrypted_data)
+
+        logger.info(
+            f"✅ Retrieved {len(threads)} workflow thread(s) from Supabase for room_name: {room_name}"
+        )
+        return threads
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error retrieving workflow threads by room_name from Supabase for {room_name}: {e}",
+            exc_info=True,
+        )
+        return []

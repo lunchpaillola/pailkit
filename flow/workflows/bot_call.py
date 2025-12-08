@@ -165,8 +165,13 @@ class BotCallWorkflow:
                 logger.info(f"   Generated workflow_thread_id: {thread_id}")
 
             # Store thread_id in session data so we can resume the workflow
-            # when the bot finishes
-            from flow.db import get_session_data, save_session_data
+            # when the bot finishes. Also copy important fields from session_data
+            # into the workflow state so they're available in the checkpoint.
+            from flow.db import (
+                get_session_data,
+                save_session_data,
+                save_workflow_thread_data,
+            )
 
             room_name = state.get("room_name")
             if room_name:
@@ -175,6 +180,32 @@ class BotCallWorkflow:
                 session_data["workflow_paused"] = True
                 save_session_data(room_name, session_data)
                 logger.info("   ✅ Saved workflow_thread_id to session data")
+
+                # Copy important fields from session_data into workflow_thread_data
+                # Simple Explanation: This ensures email_results_to, candidate_name, etc.
+                # are available in the workflow checkpoint, so they're available when resuming.
+                # We save to workflow_threads table so the data persists with the workflow.
+                workflow_thread_data = {
+                    "workflow_thread_id": thread_id,
+                    "room_name": room_name,
+                    "room_url": state.get("room_url"),
+                    "bot_id": state.get("bot_id"),
+                    "bot_config": state.get("bot_config"),
+                    # Copy from session_data so they're in the checkpoint
+                    "email_results_to": session_data.get("email_results_to"),
+                    "webhook_callback_url": session_data.get("webhook_callback_url"),
+                    "candidate_name": session_data.get("candidate_name"),
+                    "candidate_email": session_data.get("candidate_email"),
+                    "interview_type": session_data.get("interview_type"),
+                    "position": session_data.get("position"),
+                    "interviewer_context": session_data.get("interviewer_context"),
+                    "analysis_prompt": session_data.get("analysis_prompt"),
+                    "summary_format_prompt": session_data.get("summary_format_prompt"),
+                }
+                save_workflow_thread_data(thread_id, workflow_thread_data)
+                logger.info(
+                    "   ✅ Copied session_data fields to workflow_thread_data (email, candidate_name, etc.)"
+                )
 
             # Start the bot
             # Simple Explanation: bot_service.start_bot() starts the bot in the
@@ -246,8 +277,10 @@ class BotCallWorkflow:
             # with room_name. It will automatically check the database for transcript_text
             # (the bot saves it there as it transcribes). We don't need to pass the
             # transcript in the state - ProcessTranscriptStep handles retrieving it.
+            # We also pass workflow_thread_id so processing status can be tracked per workflow run.
             process_state = {
                 "room_name": room_name,
+                "workflow_thread_id": state.get("workflow_thread_id"),
                 # ProcessTranscriptStep will check database for transcript_text automatically
                 # If transcript_text is in DB (bot case), it uses that
                 # If not, it can download from Daily.co using transcript_id (non-bot case)

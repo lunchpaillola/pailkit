@@ -821,10 +821,13 @@ IMPORTANT: Your output will be spoken aloud, so:
 
                         # Simple Explanation: LangGraph automatically resumes from the latest
                         # checkpoint when you call ainvoke with a config containing a thread_id.
-                        # We just need to pass an empty state dict - LangGraph will load the
-                        # state from the checkpoint automatically.
+                        # However, LangGraph requires that we write to at least one state field.
+                        # We pass room_name to satisfy this requirement - LangGraph will merge
+                        # this with the checkpoint state automatically.
                         # Resume the workflow - it will continue to process_transcript node
-                        await workflow.graph.ainvoke({}, config=config)
+                        await workflow.graph.ainvoke(
+                            {"room_name": room_name}, config=config
+                        )
                         logger.info("✅ Workflow resumed successfully")
                     except Exception as e:
                         logger.error(f"❌ Error resuming workflow: {e}", exc_info=True)
@@ -997,9 +1000,16 @@ IMPORTANT: Your output will be spoken aloud, so:
 
             # Create state for ProcessTranscriptStep
             # Simple Explanation: ProcessTranscriptStep expects room_name and will
-            # automatically retrieve transcript_text from the database if not provided
+            # automatically retrieve transcript_text from the database if not provided.
+            # We also pass workflow_thread_id if available so processing status can be tracked per workflow run.
+            from flow.db import get_session_data
+
+            session_data = get_session_data(room_name) or {}
+            workflow_thread_id = session_data.get("workflow_thread_id")
+
             state = {
                 "room_name": room_name,
+                "workflow_thread_id": workflow_thread_id,
                 # ProcessTranscriptStep will check database for transcript_text automatically
                 # The bot saves it there as it transcribes
             }

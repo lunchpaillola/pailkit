@@ -1493,11 +1493,17 @@ async def handle_transcript_ready_to_download(
                     ProcessTranscriptStep,
                 )
 
+                # Get workflow_thread_id from session_data if available
+                workflow_thread_id = (
+                    session_data.get("workflow_thread_id") if session_data else None
+                )
+
                 state = {
                     "transcript_id": transcript_id,
                     "room_id": room_id,
                     "room_name": room_name,
                     "duration": duration,
+                    "workflow_thread_id": workflow_thread_id,  # Pass thread_id for per-workflow tracking
                 }
                 step = ProcessTranscriptStep()
                 result = await step.execute(state)
@@ -1525,12 +1531,21 @@ async def handle_transcript_ready_to_download(
             logger.info("📝 Processing transcript directly (no paused workflow)")
             from flow.steps.interview.process_transcript import ProcessTranscriptStep
 
+            # Get workflow_thread_id from session_data if available
+            from flow.db import get_session_data
+
+            session_data = get_session_data(room_name) if room_name else None
+            workflow_thread_id = (
+                session_data.get("workflow_thread_id") if session_data else None
+            )
+
             # Create state from webhook payload
             state = {
                 "transcript_id": transcript_id,
                 "room_id": room_id,
                 "room_name": room_name,
                 "duration": duration,
+                "workflow_thread_id": workflow_thread_id,  # Pass thread_id for per-workflow tracking
             }
 
             # Execute the processing step
@@ -1916,6 +1931,7 @@ async def handle_meeting_ended_webhook(
                         "room_name": room_name,
                         "duration": duration,
                         "meeting_ended": True,
+                        "workflow_thread_id": thread_id,  # Pass thread_id for per-workflow tracking
                     }
 
                     # Mark as processing immediately to prevent duplicate webhooks
@@ -1961,12 +1977,18 @@ async def handle_meeting_ended_webhook(
                     )
                     transcript_id = None  # Will be set from webhook if available
 
+                # Get workflow_thread_id from session_data if available
+                workflow_thread_id = (
+                    session_data.get("workflow_thread_id") if session_data else None
+                )
+
                 state = {
                     "transcript_id": transcript_id,  # May be None if using DB transcript
                     "room_id": meeting_id,  # Use meeting_id as room_id
                     "room_name": room_name,
                     "duration": duration,
                     "meeting_ended": True,
+                    "workflow_thread_id": workflow_thread_id,  # Pass thread_id for per-workflow tracking
                 }
 
                 # Mark as processing immediately to prevent duplicate webhooks
