@@ -100,6 +100,9 @@ class TranscriptHandler:
         self.speaker_tracker: Optional["SpeakerTrackingProcessor"] = speaker_tracker
         self.transport: Optional["DailyTransport"] = transport
         self.participants_map: Dict[str, Dict[str, Any]] = {}
+        self.participant_join_order: list[str] = (
+            []
+        )  # Track participant join order for mapping
         self.bot_session_id: Optional[str] = None
         self.workflow_thread_id: Optional[str] = workflow_thread_id
         logger.info(
@@ -241,35 +244,80 @@ class TranscriptHandler:
             # User messages come from Deepgram STT, assistant messages from TTS
             self.messages.append(msg)
 
-            logger.debug(
-                f"   Message: role={msg.role}, content={msg.content[:50]}..., timestamp={msg.timestamp}"
-            )
+            # Get user_id from message (Daily.co participant ID)
+            msg_user_id = getattr(msg, "user_id", None)
+            logger.info(f"   - msg.user_id: {msg_user_id}")
 
             # Determine speaker name based on role
             if msg.role == "assistant":
                 # Assistant messages = bot speaking - always use bot name
                 speaker_name = self.bot_name
+                logger.info(f"   ✅ Using bot name: {speaker_name}")
             else:
-                # User messages = human participants - simple lookup chain
+                # User messages = human participants - lookup by user_id
                 speaker_name = "User"  # Default fallback
+                logger.info("   🔍 Resolving user speaker name...")
 
-                if self.speaker_tracker:
-                    # Get current Deepgram speaker ID
-                    deepgram_speaker_id = self.speaker_tracker.get_current_speaker_id()
-                    if deepgram_speaker_id is not None:
-                        # Look up Daily.co session_id from mapping
-                        session_id = self.speaker_tracker.speaker_to_session_map.get(
-                            deepgram_speaker_id
+                participant_info = None
+
+                # Try to find participant by user_id
+                if msg_user_id:
+                    logger.info(
+                        f"   - Looking up participant by user_id: {msg_user_id}"
+                    )
+                    logger.info(
+                        f"   - Available participants_map keys: {list(self.participants_map.keys())}"
+                    )
+
+                    # Try direct lookup by user_id as session_id
+                    participant_info = self.participants_map.get(msg_user_id)
+                    if participant_info:
+                        logger.info(
+                            f"   - Found participant by direct lookup: {participant_info.get('name')}"
                         )
-                        if session_id:
-                            # Get participant name from participants_map
-                            participant_info = self.participants_map.get(session_id)
-                            if participant_info:
-                                speaker_name = (
-                                    participant_info.get("name")
-                                    or participant_info.get("user_name")
-                                    or "User"
+                    else:
+                        # Search for participant where user_id or id matches
+                        logger.info(
+                            "   - Direct lookup failed, searching participants_map..."
+                        )
+                        for sid, p_info in self.participants_map.items():
+                            p_user_id = p_info.get("user_id")
+                            p_id = p_info.get("id")
+                            logger.debug(
+                                f"      - Checking session_id={sid}, user_id={p_user_id}, id={p_id}"
+                            )
+                            if p_user_id == msg_user_id or p_id == msg_user_id:
+                                participant_info = p_info
+                                logger.info(
+                                    f"   - Found participant by user_id/id match: {sid} -> {p_info.get('name')}"
                                 )
+                                break
+
+                # If found, use participant name
+                if participant_info:
+                    speaker_name = (
+                        participant_info.get("name")
+                        or participant_info.get("user_name")
+                        or "User"
+                    )
+                    logger.info(f"   ✅ Resolved speaker name: {speaker_name}")
+                else:
+                    # Fallback: If only one participant, use their name
+                    if len(self.participants_map) == 1:
+                        single_participant = list(self.participants_map.values())[0]
+                        speaker_name = (
+                            single_participant.get("name")
+                            or single_participant.get("user_name")
+                            or "User"
+                        )
+                        logger.info(
+                            f"   ✅ Fallback: Using single participant name: {speaker_name}"
+                        )
+                    else:
+                        logger.warning(
+                            f"   ⚠️ Could not resolve speaker name for user_id: {msg_user_id}, "
+                            f"participants_map has {len(self.participants_map)} participants. Using default 'User'"
+                        )
 
             # Format and add to transcript text
             line = self._format_transcript_line(
@@ -427,28 +475,95 @@ class SpeakerTrackingProcessor(FrameProcessor):
     Maintains a mapping between speaker IDs and Daily.co participants.
     """
 
-    def __init__(self):
+    def __init__(self, transcript_handler: Optional["TranscriptHandler"] = None):
         super().__init__()
         # Mapping: Deepgram speaker ID -> Daily.co session_id
         self.speaker_to_session_map: Dict[int, str] = {}
         # Track the last seen speaker ID from frames
         self.last_speaker: Optional[int] = None
+        # Reference to transcript handler for participant order mapping
+        self.transcript_handler: Optional["TranscriptHandler"] = transcript_handler
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         """Process incoming frames and extract speaker IDs from frames with speaker information."""
         await super().process_frame(frame, direction)
+
+        # Log ALL frames (not just ones with speaker IDs) to see what's passing through
+        frame_type = type(frame).__name__
+        logger.debug(f"📦 Frame received: {frame_type}")
 
         # Check if frame has speaker information (from Deepgram STT with diarization enabled)
         speaker_id = getattr(frame, "speaker", None) or getattr(
             frame, "speaker_id", None
         )
 
-        # If frame has speaker info, store it as the last seen speaker
+        # For Deepgram-related frames, log comprehensive information
+        if (
+            "Deepgram" in frame_type
+            or "STT" in frame_type
+            or "Text" in frame_type
+            or "Transcription" in frame_type
+        ):
+            logger.info(f"📢 DEBUG: Deepgram-related frame detected: {frame_type}")
+            logger.info(f"   - Full frame: {frame}")
+            logger.info(
+                f"   - Frame dict: {frame.__dict__ if hasattr(frame, '__dict__') else 'N/A'}"
+            )
+            logger.info(
+                f"   - Frame attributes: {[attr for attr in dir(frame) if not attr.startswith('_')]}"
+            )
+
+            # Log all frame attributes with values
+            logger.info("   - All frame attributes and values:")
+            for attr in dir(frame):
+                if not attr.startswith("_"):
+                    try:
+                        value = getattr(frame, attr)
+                        # Truncate long values for readability
+                        if isinstance(value, str) and len(value) > 200:
+                            value = value[:200] + "..."
+                        elif isinstance(value, (list, dict)) and len(str(value)) > 200:
+                            value = str(value)[:200] + "..."
+                        logger.info(f"      - {attr}: {value}")
+                    except Exception as e:
+                        logger.info(f"      - {attr}: <error accessing: {e}>")
+
+        # DEBUG: Log frame details when speaker info is present
         if speaker_id is not None:
             self.last_speaker = speaker_id
-            logger.debug(
-                f"📢 Frame with speaker ID: {speaker_id}, type: {type(frame).__name__}"
+            logger.info(
+                f"📢 DEBUG: Frame with speaker ID: {speaker_id}, type: {frame_type}"
             )
+            logger.info(
+                f"   - Frame attributes with 'speaker': {[attr for attr in dir(frame) if not attr.startswith('_') and 'speaker' in attr.lower()]}"
+            )
+            logger.info(f"   - frame.speaker: {getattr(frame, 'speaker', None)}")
+            logger.info(f"   - frame.speaker_id: {getattr(frame, 'speaker_id', None)}")
+            logger.info(f"   - Updated last_speaker to: {self.last_speaker}")
+            logger.info(f"   - Current mappings: {self.speaker_to_session_map}")
+
+            # If this speaker ID isn't mapped yet, try to map it using participant order
+            if (
+                speaker_id not in self.speaker_to_session_map
+                and self.transcript_handler
+            ):
+                # Get unmapped participants in join order
+                mapped_session_ids = set(self.speaker_to_session_map.values())
+                unmapped_participants = [
+                    session_id
+                    for session_id in self.transcript_handler.participant_join_order
+                    if session_id not in mapped_session_ids
+                    and session_id in self.transcript_handler.participants_map
+                ]
+
+                if unmapped_participants:
+                    # Map to first unmapped participant
+                    session_id = unmapped_participants[0]
+                    self.map_speaker_to_participant(speaker_id, session_id)
+                    logger.info(
+                        f"✅ Auto-mapped Deepgram speaker {speaker_id} → Daily.co session_id {session_id} "
+                        f"(using participant order: {self.transcript_handler.participant_join_order})"
+                    )
 
         # Pass frame through to next processor
         await self.push_frame(frame, direction)
@@ -907,6 +1022,11 @@ IMPORTANT: Your output will be spoken aloud, so:
                 utterances=True,
             )
             logger.info("🎤 Deepgram STT initialized with diarization and utterances")
+            logger.info("   🔍 DEBUG: Deepgram STT configuration:")
+            logger.info("      - model: nova-2")
+            logger.info("      - diarize: True")
+            logger.info("      - utterances: True")
+            logger.info(f"      - STT service type: {type(stt)}")
 
             messages = [
                 {
@@ -920,9 +1040,6 @@ IMPORTANT: Your output will be spoken aloud, so:
 
             # Create transcript processor and handler
             transcript = TranscriptProcessor()
-
-            # Create speaker tracking processor to extract speaker IDs from frames
-            speaker_tracker = SpeakerTrackingProcessor()
 
             # Get workflow_thread_id for this room (if workflow is running)
             # Simple Explanation: We need to find the workflow_thread_id so we can save
@@ -943,14 +1060,23 @@ IMPORTANT: Your output will be spoken aloud, so:
                         f"Could not find workflow_thread_id for room {room_name}: {e}"
                     )
 
-            # Create transcript handler that saves to database
+            # Create transcript handler first (needed for speaker tracker)
             transcript_handler = TranscriptHandler(
                 room_name=room_name,
                 bot_name=bot_name,
-                speaker_tracker=speaker_tracker,
+                speaker_tracker=None,  # Will be set after creation
                 transport=transport,
                 workflow_thread_id=workflow_thread_id,
             )
+
+            # Create speaker tracking processor to extract speaker IDs from frames
+            # Pass transcript_handler reference for participant order mapping
+            speaker_tracker = SpeakerTrackingProcessor(
+                transcript_handler=transcript_handler
+            )
+
+            # Now set the speaker_tracker reference in transcript_handler
+            transcript_handler.speaker_tracker = speaker_tracker
             # Set participants_map that was loaded at startup
             transcript_handler.participants_map = participants_map
             logger.info(
@@ -994,6 +1120,10 @@ IMPORTANT: Your output will be spoken aloud, so:
             @transport.event_handler("on_participant_joined")
             async def on_participant_joined(transport, participant):
                 """Log when any participant (including bot) joins and update participants map."""
+                logger.info("🔵 DEBUG: on_participant_joined event received")
+                logger.info(f"   - Full participant data: {participant}")
+                logger.info(f"   - Participant type: {type(participant)}")
+
                 participant_id = participant.get("id", "unknown")
                 participant_name = participant.get("user_name", "unknown")
                 is_local = participant.get("local", False)
@@ -1051,6 +1181,7 @@ IMPORTANT: Your output will be spoken aloud, so:
 
                         participants_map[p_session_id] = {
                             "name": p_name,
+                            "user_name": p_name,  # Add for consistency/backward compatibility
                             "user_id": pdata.get("user_id"),
                             "session_id": p_session_id,
                             "id": pid,
@@ -1060,23 +1191,97 @@ IMPORTANT: Your output will be spoken aloud, so:
                         )
 
                     transcript_handler.participants_map = participants_map
+                    # Update participant join order (preserve existing order, add new participants)
+                    for session_id in participants_map.keys():
+                        if session_id not in transcript_handler.participant_join_order:
+                            transcript_handler.participant_join_order.append(session_id)
                     logger.info(
                         f"📋 Participants map (excluding bot): {participants_map}"
                     )
+                    logger.info(
+                        f"   📋 Participant join order: {transcript_handler.participant_join_order}"
+                    )
+                    logger.info("   🔍 DEBUG: Full participants_map structure:")
+                    for session_id, info in participants_map.items():
+                        logger.info(f"      - session_id: {session_id}")
+                        logger.info(f"        - name: {info.get('name')}")
+                        logger.info(f"        - user_name: {info.get('user_name')}")
+                        logger.info(f"        - user_id: {info.get('user_id')}")
+                        logger.info(f"        - id: {info.get('id')}")
                 except Exception as e:
                     logger.warning(
                         f"⚠️ Error updating participants map: {e}", exc_info=True
                     )
 
             # Register event handler for active speaker changes
-            @transport.event_handler("active-speaker-change")
-            async def on_active_speaker_change(transport, event):
+            @transport.event_handler("on_active_speaker_changed")
+            async def on_active_speaker_changed(transport, event):
                 """Handle active speaker change events to map Deepgram speaker IDs to Daily.co participants."""
-                peer_id = event.get("activeSpeaker", {}).get("peerId")
-                if not peer_id:
-                    return
+                logger.info("🔊 DEBUG: on_active_speaker_changed event received")
 
+                # Log ENTIRE event object
+                logger.info(f"   - Full event object: {event}")
+                logger.info(f"   - Event type: {type(event)}")
+                logger.info(
+                    f"   - Event dict: {event.__dict__ if hasattr(event, '__dict__') else event}"
+                )
+
+                # Log all event keys/attributes
+                if isinstance(event, dict):
+                    logger.info("   - All event keys and values:")
+                    for key, value in event.items():
+                        logger.info(f"      - {key}: {value}")
+                else:
+                    logger.info("   - All event attributes:")
+                    for attr in dir(event):
+                        if not attr.startswith("_"):
+                            try:
+                                value = getattr(event, attr)
+                                logger.info(f"      - {attr}: {value}")
+                            except Exception as e:
+                                logger.info(f"      - {attr}: <error accessing: {e}>")
+
+                active_speaker = (
+                    event.get("activeSpeaker", {})
+                    if isinstance(event, dict)
+                    else getattr(event, "activeSpeaker", {})
+                )
+                logger.info(f"   - activeSpeaker: {active_speaker}")
+
+                # Try to get peer_id from activeSpeaker.peerId first
+                peer_id = (
+                    active_speaker.get("peerId")
+                    if isinstance(active_speaker, dict)
+                    else getattr(active_speaker, "peerId", None)
+                )
+
+                # Fallback: Use event.id (Daily.co participant ID) if peerId not available
+                if not peer_id:
+                    event_id = (
+                        event.get("id")
+                        if isinstance(event, dict)
+                        else getattr(event, "id", None)
+                    )
+                    if event_id:
+                        peer_id = event_id
+                        logger.info(f"   - Using event.id as peer_id: {peer_id}")
+                    else:
+                        logger.warning(
+                            "   ⚠️ No peerId or event.id in on_active_speaker_changed event"
+                        )
+                        return
+
+                logger.info(f"   - peerId (Daily participant ID): {peer_id}")
+
+                # Get current Deepgram speaker ID
                 deepgram_speaker_id = speaker_tracker.get_current_speaker_id()
+                logger.info(
+                    f"   - Current Deepgram speaker ID from tracker: {deepgram_speaker_id}"
+                )
+                logger.info(
+                    f"   - Current speaker mappings: {speaker_tracker.speaker_to_session_map}"
+                )
+
                 if deepgram_speaker_id is not None:
                     speaker_tracker.map_speaker_to_participant(
                         deepgram_speaker_id, peer_id
@@ -1084,9 +1289,21 @@ IMPORTANT: Your output will be spoken aloud, so:
                     logger.info(
                         f"✅ Mapped Deepgram speaker {deepgram_speaker_id} → Daily.co session_id {peer_id}"
                     )
+                    logger.info(
+                        f"   - Updated mappings: {speaker_tracker.speaker_to_session_map}"
+                    )
+
+                    # Also log participant info for this peer_id
+                    participant_info = transcript_handler.participants_map.get(peer_id)
+                    logger.info(
+                        f"   - Participant info for {peer_id}: {participant_info}"
+                    )
                 else:
                     logger.warning(
                         "⚠️ Active speaker changed but no recent Deepgram transcription found"
+                    )
+                    logger.warning(
+                        f"   - This means we can't map Daily participant {peer_id} to a Deepgram speaker yet"
                     )
 
             # Register event handler for transcript updates from TranscriptProcessor
