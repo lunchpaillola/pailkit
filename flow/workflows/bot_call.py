@@ -31,7 +31,11 @@ logger = logging.getLogger(__name__)
 # survive server restarts and work across multiple instances (like Fly.io).
 # Falls back to MemorySaver if Supabase is not configured.
 # The checkpointer is created asynchronously and kept alive for the application lifecycle.
+#
+# IMPORTANT: AsyncPostgresSaver is an async context manager. We enter it once at startup
+# and keep the entered checkpointer alive for the application lifetime.
 _shared_checkpointer = None
+_checkpointer_context_manager = None
 _checkpointer_lock = None
 
 
@@ -39,11 +43,16 @@ async def _get_checkpointer():
     """
     Get the shared checkpointer instance, creating it if needed.
 
-    Simple Explanation: This function returns a checkpointer that stores
-    workflow state. It tries to use Supabase (PostgreSQL) first, and falls
-    back to in-memory storage if Supabase is not configured.
+    **Simple Explanation:**
+    This function returns a checkpointer that stores workflow state. It tries to use
+    Supabase (PostgreSQL) first, and falls back to in-memory storage if Supabase is
+    not configured.
+
+    **Important:** For AsyncPostgresSaver, we enter the context manager once and keep
+    the entered checkpointer alive for the application lifetime. This is different from
+    the example in the docs where it's used in a short-lived context.
     """
-    global _shared_checkpointer, _checkpointer_lock
+    global _shared_checkpointer, _checkpointer_context_manager, _checkpointer_lock
 
     # Import asyncio only when needed
     if _checkpointer_lock is None:
@@ -57,9 +66,9 @@ async def _get_checkpointer():
             # Try to get async Postgres checkpointer from Supabase
             from flow.db import get_async_postgres_checkpointer
 
-            checkpointer = await get_async_postgres_checkpointer()
+            checkpointer_cm = await get_async_postgres_checkpointer()
 
-            if checkpointer is None:
+            if checkpointer_cm is None:
                 # Fallback to MemorySaver if Supabase is not configured
                 logger.warning(
                     "⚠️ Supabase async checkpointer not available - using in-memory checkpointer. "
@@ -68,10 +77,31 @@ async def _get_checkpointer():
                 )
                 from langgraph.checkpoint.memory import MemorySaver
 
-                checkpointer = MemorySaver()
+                _shared_checkpointer = MemorySaver()
+                logger.info("✅ In-memory checkpointer initialized")
+            else:
+                # Enter the async context manager to get the actual checkpointer
+                # Simple Explanation: AsyncPostgresSaver.from_conn_string() returns a context
+                # manager. We need to enter it (using __aenter__) to get the actual checkpointer.
+                # We keep both the context manager and the entered checkpointer alive for the
+                # application lifetime. When the app shuts down, we should exit the context manager.
+                _checkpointer_context_manager = checkpointer_cm
+                _shared_checkpointer = await checkpointer_cm.__aenter__()
 
-            _shared_checkpointer = checkpointer
-            logger.info("✅ Async checkpointer initialized")
+                # Setup tables if they don't exist (safety net - migration should handle this)
+                try:
+                    await _shared_checkpointer.setup()
+                    logger.debug(
+                        "✅ Async Postgres checkpointer tables verified/created"
+                    )
+                except Exception as setup_error:
+                    # If setup fails, it might be because tables already exist (from migration)
+                    # or there's a real error. Log it but don't fail - the checkpointer might still work.
+                    logger.debug(
+                        f"⚠️ Async Postgres checkpointer setup warning (tables may already exist): {setup_error}"
+                    )
+
+                logger.info("✅ Async Postgres checkpointer initialized and entered")
 
     return _shared_checkpointer
 

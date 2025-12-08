@@ -843,11 +843,52 @@ IMPORTANT: Your output will be spoken aloud, so:
                         # has all the state from when the workflow paused, so we don't need to pass anything.
                         # Resume the workflow - it will continue to process_transcript node
                         graph = await workflow.graph
+
+                        # Try to get the checkpoint state first to verify it exists
+                        # Simple Explanation: This helps us detect if the checkpoint is missing
+                        # (e.g., if using MemorySaver and server restarted, or if checkpointer isn't configured)
+                        try:
+                            state_snapshot = graph.get_state(config)
+                            if not state_snapshot or not state_snapshot.values:
+                                raise ValueError(
+                                    "Checkpoint state not found. This may happen if: "
+                                    "1) Using in-memory checkpointer and server restarted, "
+                                    "2) SUPABASE_DB_PASSWORD is not set in .env file, "
+                                    "3) Checkpoint was deleted or expired."
+                                )
+                            logger.info(
+                                "   ✅ Checkpoint state found - resuming workflow"
+                            )
+                        except Exception as state_error:
+                            logger.warning(
+                                f"   ⚠️ Could not retrieve checkpoint state: {state_error}"
+                            )
+                            logger.warning(
+                                "   This usually means the checkpointer isn't configured properly. "
+                                "Check that SUPABASE_DB_PASSWORD is set in your .env file."
+                            )
+                            raise
+
                         # Pass empty dict to resume from checkpoint - LangGraph will use checkpoint state
                         await graph.ainvoke({}, config=config)
                         logger.info("✅ Workflow resumed successfully")
                     except Exception as e:
-                        logger.error(f"❌ Error resuming workflow: {e}", exc_info=True)
+                        error_msg = str(e)
+                        logger.error(
+                            f"❌ Error resuming workflow: {error_msg}", exc_info=True
+                        )
+
+                        # Provide helpful error message if it's a checkpointer issue
+                        if (
+                            "SUPABASE_DB" in error_msg.upper()
+                            or "checkpoint" in error_msg.lower()
+                        ):
+                            logger.error(
+                                "   💡 TIP: This error is likely due to missing Supabase database credentials. "
+                                "Add SUPABASE_DB_PASSWORD to your .env file. "
+                                "Run: python scripts/diagnose_supabase.py to check your configuration."
+                            )
+
                         # Fallback to full transcript processing if workflow resume fails
                         # Simple Explanation: If workflow resume fails, we use ProcessTranscriptStep
                         # which includes the full pipeline: Q&A parsing, insights, email, webhook

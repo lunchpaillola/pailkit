@@ -313,11 +313,12 @@ def _get_db_connection_string() -> str | None:
 
             # Construct PostgreSQL connection string
             # Format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+            # Note: For Supabase cloud, SSL is required. For local Supabase, SSL is disabled.
             if "localhost" in project_ref or "127.0.0.1" in project_ref:
-                # Local Supabase
-                db_url = f"postgresql://postgres:{db_password}@localhost:54322/postgres"
+                # Local Supabase - SSL disabled
+                db_url = f"postgresql://postgres:{db_password}@localhost:54322/postgres?sslmode=disable"
             else:
-                # Production Supabase
+                # Production Supabase - SSL required (default)
                 db_url = f"postgresql://postgres:{db_password}@db.{project_ref}.supabase.co:5432/postgres"
         except Exception as e:
             logger.error(
@@ -401,8 +402,9 @@ async def get_async_postgres_checkpointer():
     This creates an ASYNC checkpointer that stores workflow state in Supabase (PostgreSQL).
     This is the correct checkpointer to use for async workflows (like BotCallWorkflow).
 
-    The checkpointer uses AsyncPostgresSaver which properly handles async operations.
-    You should use this within an async context manager pattern.
+    **Important:** AsyncPostgresSaver.from_conn_string() returns an async context manager.
+    This function returns the context manager itself. You need to enter it (using `async with`)
+    before using it. The entered checkpointer should be kept alive for the application lifetime.
 
     **Environment Variables:**
     Uses the same Supabase configuration as other database functions:
@@ -416,15 +418,15 @@ async def get_async_postgres_checkpointer():
     - Format: postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
 
     Returns:
-        LangGraph AsyncPostgresSaver checkpointer instance (async context manager),
+        AsyncPostgresSaver context manager (needs to be entered with `async with`),
         or None if configuration is missing
 
     Example:
         ```python
-        checkpointer = await get_async_postgres_checkpointer()
-        if checkpointer:
-            async with checkpointer:
-                # Use checkpointer here
+        checkpointer_cm = await get_async_postgres_checkpointer()
+        if checkpointer_cm:
+            async with checkpointer_cm as checkpointer:
+                # Use checkpointer here - keep it alive for app lifetime
                 graph = builder.compile(checkpointer=checkpointer)
         ```
     """
@@ -442,28 +444,14 @@ async def get_async_postgres_checkpointer():
         return None
 
     try:
-        # Create AsyncPostgresSaver with connection string
-        # Simple Explanation: AsyncPostgresSaver stores workflow checkpoints in PostgreSQL
-        # using async operations. This is the correct checkpointer for async workflows.
-        # The tables should already exist from the migration, but we call setup()
-        # as a safety net to ensure they're created if the migration hasn't run yet
-        checkpointer = AsyncPostgresSaver.from_conn_string(db_url)
+        # Create AsyncPostgresSaver context manager with connection string
+        # Simple Explanation: AsyncPostgresSaver.from_conn_string() returns an async
+        # context manager. We need to enter it (using `async with`) to get the actual
+        # checkpointer. The entered checkpointer should be kept alive for the app lifetime.
+        checkpointer_cm = AsyncPostgresSaver.from_conn_string(db_url)
 
-        # Setup tables if they don't exist (safety net - migration should handle this)
-        # Simple Explanation: setup() creates the necessary tables. We call it once
-        # as a safety net, but the migration file should have already created them.
-        try:
-            await checkpointer.setup()
-            logger.debug("✅ Async Postgres checkpointer tables verified/created")
-        except Exception as setup_error:
-            # If setup fails, it might be because tables already exist (from migration)
-            # or there's a real error. Log it but don't fail - the checkpointer might still work.
-            logger.debug(
-                f"⚠️ Async Postgres checkpointer setup warning (tables may already exist): {setup_error}"
-            )
-
-        logger.debug("✅ Async Postgres checkpointer created successfully")
-        return checkpointer
+        logger.debug("✅ Async Postgres checkpointer context manager created")
+        return checkpointer_cm
     except Exception as e:
         logger.error(
             f"❌ Error creating Async Postgres checkpointer: {e}", exc_info=True
