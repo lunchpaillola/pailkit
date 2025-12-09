@@ -933,12 +933,12 @@ IMPORTANT: Your output will be spoken aloud, so:
             logger.info(f"📋 Participants loaded at startup: {participants_map}")
 
             # Use OpenAI for both LLM and TTS
-            llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
+            llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4.1")
             tts = OpenAITTSService(
                 api_key=os.getenv("OPENAI_API_KEY"),
                 voice="alloy",
                 interruptions_allowed=True,
-                interruption_strategies=[MinWordsInterruptionStrategy(min_words=3)],
+                interruption_strategies=[MinWordsInterruptionStrategy(min_words=1)],
             )
 
             # Use Deepgram for Speech-to-Text (STT) to transcribe user speech
