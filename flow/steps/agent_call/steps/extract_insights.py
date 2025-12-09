@@ -12,7 +12,7 @@ import logging
 import os
 from typing import Any, Dict, List, cast
 
-from flow.steps.interview.base import InterviewStep
+from flow.steps.agent_call.steps.base import InterviewStep
 
 logger = logging.getLogger(__name__)
 

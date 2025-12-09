@@ -21,8 +21,8 @@ from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 
 # Note: We import get_async_postgres_checkpointer in _get_checkpointer() to avoid circular imports
-from flow.steps.interview.bot_service import bot_service
-from flow.steps.interview.process_transcript import ProcessTranscriptStep
+from flow.steps.agent_call.bot.bot_service import bot_service
+from flow.steps.agent_call.steps.process_transcript import ProcessTranscriptStep
 
 logger = logging.getLogger(__name__)
 

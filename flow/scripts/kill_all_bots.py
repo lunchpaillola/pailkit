@@ -21,7 +21,7 @@ flow_dir = os.path.dirname(script_dir)
 project_root = os.path.dirname(flow_dir)
 sys.path.insert(0, project_root)
 
-from flow.steps.interview.bot_service import bot_service  # noqa: E402
+from flow.steps.agent_call.bot.bot_service import bot_service  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()

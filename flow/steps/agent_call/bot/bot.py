@@ -18,12 +18,12 @@ import os
 import sys
 from typing import Any, Dict
 
-# Add parent directory to path so we can import from flow.steps.interview
+# Add parent directory to path so we can import from flow.steps.agent_call
 project_root = os.path.join(os.path.dirname(__file__), "../../../")
 sys.path.insert(0, os.path.abspath(project_root))
 
 # Import shared components from bot_service
-from flow.steps.interview.bot_service import (  # noqa: E402
+from flow.steps.agent_call.bot.bot_service import (  # noqa: E402
     SpeakerTrackingProcessor,
     TranscriptHandler,
     TalkingAnimation,

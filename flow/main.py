@@ -205,7 +205,7 @@ async def health_check() -> dict[str, str]:
 import uuid  # noqa: E402
 from datetime import datetime  # noqa: E402
 
-from flow.steps.interview.bot_service import bot_service  # noqa: E402
+from flow.steps.agent_call.bot.bot_service import bot_service  # noqa: E402
 from flow.db import save_bot_session, get_bot_session  # noqa: E402
 
 
@@ -1580,7 +1580,7 @@ async def handle_transcript_ready_to_download(
                 logger.warning(
                     f"⚠️ Could not resume workflow from checkpoint: {e}, processing transcript directly"
                 )
-                from flow.steps.interview.process_transcript import (
+                from flow.steps.agent_call.steps.process_transcript import (
                     ProcessTranscriptStep,
                 )
 
@@ -1620,7 +1620,9 @@ async def handle_transcript_ready_to_download(
         else:
             # No paused workflow - process transcript directly (legacy behavior)
             logger.info("📝 Processing transcript directly (no paused workflow)")
-            from flow.steps.interview.process_transcript import ProcessTranscriptStep
+            from flow.steps.agent_call.steps.process_transcript import (
+                ProcessTranscriptStep,
+            )
 
             # Get workflow_thread_id from session_data if available
             from flow.db import get_session_data
@@ -2052,7 +2054,7 @@ async def handle_meeting_ended_webhook(
                 logger.info(
                     "   No thread_id available - processing transcript directly"
                 )
-                from flow.steps.interview.process_transcript import (
+                from flow.steps.agent_call.steps.process_transcript import (
                     ProcessTranscriptStep,
                 )
 
