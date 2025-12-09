@@ -157,7 +157,15 @@ Return ONLY valid JSON, no additional text."""
             insights = json.loads(response_text)
 
             # Validate and normalize insights
-            insights = self._validate_insights(insights, qa_pairs)
+            try:
+                insights = self._validate_insights(insights, qa_pairs)
+            except Exception as validation_error:
+                logger.error(
+                    f"❌ Error validating insights structure: {validation_error}",
+                    exc_info=True,
+                )
+                logger.warning("⚠️ Using placeholder insights due to validation error")
+                return self._create_placeholder_insights(state, qa_pairs, [])
 
             state["insights"] = insights
             state = self.update_status(state, "insights_extracted")
@@ -177,9 +185,15 @@ Return ONLY valid JSON, no additional text."""
             logger.error(
                 f"   Response: {response_text[:500] if 'response_text' in locals() else 'N/A'}"
             )
+            logger.warning("⚠️ Using placeholder insights due to JSON parsing error")
             return self._create_placeholder_insights(state, qa_pairs, [])
         except Exception as e:
-            logger.error(f"❌ Error during AI analysis: {e}", exc_info=True)
+            error_type = type(e).__name__
+            logger.error(
+                f"❌ Error during AI analysis ({error_type}): {e}",
+                exc_info=True,
+            )
+            logger.warning("⚠️ Using placeholder insights due to analysis error")
             return self._create_placeholder_insights(state, qa_pairs, [])
 
     def _validate_insights(
@@ -188,6 +202,29 @@ Return ONLY valid JSON, no additional text."""
         """
         Validate and normalize insights structure.
         """
+        # Validate qa_pairs structure - ensure all items are dictionaries
+        if not isinstance(qa_pairs, list):
+            logger.warning(
+                f"⚠️ qa_pairs is not a list (got {type(qa_pairs).__name__}), converting to empty list"
+            )
+            qa_pairs = []
+
+        # Filter out any non-dict items from qa_pairs
+        valid_qa_pairs = []
+        invalid_qa_count = 0
+        for qa in qa_pairs:
+            if isinstance(qa, dict):
+                valid_qa_pairs.append(qa)
+            else:
+                invalid_qa_count += 1
+                logger.warning(
+                    f"⚠️ Skipping invalid qa_pair (expected dict, got {type(qa).__name__}): {qa}"
+                )
+
+        if invalid_qa_count > 0:
+            logger.warning(f"⚠️ Filtered out {invalid_qa_count} invalid qa_pair(s)")
+            qa_pairs = valid_qa_pairs
+
         # Start with all fields from insights to preserve custom fields
         # (e.g., person_name, problem, timeline, etc. for lead qualification)
         validated = dict(insights)
@@ -212,16 +249,51 @@ Return ONLY valid JSON, no additional text."""
             )
 
         # Ensure question_assessments match qa_pairs
+        # First, filter out any non-dict items from question_assessments
+        raw_assessments = insights.get("question_assessments", [])
+        valid_assessments = []
+        invalid_count = 0
+        for a in raw_assessments:
+            if isinstance(a, dict):
+                valid_assessments.append(a)
+            else:
+                invalid_count += 1
+                logger.warning(
+                    f"⚠️ Skipping invalid assessment item (expected dict, got {type(a).__name__}): {a}"
+                )
+
+        if invalid_count > 0:
+            logger.warning(
+                f"⚠️ Filtered out {invalid_count} invalid assessment item(s) from AI response"
+            )
+
         if len(validated["question_assessments"]) != len(qa_pairs):
             # Rebuild assessments from qa_pairs if they don't match
             validated["question_assessments"] = []
             for qa in qa_pairs:
+                # Validate qa is a dict before accessing properties
+                if not isinstance(qa, dict):
+                    logger.warning(
+                        f"⚠️ Skipping invalid qa_pair (expected dict, got {type(qa).__name__}): {qa}"
+                    )
+                    # Create a placeholder assessment for this invalid qa_pair
+                    validated["question_assessments"].append(
+                        {
+                            "question": str(qa) if qa else "",
+                            "answer": "",
+                            "score": 0.0,
+                            "notes": "",
+                        }
+                    )
+                    continue
+
                 # Try to find matching assessment
                 matching = next(
                     (
                         a
-                        for a in insights.get("question_assessments", [])
-                        if a.get("question") == qa.get("question")
+                        for a in valid_assessments
+                        if isinstance(a, dict)
+                        and a.get("question") == qa.get("question")
                     ),
                     None,
                 )
@@ -259,6 +331,21 @@ Return ONLY valid JSON, no additional text."""
         """
         Create placeholder insights when AI analysis is not available.
         """
+        # Validate and filter qa_pairs
+        if not isinstance(qa_pairs, list):
+            logger.warning(
+                f"⚠️ qa_pairs is not a list in placeholder creation (got {type(qa_pairs).__name__}), using empty list"
+            )
+            qa_pairs = []
+
+        valid_qa_pairs = [qa for qa in qa_pairs if isinstance(qa, dict)]
+
+        # Check if we have any real Q&A pairs (not just fallback entries)
+        has_real_qa_pairs = any(
+            qa.get("question", "") != "Full Interview Transcript"
+            for qa in valid_qa_pairs
+        )
+
         insights: Dict[str, Any] = {
             "overall_score": 0.0,
             "competency_scores": (
@@ -270,12 +357,21 @@ Return ONLY valid JSON, no additional text."""
         }
 
         # Create basic assessments for each Q&A pair
-        for i, qa in enumerate(qa_pairs):
+        for i, qa in enumerate(valid_qa_pairs):
+            question = qa.get("question", "")
+            answer = qa.get("answer", "")
+
+            # Use more appropriate message for fallback entries
+            if question == "Full Interview Transcript":
+                notes = "No structured Q&A pairs found in transcript - full transcript used as fallback"
+            else:
+                notes = "Assessment pending - AI analysis unavailable"
+
             assessment = {
-                "question": qa.get("question", ""),
-                "answer": qa.get("answer", ""),
+                "question": question,
+                "answer": answer,
                 "score": 0.0,
-                "notes": "Assessment pending - AI analysis unavailable",
+                "notes": notes,
             }
             cast(List[Dict[str, Any]], insights["question_assessments"]).append(
                 assessment
@@ -283,6 +379,14 @@ Return ONLY valid JSON, no additional text."""
 
         state["insights"] = insights
         state = self.update_status(state, "insights_extracted")
-        logger.info(f"✅ Created placeholder insights for {len(qa_pairs)} questions")
+
+        if not has_real_qa_pairs and valid_qa_pairs:
+            logger.info(
+                f"✅ Created placeholder insights for {len(valid_qa_pairs)} fallback entry/entries (no structured Q&A pairs found)"
+            )
+        else:
+            logger.info(
+                f"✅ Created placeholder insights for {len(valid_qa_pairs)} questions"
+            )
 
         return state

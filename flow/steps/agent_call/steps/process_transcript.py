@@ -18,7 +18,8 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
+from urllib.parse import urlparse
 
 import httpx
 import resend
@@ -206,8 +207,113 @@ async def download_transcript_vtt(download_link: str) -> str | None:
         return None
 
 
+def validate_webhook_url(url: str) -> Tuple[bool, str | None]:
+    """
+    Validate webhook URL format and structure.
+
+    Simple Explanation:
+    This function checks if a webhook URL is valid before we try to send data to it.
+    It makes sure the URL:
+    - Starts with http:// or https://
+    - Has a valid structure (can be parsed)
+    - Has a valid hostname (not empty)
+
+    Args:
+        url: The URL string to validate
+
+    Returns:
+        Tuple of (is_valid, error_message)
+        - is_valid: True if URL is valid, False otherwise
+        - error_message: None if valid, or a descriptive error message if invalid
+    """
+    if not url or not isinstance(url, str):
+        return False, "URL must be a non-empty string"
+
+    url = url.strip()
+    if not url:
+        return False, "URL cannot be empty or whitespace only"
+
+    # Check if URL starts with http:// or https://
+    if not url.startswith("http://") and not url.startswith("https://"):
+        return False, "URL must start with http:// or https://"
+
+    # Parse the URL to validate structure
+    try:
+        parsed = urlparse(url)
+
+        # Check if scheme is valid
+        if parsed.scheme not in ["http", "https"]:
+            return False, f"Invalid URL scheme: {parsed.scheme}. Must be http or https"
+
+        # Check if hostname/netloc exists
+        if not parsed.netloc:
+            return False, "URL must have a valid hostname (e.g., example.com)"
+
+        # Check for common malformed patterns
+        if " " in url:
+            return False, "URL cannot contain spaces"
+
+        # Basic check for valid hostname characters
+        if parsed.netloc.startswith(".") or parsed.netloc.endswith("."):
+            return False, "Hostname cannot start or end with a dot"
+
+        return True, None
+
+    except Exception as e:
+        return False, f"Invalid URL format: {str(e)}"
+
+
 async def send_webhook(url: str, payload: dict[str, Any]) -> bool:
-    """Send results to webhook URL."""
+    """
+    Send results to webhook URL with comprehensive error handling.
+
+    Simple Explanation:
+    This function sends data to a webhook URL (like a callback endpoint).
+    Before sending, it:
+    1. Validates the URL is properly formatted
+    2. Checks that the payload can be converted to JSON
+    3. Makes the HTTP request
+    4. Handles different types of errors gracefully
+
+    The function will never crash the workflow - it always returns True or False
+    to indicate success or failure, and logs detailed error information.
+
+    Args:
+        url: The webhook URL to send data to
+        payload: Dictionary of data to send (will be converted to JSON)
+
+    Returns:
+        True if webhook was sent successfully, False otherwise
+    """
+    # Step 1: Validate URL format
+    is_valid, error_message = validate_webhook_url(url)
+    if not is_valid:
+        logger.warning(
+            f"⚠️ Invalid webhook URL: {url}. Reason: {error_message}. Skipping webhook."
+        )
+        return False
+
+    # Step 2: Validate payload can be serialized to JSON
+    try:
+        # Try to serialize the payload to check if it's valid JSON
+        json_payload = json.dumps(payload)
+        payload_size = len(json_payload)
+        logger.debug(f"📦 Webhook payload size: {payload_size} bytes")
+    except TypeError as e:
+        logger.error(
+            f"❌ Webhook payload contains non-serializable data: {e}. "
+            f"URL: {url}. Skipping webhook.",
+            exc_info=True,
+        )
+        return False
+    except Exception as e:
+        logger.error(
+            f"❌ Error serializing webhook payload: {e}. URL: {url}. Skipping webhook.",
+            exc_info=True,
+        )
+        return False
+
+    # Step 3: Send HTTP request with detailed error handling
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -217,11 +323,83 @@ async def send_webhook(url: str, payload: dict[str, Any]) -> bool:
                 timeout=30.0,
             )
             response.raise_for_status()
-            logger.info(f"✅ Webhook sent to {url}")
+            logger.info(
+                f"✅ Webhook sent successfully to {url} (status: {response.status_code})"
+            )
             return True
 
+    except httpx.HTTPStatusError as e:
+        # HTTP error (4xx, 5xx status codes)
+        status_code = e.response.status_code
+        response_body = None
+
+        # Try to get response body for debugging (truncate if too long)
+        try:
+            response_text = e.response.text
+            if response_text:
+                # Truncate long responses to avoid log spam
+                max_body_length = 500
+                if len(response_text) > max_body_length:
+                    response_body = response_text[:max_body_length] + "... (truncated)"
+                else:
+                    response_body = response_text
+        except Exception:
+            # If we can't read the response body, that's okay
+            pass
+
+        # Use different log levels based on error type
+        if 400 <= status_code < 500:
+            # Client errors (4xx) - likely configuration issue
+            log_msg = (
+                f"⚠️ Webhook returned client error {status_code} for {url}. "
+                f"This usually indicates a configuration issue with the webhook URL."
+            )
+            if response_body:
+                log_msg += f" Response: {response_body}"
+            logger.warning(log_msg)
+        else:
+            # Server errors (5xx) - temporary server issue
+            log_msg = (
+                f"❌ Webhook returned server error {status_code} for {url}. "
+                f"The webhook endpoint may be temporarily unavailable."
+            )
+            if response_body:
+                log_msg += f" Response: {response_body}"
+            logger.error(log_msg)
+
+        return False
+
+    except httpx.TimeoutException:
+        # Timeout error - request took too long
+        logger.error(
+            f"❌ Webhook request timed out after 30 seconds for {url}. "
+            f"The webhook endpoint may be slow or unreachable.",
+            exc_info=True,
+        )
+        return False
+
+    except httpx.ConnectError as e:
+        # Connection error - can't reach the server (DNS, network, etc.)
+        logger.error(
+            f"❌ Cannot connect to webhook URL {url}. "
+            f"This may indicate a network issue, DNS problem, or the server is down. "
+            f"Error: {str(e)}",
+            exc_info=True,
+        )
+        return False
+
+    except httpx.RequestError as e:
+        # Other request errors (network issues, etc.)
+        logger.error(
+            f"❌ Network error sending webhook to {url}: {str(e)}", exc_info=True
+        )
+        return False
+
     except Exception as e:
-        logger.error(f"❌ Error sending webhook to {url}: {e}", exc_info=True)
+        # Catch-all for any other unexpected errors
+        logger.error(
+            f"❌ Unexpected error sending webhook to {url}: {str(e)}", exc_info=True
+        )
         return False
 
 
