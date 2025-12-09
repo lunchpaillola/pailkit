@@ -1113,6 +1113,23 @@ IMPORTANT: Your output will be spoken aloud, so:
                     logger.info(
                         f"📋 Participants map updated: {len(participants_map)} participant(s)"
                     )
+
+                    # Log participant counts after updating participants map
+                    try:
+                        counts = transport.participant_counts()
+                        if counts:
+                            present = counts.get("present", 0)
+                            hidden = counts.get("hidden", 0)
+                            total = present + hidden
+                            logger.info(
+                                f"👥 Participant counts after join - Present: {present}, Hidden: {hidden}, Total: {total}"
+                            )
+                        else:
+                            logger.debug("Participant counts not available after join")
+                    except Exception as count_error:
+                        logger.warning(
+                            f"⚠️ Error getting participant counts after join: {count_error}"
+                        )
                 except Exception as e:
                     logger.warning(
                         f"⚠️ Error updating participants map: {e}", exc_info=True
@@ -1193,9 +1210,9 @@ IMPORTANT: Your output will be spoken aloud, so:
                 We log the current participant counts for debugging and monitoring.
                 """
                 # Get participant counts from transport
-                # Simple Explanation: participantCounts() returns information about
+                # Simple Explanation: participant_counts() returns information about
                 # how many participants are currently in the room (present and hidden).
-                counts = transport.participantCounts()
+                counts = transport.participant_counts()
                 if counts:
                     present = counts.get("present", 0)
                     hidden = counts.get("hidden", 0)
@@ -1217,6 +1234,49 @@ IMPORTANT: Your output will be spoken aloud, so:
                 """
                 participant_id = participant.get("id", "unknown")
                 logger.info(f"Participant left: {participant_id}, reason: {reason}")
+
+                # Check participant counts before deciding whether to leave
+                # Simple Explanation: We only want the bot to leave when it's the only
+                # present participant remaining (present count = 1). If other participants
+                # are still present, we should stay in the room and continue the conversation.
+                # Hidden participants don't affect this decision - only present participants matter.
+                try:
+                    counts = transport.participant_counts()
+                    if counts:
+                        present = counts.get("present", 0)
+                        hidden = counts.get("hidden", 0)
+                        logger.info(
+                            f"👥 Participant counts after leave - Present: {present}, Hidden: {hidden}"
+                        )
+
+                        # Only check present count for decision - hidden participants don't matter
+                        # Simple Explanation: If present count > 1, it means there are other
+                        # present participants besides the bot. We should stay in the room and not
+                        # proceed with cleanup/workflow resume. Hidden participants are ignored.
+                        if present > 1:
+                            logger.info(
+                                f"✅ Bot staying in room - {present} present participant(s) still in room (including bot)"
+                            )
+                            return  # Early return - don't proceed with cleanup
+                        elif present == 1:
+                            logger.info(
+                                "🚪 Only bot remains as present participant - proceeding with cleanup and workflow resume"
+                            )
+                        else:
+                            # Count is 0 or None - this shouldn't happen, but log a warning
+                            logger.warning(
+                                f"⚠️ Unexpected present participant count: {present} - proceeding with cleanup anyway"
+                            )
+                    else:
+                        # If participant_counts() returns None, log warning but proceed (fail-safe)
+                        logger.warning(
+                            "⚠️ Could not get participant counts - proceeding with cleanup (fail-safe behavior)"
+                        )
+                except Exception as count_error:
+                    # If there's an error getting counts, log warning but proceed (fail-safe)
+                    logger.warning(
+                        f"⚠️ Error getting participant counts: {count_error} - proceeding with cleanup (fail-safe behavior)"
+                    )
 
                 # Check if there's a workflow waiting to resume
                 # Simple Explanation: If a workflow was started via the bot_call
