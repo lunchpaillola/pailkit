@@ -2,24 +2,27 @@
 # Licensed under the Apache License, Version 2.0
 
 """
-Backward compatibility module - redirects to agent_call.
+Agent call workflow steps and bot service.
 
-This module maintains backward compatibility for code that imports from flow.steps.interview.
-All imports are redirected to flow.steps.agent_call.
+This module contains:
+- Workflow steps (in steps/): ProcessTranscriptStep, ExtractInsightsStep
+- Bot service components (in bot/): BotService, bot_service, and related Daily.co bot logic
 """
 
-# Re-export everything from agent_call for backward compatibility
-from flow.steps.agent_call import (
+# Re-export everything from submodules for convenience
+from flow.steps.agent_call.bot import (
     BotProcess,
     BotService,
-    ExtractInsightsStep,
-    InterviewStep,
-    ProcessTranscriptStep,
     SpeakerTrackingProcessor,
     TalkingAnimation,
     TranscriptHandler,
     bot_service,
     load_bot_video_frames,
+)
+from flow.steps.agent_call.steps import (
+    ExtractInsightsStep,
+    InterviewStep,
+    ProcessTranscriptStep,
 )
 
 __all__ = [
