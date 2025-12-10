@@ -9,7 +9,7 @@ This step extracts insights and assesses competencies from the interview.
 
 import json
 import logging
-import os
+import uuid
 from typing import Any, Dict, List, cast
 
 from flow.steps.agent_call.steps.base import InterviewStep
@@ -62,23 +62,50 @@ class ExtractInsightsStep(InterviewStep):
         else:
             logger.info("   Using default analysis prompt")
 
-        # Get OpenAI API key
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            logger.warning("⚠️ OPENAI_API_KEY not set - using placeholder insights")
+        # Get workflow_thread_id for usage tracking
+        workflow_thread_id = state.get("workflow_thread_id")
+        room_name = state.get("room_name")
+
+        # Get PostHog-wrapped OpenAI client (with graceful degradation)
+        # Simple Explanation: This gets an OpenAI client that automatically tracks
+        # all LLM calls to PostHog. If PostHog isn't configured, it returns a
+        # regular OpenAI client without tracking.
+        from flow.utils.posthog_config import get_posthog_llm_client
+        from flow.utils.usage_tracking import update_workflow_usage_cost
+        from flow.db import get_workflow_thread_data
+
+        client, is_posthog_enabled = get_posthog_llm_client()
+
+        if not client:
+            logger.warning("⚠️ Cannot create OpenAI client - using placeholder insights")
             return self._create_placeholder_insights(state, qa_pairs, [])
 
-        try:
-            # Import OpenAI client
-            try:
-                from openai import AsyncOpenAI
-            except ImportError:
-                logger.error(
-                    "❌ OpenAI package not installed. Install with: pip install openai"
-                )
-                return self._create_placeholder_insights(state, qa_pairs, [])
+        # Get or generate posthog_trace_id for this workflow execution
+        # Simple Explanation: We use one trace_id per workflow execution to correlate
+        # all LLM calls in PostHog. We try to reuse an existing one from usage_stats,
+        # or generate a new one if this is the first LLM call.
+        posthog_trace_id = None
+        if workflow_thread_id:
+            thread_data = get_workflow_thread_data(workflow_thread_id)
+            if thread_data and thread_data.get("usage_stats"):
+                posthog_trace_id = thread_data["usage_stats"].get("posthog_trace_id")
 
-            client = AsyncOpenAI(api_key=openai_api_key)
+        if not posthog_trace_id:
+            posthog_trace_id = str(uuid.uuid4())
+            logger.debug(f"Generated new posthog_trace_id: {posthog_trace_id}")
+
+        # Get distinct_id for PostHog (unkey_key_id if available, fallback to workflow_thread_id)
+        # Simple Explanation: distinct_id identifies who made the API call. We prefer
+        # the API key ID (unkey_key_id) if available, otherwise use workflow_thread_id.
+        posthog_distinct_id = workflow_thread_id or "unknown"
+        if workflow_thread_id:
+            thread_data = get_workflow_thread_data(workflow_thread_id)
+            if thread_data:
+                unkey_key_id = thread_data.get("unkey_key_id")
+                if unkey_key_id:
+                    posthog_distinct_id = unkey_key_id
+
+        try:
 
             # Build transcript text from Q&A pairs
             qa_text = "\n\n".join(
@@ -137,24 +164,80 @@ Guidelines:
 
 Return ONLY valid JSON, no additional text."""
 
-            # Call OpenAI API
+            # Call OpenAI API with PostHog tracking
             logger.info("🤖 Calling OpenAI API for analysis...")
-            response = await client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert interview evaluator. Always respond with valid JSON only.",
+            if is_posthog_enabled:
+                # Use PostHog-wrapped client with responses.create()
+                # Simple Explanation: PostHog's wrapper uses responses.create() instead of
+                # chat.completions.create(). We use the input parameter (same structure as messages)
+                # and pass PostHog metadata to correlate events. Note: response_format is not
+                # supported, so we rely on the prompt to request JSON format.
+                response = await client.responses.create(
+                    model="gpt-4.1",
+                    input=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert call evaluator. Always respond with valid JSON only.",
+                        },
+                        {"role": "user", "content": final_prompt},
+                    ],
+                    temperature=0.3,  # Lower temperature for more consistent analysis
+                    posthog_distinct_id=posthog_distinct_id,
+                    posthog_trace_id=posthog_trace_id,
+                    posthog_properties={
+                        "workflow_thread_id": workflow_thread_id,
+                        "step_name": "extract_insights",
+                        "room_name": room_name,
                     },
-                    {"role": "user", "content": final_prompt},
-                ],
-                temperature=0.3,  # Lower temperature for more consistent analysis
-                response_format={"type": "json_object"},
-            )
+                )
+            else:
+                # Fallback to regular OpenAI API (no PostHog tracking)
+                response = await client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert interview evaluator. Always respond with valid JSON only.",
+                        },
+                        {"role": "user", "content": final_prompt},
+                    ],
+                    temperature=0.3,  # Lower temperature for more consistent analysis
+                    response_format={"type": "json_object"},
+                )
 
             # Parse response
-            response_text = response.choices[0].message.content
+            # Simple Explanation: PostHog-wrapped responses use output_text attribute
+            # instead of the standard OpenAI response structure. For fallback (non-PostHog),
+            # we still use the standard structure.
+            if is_posthog_enabled:
+                response_text = response.output_text
+            else:
+                response_text = response.choices[0].message.content
             insights = json.loads(response_text)
+
+            # Extract cost from PostHog response and update usage_stats
+            # Simple Explanation: PostHog automatically calculates the cost and adds it
+            # to the response as $ai_total_cost_usd. We extract it and save it to the
+            # database so we can track total costs per workflow.
+            cost_usd = 0.0
+            if is_posthog_enabled and workflow_thread_id:
+                # Extract cost from PostHog response
+                # Simple Explanation: PostHog adds cost information to the response object
+                # as an attribute. We use getattr() to safely get it, defaulting to 0.0.
+                cost_usd = getattr(response, "$ai_total_cost_usd", 0.0) or 0.0
+
+                if cost_usd > 0:
+                    logger.debug(
+                        f"💰 LLM call cost: ${cost_usd:.6f} (tracked by PostHog)"
+                    )
+                    # Update usage_stats in database
+                    update_workflow_usage_cost(
+                        workflow_thread_id, cost_usd, posthog_trace_id
+                    )
+                else:
+                    logger.debug("💰 No cost information in PostHog response")
+            elif not is_posthog_enabled:
+                logger.debug("💰 PostHog tracking not enabled - cost not tracked")
 
             # Validate and normalize insights
             try:

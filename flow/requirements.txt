@@ -17,6 +17,9 @@ pipecat-ai[daily,openai,local-smart-turn-v3,deepgram]>=0.0.94
 # OpenAI SDK for direct API access (used in ExtractInsightsStep)
 openai>=1.0.0
 
+# PostHog LLM Analytics SDK for automatic LLM usage tracking
+posthog[ai]>=3.0.0
+
 # Image processing for sprite animation
 Pillow>=10.0.0
 
