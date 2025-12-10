@@ -7,6 +7,13 @@ Pricing Module for LLM Cost Calculation
 Provides model pricing information and cost calculation utilities.
 """
 
+# Deepgram STT Pricing (per minute)
+DEEPGRAM_NOVA2_PER_MIN = 0.0058  # Nova-2 model pricing
+DEEPGRAM_DIARIZATION_PER_MIN = 0.0020  # Speaker diarization pricing
+DEEPGRAM_TOTAL_PER_MIN = (
+    DEEPGRAM_NOVA2_PER_MIN + DEEPGRAM_DIARIZATION_PER_MIN
+)  # Total: $0.0078/min
+
 MODEL_PRICING = {
     # GPT-5 Series (Standard tier)
     "gpt-5.1": {
@@ -362,3 +369,38 @@ def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> fl
 
     total_cost = input_cost + output_cost
     return round(total_cost, 6)
+
+
+def calculate_deepgram_cost(duration_seconds: int) -> float:
+    """
+    Calculate the cost of Deepgram STT usage based on duration.
+
+    **Simple Explanation:**
+    This function calculates how much money Deepgram STT cost based on:
+    - The duration of audio transcribed (in seconds)
+    - Deepgram pricing: $0.0078 per minute (Nova-2 + diarization)
+
+    Args:
+        duration_seconds: Duration of audio in seconds
+
+    Returns:
+        Cost in USD (rounded to 6 decimal places)
+
+    Example:
+        ```python
+        # 60 seconds (1 minute) of audio
+        cost = calculate_deepgram_cost(60)
+        # Returns: 0.007800
+
+        # 120 seconds (2 minutes) of audio
+        cost = calculate_deepgram_cost(120)
+        # Returns: 0.015600
+        ```
+    """
+    if duration_seconds < 0:
+        raise ValueError("duration_seconds must be non-negative")
+
+    # Convert seconds to minutes and multiply by per-minute rate
+    duration_minutes = duration_seconds / 60.0
+    cost = duration_minutes * DEEPGRAM_TOTAL_PER_MIN
+    return round(cost, 6)

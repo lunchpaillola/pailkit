@@ -341,7 +341,10 @@ Return ONLY valid JSON, no additional text."""
             # Save cost and trace_id to database
             if workflow_thread_id:
                 success = update_workflow_usage_cost(
-                    workflow_thread_id, cost_usd, posthog_trace_id
+                    workflow_thread_id,
+                    cost_usd,
+                    posthog_trace_id,
+                    cost_category="insights",
                 )
                 if success:
                     logger.info(

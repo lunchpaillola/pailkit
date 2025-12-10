@@ -124,6 +124,14 @@ class UnkeyAuthMiddleware:
                     )
                     await response(scope, receive, send)
                     return
+
+                # Extract and store the API key ID (keyId) for user attribution
+                # This allows endpoints to identify which API key authenticated the request
+                key_id = data.get("keyId")
+                if key_id:
+                    # Store in request.state for access in route handlers
+                    if not hasattr(request.state, "unkey_key_id"):
+                        request.state.unkey_key_id = key_id
             except Exception:
                 # Fail closed if verification was intended but errored.
                 response = JSONResponse(

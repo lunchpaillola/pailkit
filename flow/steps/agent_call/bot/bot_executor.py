@@ -6,6 +6,7 @@
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -38,6 +39,7 @@ from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.transports.daily.transport import DailyParams, DailyTransport
 
 from flow.steps.agent_call.bot.animation import TalkingAnimation
+from flow.steps.agent_call.bot.metrics_processor import UsageMetricsProcessor
 from flow.steps.agent_call.bot.result_processor import BotResultProcessor
 from flow.steps.agent_call.bot.speaker_tracking import SpeakerTrackingProcessor
 from flow.steps.agent_call.bot.transcript_handler import TranscriptHandler
@@ -88,6 +90,9 @@ class BotExecutor:
             room_name: Room name for saving transcript to database
             workflow_thread_id: Optional workflow thread ID to associate with this bot session
         """
+        # Initialize bot_join_time to None - will be set when bot actually starts
+        bot_join_time = None
+
         try:
 
             # Get bot prompt from config - this defines what the bot should do/say
@@ -254,6 +259,11 @@ IMPORTANT: Your output will be spoken aloud, so:
             quiet_frame, talking_frame = load_bot_video_frames(bot_config)
             ta = TalkingAnimation(quiet_frame=quiet_frame, talking_frame=talking_frame)
 
+            # Create metrics processor to track LLM usage costs in real-time
+            metrics_processor = UsageMetricsProcessor(
+                workflow_thread_id=workflow_thread_id
+            )
+
             # Build pipeline with Deepgram STT and TranscriptProcessor
             pipeline_components = [
                 transport.input(),  # Transport user input
@@ -262,6 +272,7 @@ IMPORTANT: Your output will be spoken aloud, so:
                 transcript.user(),  # User transcripts (from STT)
                 context_aggregator.user(),  # User responses
                 llm,  # LLM
+                metrics_processor,  # Track LLM usage metrics and costs
                 tts,  # TTS
                 ta,  # Talking animation (for video output)
                 transport.output(),  # Transport bot output
@@ -685,6 +696,32 @@ IMPORTANT: Your output will be spoken aloud, so:
             logger.info(f"   Task created: {task}")
             logger.info(f"   Runner created: {runner}")
 
+            # Track bot join time - when bot actually starts running
+            bot_join_time = datetime.now(timezone.utc)
+            logger.info(f"🤖 Bot join time: {bot_join_time.isoformat()}")
+
+            # Save bot_join_time to database if workflow_thread_id is available
+            if workflow_thread_id:
+                try:
+                    from flow.db import (
+                        get_workflow_thread_data,
+                        save_workflow_thread_data,
+                    )
+
+                    thread_data = get_workflow_thread_data(workflow_thread_id) or {}
+                    thread_data["workflow_thread_id"] = workflow_thread_id
+                    thread_data["bot_join_time"] = bot_join_time.isoformat()
+                    if save_workflow_thread_data(workflow_thread_id, thread_data):
+                        logger.debug(
+                            f"✅ Saved bot_join_time to workflow_threads: {workflow_thread_id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ Failed to save bot_join_time for {workflow_thread_id}"
+                        )
+                except Exception as e:
+                    logger.warning(f"⚠️ Error saving bot_join_time: {e}", exc_info=True)
+
             # **FOLLOW REFERENCE IMPLEMENTATION**: Use await runner.run(task) directly
             # This matches the reference implementation's blocking behavior exactly
             # The runner will block until the task completes (typically when participant leaves)
@@ -701,6 +738,66 @@ IMPORTANT: Your output will be spoken aloud, so:
                 # to do anything here. If there's no workflow, on_participant_left will
                 # call _process_bot_results directly.
             finally:
+                # Track bot leave time and duration - when bot finishes running
+                bot_leave_time = datetime.now(timezone.utc)
+                logger.info(f"🤖 Bot leave time: {bot_leave_time.isoformat()}")
+
+                # Calculate bot duration if we have both join and leave times
+                bot_duration = None
+                if workflow_thread_id and bot_join_time is not None:
+                    try:
+                        # Calculate duration in seconds
+                        duration_delta = bot_leave_time - bot_join_time
+                        bot_duration = int(duration_delta.total_seconds())
+                        logger.info(f"🤖 Bot duration: {bot_duration} seconds")
+
+                        # Save bot_leave_time and bot_duration to database
+                        from flow.db import (
+                            get_workflow_thread_data,
+                            save_workflow_thread_data,
+                        )
+
+                        thread_data = get_workflow_thread_data(workflow_thread_id) or {}
+                        thread_data["workflow_thread_id"] = workflow_thread_id
+                        thread_data["bot_leave_time"] = bot_leave_time.isoformat()
+                        thread_data["bot_duration"] = bot_duration
+                        if save_workflow_thread_data(workflow_thread_id, thread_data):
+                            logger.debug(
+                                f"✅ Saved bot_leave_time and bot_duration to workflow_threads: {workflow_thread_id}"
+                            )
+                        else:
+                            logger.warning(
+                                f"⚠️ Failed to save bot_leave_time/bot_duration for {workflow_thread_id}"
+                            )
+
+                        # Calculate and save Deepgram STT cost
+                        from flow.utils.pricing import calculate_deepgram_cost
+                        from flow.utils.usage_tracking import update_workflow_usage_cost
+
+                        try:
+                            deepgram_cost = calculate_deepgram_cost(bot_duration)
+                            success = update_workflow_usage_cost(
+                                workflow_thread_id, deepgram_cost, cost_category="stt"
+                            )
+                            if success:
+                                logger.debug(
+                                    f"✅ Saved Deepgram STT cost: ${deepgram_cost:.6f} "
+                                    f"for {bot_duration}s to workflow_threads: {workflow_thread_id}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"⚠️ Failed to save Deepgram STT cost for {workflow_thread_id}"
+                                )
+                        except Exception as cost_error:
+                            logger.warning(
+                                f"⚠️ Error calculating/saving Deepgram STT cost: {cost_error}",
+                                exc_info=True,
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            f"⚠️ Error saving bot_leave_time/bot_duration: {e}",
+                            exc_info=True,
+                        )
                 # When the bot task finishes, the Daily.co transport might still have pending callbacks
                 # that try to post to the event loop. We need to properly clean up the transport
                 # to prevent "Event loop is closed" errors and Rust panics.
@@ -754,6 +851,49 @@ IMPORTANT: Your output will be spoken aloud, so:
         except asyncio.CancelledError:
             # Task was cancelled - this is expected when participant leaves or during shutdown
             logger.info("🛑 Bot task was cancelled - ensuring bot leaves the room")
+
+            # Track bot leave time on cancellation
+            bot_leave_time = datetime.now(timezone.utc)
+            logger.info(f"🤖 Bot leave time (cancelled): {bot_leave_time.isoformat()}")
+
+            # Calculate and save bot duration if we have join time
+            if workflow_thread_id and bot_join_time is not None:
+                try:
+                    duration_delta = bot_leave_time - bot_join_time
+                    bot_duration = int(duration_delta.total_seconds())
+                    logger.info(f"🤖 Bot duration (cancelled): {bot_duration} seconds")
+
+                    from flow.db import (
+                        get_workflow_thread_data,
+                        save_workflow_thread_data,
+                    )
+
+                    thread_data = get_workflow_thread_data(workflow_thread_id) or {}
+                    thread_data["workflow_thread_id"] = workflow_thread_id
+                    thread_data["bot_leave_time"] = bot_leave_time.isoformat()
+                    thread_data["bot_duration"] = bot_duration
+                    save_workflow_thread_data(workflow_thread_id, thread_data)
+
+                    # Calculate and save Deepgram STT cost
+                    from flow.utils.pricing import calculate_deepgram_cost
+                    from flow.utils.usage_tracking import update_workflow_usage_cost
+
+                    try:
+                        deepgram_cost = calculate_deepgram_cost(bot_duration)
+                        update_workflow_usage_cost(
+                            workflow_thread_id, deepgram_cost, cost_category="stt"
+                        )
+                    except Exception as cost_error:
+                        logger.warning(
+                            f"⚠️ Error calculating/saving Deepgram STT cost on cancellation: {cost_error}",
+                            exc_info=True,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️ Error saving bot_leave_time on cancellation: {e}",
+                        exc_info=True,
+                    )
+
             # Ensure transport is cleaned up even on cancellation - this is critical to leave the room
             try:
                 if "transport" in locals():
@@ -788,6 +928,49 @@ IMPORTANT: Your output will be spoken aloud, so:
             logger.error(f"❌ Bot process error: {e}", exc_info=True)
             logger.error(f"   Error type: {type(e).__name__}")
             logger.error(f"   Error message: {str(e)}")
+
+            # Track bot leave time on error
+            bot_leave_time = datetime.now(timezone.utc)
+            logger.info(f"🤖 Bot leave time (error): {bot_leave_time.isoformat()}")
+
+            # Calculate and save bot duration if we have join time
+            if workflow_thread_id and bot_join_time is not None:
+                try:
+                    duration_delta = bot_leave_time - bot_join_time
+                    bot_duration = int(duration_delta.total_seconds())
+                    logger.info(f"🤖 Bot duration (error): {bot_duration} seconds")
+
+                    from flow.db import (
+                        get_workflow_thread_data,
+                        save_workflow_thread_data,
+                    )
+
+                    thread_data = get_workflow_thread_data(workflow_thread_id) or {}
+                    thread_data["workflow_thread_id"] = workflow_thread_id
+                    thread_data["bot_leave_time"] = bot_leave_time.isoformat()
+                    thread_data["bot_duration"] = bot_duration
+                    save_workflow_thread_data(workflow_thread_id, thread_data)
+
+                    # Calculate and save Deepgram STT cost
+                    from flow.utils.pricing import calculate_deepgram_cost
+                    from flow.utils.usage_tracking import update_workflow_usage_cost
+
+                    try:
+                        deepgram_cost = calculate_deepgram_cost(bot_duration)
+                        update_workflow_usage_cost(
+                            workflow_thread_id, deepgram_cost, cost_category="stt"
+                        )
+                    except Exception as cost_error:
+                        logger.warning(
+                            f"⚠️ Error calculating/saving Deepgram STT cost on error: {cost_error}",
+                            exc_info=True,
+                        )
+                except Exception as save_error:
+                    logger.warning(
+                        f"⚠️ Error saving bot_leave_time on error: {save_error}",
+                        exc_info=True,
+                    )
+
             # Ensure transport is cleaned up even on error - must leave the room
             try:
                 if "transport" in locals():

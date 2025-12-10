@@ -972,6 +972,12 @@ def save_workflow_thread_data(
             "checkpoint_id": thread_data.get("checkpoint_id"),
             # usage_stats is an operational field (not sensitive), so get it directly from thread_data
             "usage_stats": thread_data.get("usage_stats"),
+            # unkey_key_id is an operational field (not sensitive), so get it directly from thread_data
+            "unkey_key_id": thread_data.get("unkey_key_id"),
+            # bot timing fields are operational (not sensitive), so get them directly from thread_data
+            "bot_join_time": thread_data.get("bot_join_time"),
+            "bot_leave_time": thread_data.get("bot_leave_time"),
+            "bot_duration": thread_data.get("bot_duration"),
         }
 
         # Remove None values to avoid overwriting with NULL
@@ -1074,6 +1080,12 @@ def get_workflow_thread_data(workflow_thread_id: str) -> Dict[str, Any] | None:
             "checkpoint_id": row.get("checkpoint_id"),
             # usage_stats is an operational field (not sensitive), so include it directly
             "usage_stats": row.get("usage_stats"),
+            # unkey_key_id is an operational field (not sensitive), so include it directly
+            "unkey_key_id": row.get("unkey_key_id"),
+            # bot timing fields are operational (not sensitive), so include them directly
+            "bot_join_time": row.get("bot_join_time"),
+            "bot_leave_time": row.get("bot_leave_time"),
+            "bot_duration": row.get("bot_duration"),
         }
 
         # Remove None values

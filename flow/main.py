@@ -27,6 +27,7 @@ from fastapi import (  # noqa: E402
     Header,
     HTTPException,
     Query,
+    Request,
 )
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, Response  # noqa: E402
@@ -261,7 +262,7 @@ class BotStatusResponse(BaseModel):
 
 
 @app.post("/api/bot/join", response_model=BotJoinResponse)
-async def join_bot(request: BotJoinRequest) -> BotJoinResponse:
+async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinResponse:
     """
     Start a bot in an existing Daily room using the BotCallWorkflow.
 
@@ -340,12 +341,22 @@ async def join_bot(request: BotJoinRequest) -> BotJoinResponse:
                 )
                 continue  # Try again with new UUID
 
+            # Extract API key ID from request state (set by Unkey middleware)
+            unkey_key_id = None
+            if hasattr(http_request.state, "unkey_key_id"):
+                unkey_key_id = http_request.state.unkey_key_id
+                logger.debug(
+                    f"Extracted unkey_key_id from request state: {unkey_key_id}"
+                )
+
             # Build workflow_thread_data with all configuration
             workflow_thread_data = {
                 "workflow_thread_id": workflow_thread_id,
                 "room_name": room_name,
                 "room_url": request.room_url,
                 "bot_id": bot_id,  # bot_id is defined above (line 310)
+                # API key ID for user attribution
+                "unkey_key_id": unkey_key_id,
                 # Candidate/interview configuration
                 "candidate_name": request.candidate_name,
                 "candidate_email": request.candidate_email,

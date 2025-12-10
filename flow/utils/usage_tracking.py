@@ -20,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 def update_workflow_usage_cost(
-    workflow_thread_id: str, cost_usd: float, posthog_trace_id: str | None = None
+    workflow_thread_id: str,
+    cost_usd: float,
+    posthog_trace_id: str | None = None,
+    cost_category: str | None = None,
 ) -> bool:
     """
     Update the total cost for a workflow thread.
@@ -29,12 +32,15 @@ def update_workflow_usage_cost(
     This function adds a cost amount to the total cost stored for a workflow.
     It reads the current total from the database, adds the new cost, and saves
     it back. This allows us to track how much money was spent on AI calls for
-    each workflow run.
+    each workflow run. Costs can be tracked by category (e.g., "bot", "insights", "stt")
+    to provide granular cost breakdown.
 
     Args:
         workflow_thread_id: Unique identifier for the workflow run
         cost_usd: Cost in USD to add to the total (can be 0.0 if no cost)
         posthog_trace_id: Optional PostHog trace ID to store for correlation
+        cost_category: Optional category for cost tracking (e.g., "bot", "insights", "stt").
+                      If provided, tracks cost separately in `{cost_category}_cost_usd` field.
 
     Returns:
         True if updated successfully, False otherwise
@@ -43,6 +49,12 @@ def update_workflow_usage_cost(
         ```python
         # After an LLM call that cost $0.05
         update_workflow_usage_cost("workflow_123", 0.05, "trace_456")
+
+        # Track bot costs separately
+        update_workflow_usage_cost("workflow_123", 0.03, cost_category="bot")
+
+        # Track insights costs separately
+        update_workflow_usage_cost("workflow_123", 0.02, cost_category="insights")
         ```
     """
     if not workflow_thread_id:
@@ -60,7 +72,7 @@ def update_workflow_usage_cost(
 
         # Get current usage_stats or initialize with defaults
         # Simple Explanation: usage_stats is a JSON object stored in the database
-        # It has fields like total_cost_usd and posthog_trace_id
+        # It has fields like total_cost_usd, bot_cost_usd, insights_cost_usd, etc.
         usage_stats: Dict[str, Any] = thread_data.get("usage_stats") or {}
 
         # Initialize if empty
@@ -69,6 +81,17 @@ def update_workflow_usage_cost(
                 "total_cost_usd": 0.0,
                 "posthog_trace_id": None,
             }
+
+        # Update category-specific cost if cost_category is provided
+        if cost_category:
+            category_key = f"{cost_category}_cost_usd"
+            current_category_total = usage_stats.get(category_key, 0.0)
+            new_category_total = current_category_total + cost_usd
+            usage_stats[category_key] = new_category_total
+            logger.debug(
+                f"   Updated {cost_category} cost: ${cost_usd:.6f} "
+                f"({category_key}: ${new_category_total:.6f})"
+            )
 
         # Add the new cost to the existing total
         # Simple Explanation: We keep a running total of all costs for this workflow
@@ -85,8 +108,9 @@ def update_workflow_usage_cost(
         success = save_workflow_thread_data(workflow_thread_id, thread_data)
 
         if success:
+            category_info = f" ({cost_category})" if cost_category else ""
             logger.debug(
-                f"✅ Updated usage cost for {workflow_thread_id}: "
+                f"✅ Updated usage cost for {workflow_thread_id}{category_info}: "
                 f"${cost_usd:.6f} (total: ${new_total:.6f})"
             )
         else:
