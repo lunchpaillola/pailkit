@@ -80,10 +80,12 @@ class ExtractInsightsStep(InterviewStep):
             logger.warning("⚠️ Cannot create OpenAI client - using placeholder insights")
             return self._create_placeholder_insights(state, qa_pairs, [])
 
-        # Get or generate posthog_trace_id for this workflow execution
-        # Simple Explanation: We use one trace_id per workflow execution to correlate
-        # all LLM calls in PostHog. We try to reuse an existing one from usage_stats,
-        # or generate a new one if this is the first LLM call.
+        # Generate a reference ID for this workflow execution (for our own tracking)
+        # Note: This is NOT PostHog's trace_id. PostHog generates its own trace_id server-side
+        # and doesn't return it in the response. To find traces in PostHog, search by:
+        # - distinct_id (should be workflow_thread_id or unkey_key_id)
+        # - timestamp (when the call was made)
+        # - model name (e.g., "gpt-4.1")
         posthog_trace_id = None
         if workflow_thread_id:
             thread_data = get_workflow_thread_data(workflow_thread_id)
@@ -92,7 +94,7 @@ class ExtractInsightsStep(InterviewStep):
 
         if not posthog_trace_id:
             posthog_trace_id = str(uuid.uuid4())
-            logger.debug(f"Generated new posthog_trace_id: {posthog_trace_id}")
+            logger.debug(f"Generated new reference ID for tracking: {posthog_trace_id}")
 
         # Get distinct_id for PostHog (unkey_key_id if available, fallback to workflow_thread_id)
         # Simple Explanation: distinct_id identifies who made the API call. We prefer
@@ -170,8 +172,21 @@ Return ONLY valid JSON, no additional text."""
                 # Use PostHog-wrapped client with responses.create()
                 # Simple Explanation: PostHog's wrapper uses responses.create() instead of
                 # chat.completions.create(). We use the input parameter (same structure as messages)
-                # and pass PostHog metadata to correlate events. Note: response_format is not
-                # supported, so we rely on the prompt to request JSON format.
+                # PostHog automatically tracks all calls made through this client.
+                # Note: response_format is not supported, so we rely on the prompt to request JSON format.
+                # PostHog tracking parameters:
+                # - posthog_distinct_id: Identifies the user/API key (required for tracking)
+                # - posthog_trace_id: Optional trace ID for correlating events
+                # - posthog_properties: Optional additional properties for the event
+                posthog_properties = {
+                    "workflow_thread_id": workflow_thread_id,
+                    "room_name": room_name,
+                    "step_name": "extract_insights",
+                }
+                logger.debug(
+                    f"📊 PostHog tracking parameters: distinct_id={posthog_distinct_id}, "
+                    f"trace_id={posthog_trace_id}, properties={posthog_properties}"
+                )
                 response = await client.responses.create(
                     model="gpt-4.1",
                     input=[
@@ -184,11 +199,7 @@ Return ONLY valid JSON, no additional text."""
                     temperature=0.3,  # Lower temperature for more consistent analysis
                     posthog_distinct_id=posthog_distinct_id,
                     posthog_trace_id=posthog_trace_id,
-                    posthog_properties={
-                        "workflow_thread_id": workflow_thread_id,
-                        "step_name": "extract_insights",
-                        "room_name": room_name,
-                    },
+                    posthog_properties=posthog_properties,
                 )
             else:
                 # Fallback to regular OpenAI API (no PostHog tracking)
@@ -215,27 +226,85 @@ Return ONLY valid JSON, no additional text."""
                 response_text = response.choices[0].message.content
             insights = json.loads(response_text)
 
-            # Extract cost from PostHog response and update usage_stats
+            # Extract cost and trace_id from PostHog response and update usage_stats
             # Simple Explanation: PostHog automatically calculates the cost and adds it
             # to the response as $ai_total_cost_usd. We extract it and save it to the
-            # database so we can track total costs per workflow.
+            # database so we can track total costs per workflow. PostHog also generates
+            # its own trace_id which we should extract and use instead of generating our own.
             cost_usd = 0.0
+            actual_posthog_trace_id = None
             if is_posthog_enabled and workflow_thread_id:
                 # Extract cost from PostHog response
                 # Simple Explanation: PostHog adds cost information to the response object
                 # as an attribute. We use getattr() to safely get it, defaulting to 0.0.
                 cost_usd = getattr(response, "$ai_total_cost_usd", 0.0) or 0.0
 
+                # Extract trace_id from PostHog response (PostHog generates its own)
+                # Try common attribute names that PostHog might use
+                for attr_name in [
+                    "trace_id",
+                    "$trace_id",
+                    "posthog_trace_id",
+                    "$posthog_trace_id",
+                ]:
+                    trace_id_value = getattr(response, attr_name, None)
+                    if trace_id_value:
+                        actual_posthog_trace_id = str(trace_id_value)
+                        logger.debug(
+                            f"✅ Found PostHog trace_id in response.{attr_name}: {actual_posthog_trace_id}"
+                        )
+                        break
+
+                # If we found a trace_id from PostHog, use it; otherwise use the one we generated
+                if actual_posthog_trace_id:
+                    posthog_trace_id = actual_posthog_trace_id
+                    logger.info(
+                        f"✅ Using PostHog trace_id from response: {posthog_trace_id}"
+                    )
+                else:
+                    # PostHog doesn't return trace_id in response - it generates its own server-side
+                    # The trace_id we're using is just for our own reference in the database
+                    logger.info(
+                        f"ℹ️ PostHog generates its own trace_id server-side (not in response). "
+                        f"Using reference ID for database: {posthog_trace_id}"
+                    )
+                    logger.info(
+                        f"   To find this trace in PostHog dashboard, search by: "
+                        f"distinct_id={posthog_distinct_id}, model=gpt-4.1, timestamp={workflow_thread_id}"
+                    )
+
+                logger.debug(
+                    f"💰 Cost extracted: ${cost_usd:.6f}, posthog_trace_id: {posthog_trace_id}"
+                )
+
                 if cost_usd > 0:
-                    logger.debug(
+                    logger.info(
                         f"💰 LLM call cost: ${cost_usd:.6f} (tracked by PostHog)"
                     )
                     # Update usage_stats in database
-                    update_workflow_usage_cost(
+                    success = update_workflow_usage_cost(
                         workflow_thread_id, cost_usd, posthog_trace_id
                     )
+                    if success:
+                        logger.info(
+                            f"✅ Cost saved to database for {workflow_thread_id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ Failed to save cost to database for {workflow_thread_id}"
+                        )
                 else:
-                    logger.debug("💰 No cost information in PostHog response")
+                    logger.warning(
+                        "💰 No cost information in PostHog response (cost is 0 or not available)"
+                    )
+                    # Even if cost is 0, we should still save the trace_id if available
+                    if posthog_trace_id:
+                        logger.debug(
+                            f"💰 Saving PostHog trace_id even though cost is 0: {posthog_trace_id}"
+                        )
+                        update_workflow_usage_cost(
+                            workflow_thread_id, 0.0, posthog_trace_id
+                        )
             elif not is_posthog_enabled:
                 logger.debug("💰 PostHog tracking not enabled - cost not tracked")
 

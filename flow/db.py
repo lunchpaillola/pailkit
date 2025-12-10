@@ -1072,6 +1072,8 @@ def get_workflow_thread_data(workflow_thread_id: str) -> Dict[str, Any] | None:
             "metadata": row.get("metadata"),
             # checkpoint_id is an operational field (not sensitive), so include it directly
             "checkpoint_id": row.get("checkpoint_id"),
+            # usage_stats is an operational field (not sensitive), so include it directly
+            "usage_stats": row.get("usage_stats"),
         }
 
         # Remove None values
@@ -1173,6 +1175,8 @@ def get_workflow_threads_by_room_name(room_name: str) -> list[Dict[str, Any]]:
                 "metadata": row.get("metadata"),
                 # checkpoint_id is an operational field (not sensitive), so include it directly
                 "checkpoint_id": row.get("checkpoint_id"),
+                # usage_stats is an operational field (not sensitive), so include it directly
+                "usage_stats": row.get("usage_stats"),
             }
 
             # Remove None values
