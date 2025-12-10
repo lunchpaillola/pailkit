@@ -72,6 +72,7 @@ class ExtractInsightsStep(InterviewStep):
         # regular OpenAI client without tracking.
         from flow.utils.posthog_config import get_posthog_llm_client
         from flow.utils.usage_tracking import update_workflow_usage_cost
+        from flow.utils.pricing import calculate_cost
         from flow.db import get_workflow_thread_data
 
         client, is_posthog_enabled = get_posthog_llm_client()
@@ -168,6 +169,7 @@ Return ONLY valid JSON, no additional text."""
 
             # Call OpenAI API with PostHog tracking
             logger.info("🤖 Calling OpenAI API for analysis...")
+            model_name = None  # Will be set based on which client we use
             if is_posthog_enabled:
                 # Use PostHog-wrapped client with responses.create()
                 # Simple Explanation: PostHog's wrapper uses responses.create() instead of
@@ -187,8 +189,9 @@ Return ONLY valid JSON, no additional text."""
                     f"📊 PostHog tracking parameters: distinct_id={posthog_distinct_id}, "
                     f"trace_id={posthog_trace_id}, properties={posthog_properties}"
                 )
+                model_name = "gpt-4.1"
                 response = await client.responses.create(
-                    model="gpt-4.1",
+                    model=model_name,
                     input=[
                         {
                             "role": "system",
@@ -203,8 +206,9 @@ Return ONLY valid JSON, no additional text."""
                 )
             else:
                 # Fallback to regular OpenAI API (no PostHog tracking)
+                model_name = "gpt-4o"
                 response = await client.chat.completions.create(
-                    model="gpt-4o",
+                    model=model_name,
                     messages=[
                         {
                             "role": "system",
@@ -226,21 +230,82 @@ Return ONLY valid JSON, no additional text."""
                 response_text = response.choices[0].message.content
             insights = json.loads(response_text)
 
-            # Extract cost and trace_id from PostHog response and update usage_stats
-            # Simple Explanation: PostHog automatically calculates the cost and adds it
-            # to the response as $ai_total_cost_usd. We extract it and save it to the
-            # database so we can track total costs per workflow. PostHog also generates
-            # its own trace_id which we should extract and use instead of generating our own.
+            # Extract token usage and calculate cost from OpenAI response
+            # Simple Explanation: We extract token usage directly from OpenAI's response.usage
+            # (standard OpenAI structure that works for both PostHog-wrapped and regular responses).
+            # We calculate the cost ourselves using the pricing module, then save it to the database.
+            # PostHog is only used for getting the trace ID (for correlation in PostHog dashboard).
             cost_usd = 0.0
             actual_posthog_trace_id = None
-            if is_posthog_enabled and workflow_thread_id:
-                # Extract cost from PostHog response
-                # Simple Explanation: PostHog adds cost information to the response object
-                # as an attribute. We use getattr() to safely get it, defaulting to 0.0.
-                cost_usd = getattr(response, "$ai_total_cost_usd", 0.0) or 0.0
 
-                # Extract trace_id from PostHog response (PostHog generates its own)
-                # Try common attribute names that PostHog might use
+            # Extract token usage from OpenAI response
+            # PostHog-wrapped responses may expose usage differently than regular OpenAI responses
+            prompt_tokens = 0
+            completion_tokens = 0
+
+            # Try multiple ways to access usage data
+            usage = None
+            if hasattr(response, "usage") and response.usage:
+                usage = response.usage
+            elif hasattr(response, "_response") and hasattr(
+                response._response, "usage"
+            ):
+                # PostHog might wrap the response
+                usage = response._response.usage
+            elif hasattr(response, "response") and hasattr(response.response, "usage"):
+                # Alternative wrapper structure
+                usage = response.response.usage
+
+            if usage:
+                # Try standard OpenAI usage attributes
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+
+                # If standard attributes don't work, try alternative names
+                if prompt_tokens == 0 and completion_tokens == 0:
+                    prompt_tokens = getattr(usage, "input_tokens", 0) or 0
+                    completion_tokens = getattr(usage, "output_tokens", 0) or 0
+
+                if prompt_tokens > 0 or completion_tokens > 0:
+                    logger.info(
+                        f"📊 Token usage: {prompt_tokens} prompt + {completion_tokens} completion = {prompt_tokens + completion_tokens} total"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ Usage object found but no token counts extracted. Usage object: {usage}, attributes: {dir(usage)}"
+                    )
+            else:
+                # Log response structure for debugging
+                logger.warning(
+                    f"⚠️ No usage information found in OpenAI response. Response type: {type(response)}, attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}"
+                )
+
+            # Calculate cost from token usage
+            if prompt_tokens > 0 or completion_tokens > 0:
+                try:
+                    cost_usd = calculate_cost(
+                        model_name, prompt_tokens, completion_tokens
+                    )
+                    logger.info(
+                        f"💰 Calculated LLM call cost: ${cost_usd:.6f} "
+                        f"(model: {model_name}, {prompt_tokens} input + {completion_tokens} output tokens)"
+                    )
+                except KeyError as e:
+                    logger.warning(
+                        f"⚠️ Cannot calculate cost: {e}. Cost will be set to 0.0"
+                    )
+                    cost_usd = 0.0
+                except Exception as e:
+                    logger.error(
+                        f"❌ Error calculating cost: {e}",
+                        exc_info=True,
+                    )
+                    cost_usd = 0.0
+
+            # Extract PostHog trace ID if available (for tracking purposes only)
+            if is_posthog_enabled and workflow_thread_id:
+                # Try to extract trace_id from PostHog response
+                # PostHog may or may not return trace_id in the response
                 for attr_name in [
                     "trace_id",
                     "$trace_id",
@@ -270,43 +335,24 @@ Return ONLY valid JSON, no additional text."""
                     )
                     logger.info(
                         f"   To find this trace in PostHog dashboard, search by: "
-                        f"distinct_id={posthog_distinct_id}, model=gpt-4.1, timestamp={workflow_thread_id}"
+                        f"distinct_id={posthog_distinct_id}, model={model_name}, timestamp={workflow_thread_id}"
                     )
 
-                logger.debug(
-                    f"💰 Cost extracted: ${cost_usd:.6f}, posthog_trace_id: {posthog_trace_id}"
+            # Save cost and trace_id to database
+            if workflow_thread_id:
+                success = update_workflow_usage_cost(
+                    workflow_thread_id, cost_usd, posthog_trace_id
                 )
-
-                if cost_usd > 0:
+                if success:
                     logger.info(
-                        f"💰 LLM call cost: ${cost_usd:.6f} (tracked by PostHog)"
+                        f"✅ Cost and trace_id saved to database for {workflow_thread_id}"
                     )
-                    # Update usage_stats in database
-                    success = update_workflow_usage_cost(
-                        workflow_thread_id, cost_usd, posthog_trace_id
-                    )
-                    if success:
-                        logger.info(
-                            f"✅ Cost saved to database for {workflow_thread_id}"
-                        )
-                    else:
-                        logger.warning(
-                            f"⚠️ Failed to save cost to database for {workflow_thread_id}"
-                        )
                 else:
                     logger.warning(
-                        "💰 No cost information in PostHog response (cost is 0 or not available)"
+                        f"⚠️ Failed to save cost to database for {workflow_thread_id}"
                     )
-                    # Even if cost is 0, we should still save the trace_id if available
-                    if posthog_trace_id:
-                        logger.debug(
-                            f"💰 Saving PostHog trace_id even though cost is 0: {posthog_trace_id}"
-                        )
-                        update_workflow_usage_cost(
-                            workflow_thread_id, 0.0, posthog_trace_id
-                        )
-            elif not is_posthog_enabled:
-                logger.debug("💰 PostHog tracking not enabled - cost not tracked")
+            else:
+                logger.debug("💰 No workflow_thread_id - skipping cost tracking")
 
             # Validate and normalize insights
             try:

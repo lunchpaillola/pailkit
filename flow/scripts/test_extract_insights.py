@@ -83,8 +83,9 @@ async def test_extract_insights():
     logger.info("  1. Creating a workflow thread in the database")
     logger.info("  2. PostHog client creation and configuration")
     logger.info("  3. ExtractInsightsStep execution with real API calls")
-    logger.info("  4. PostHog tracking of LLM usage (cost in response)")
-    logger.info("  5. Cost saved to database in usage_stats")
+    logger.info("  4. Token usage extraction from OpenAI response")
+    logger.info("  5. Cost calculation using pricing module")
+    logger.info("  6. Cost and trace ID saved to database in usage_stats")
 
     # Create dummy Q&A pairs (like a real interview transcript)
     # Simple Explanation: These are fake questions and answers that
@@ -416,29 +417,20 @@ async def test_extract_insights():
             )
 
         if total_cost == 0.0:
-            if posthog_tracking_enabled:
-                logger.warning("⚠️  Total cost is $0.00 in database")
-                logger.warning("   This could mean:")
-                logger.warning(
-                    "   - PostHog didn't return cost in response (SDK limitation)"
-                )
-                logger.warning(
-                    "   - Cost calculation happens asynchronously in PostHog"
-                )
-                logger.warning(
-                    "   - The model name might not be recognized for cost calculation"
-                )
-                logger.warning(
-                    "   Note: This is a PostHog issue, not a database issue."
-                )
-                logger.warning(
-                    "   The fix is working correctly - usage_stats is being saved!"
-                )
-            else:
-                logger.info("ℹ️  Total cost is $0.00 (PostHog tracking not enabled)")
+            logger.warning("⚠️  Total cost is $0.00 in database")
+            logger.warning("   This could mean:")
+            logger.warning("   - Token usage was not extracted from OpenAI response")
+            logger.warning("   - The model name is not in the pricing dictionary")
+            logger.warning("   - There was an error during cost calculation")
+            logger.warning(
+                "   Check the logs above for token usage extraction and cost calculation"
+            )
         else:
-            logger.info(f"✅ Cost saved to database: ${total_cost:.6f}")
+            logger.info(f"✅ Cost calculated and saved to database: ${total_cost:.6f}")
             logger.info(f"✅ PostHog trace ID: {posthog_trace_id}")
+            logger.info(
+                "   ✅ Cost was calculated from token usage using the pricing module"
+            )
 
         # Summary
         logger.info("\n" + "=" * 60)
@@ -453,12 +445,14 @@ async def test_extract_insights():
             logger.info("✅ PostHog tracking enabled")
             logger.info(f"✅ PostHog trace ID saved: {posthog_trace_id}")
             if total_cost > 0:
-                logger.info(f"✅ Cost tracked: ${total_cost:.6f}")
+                logger.info(f"✅ Cost calculated and tracked: ${total_cost:.6f}")
             else:
                 logger.warning(
-                    "⚠️  Cost is $0.00 (PostHog may not return cost immediately)"
+                    "⚠️  Cost is $0.00 - check logs for token usage extraction"
                 )
-                logger.warning("   Check PostHog dashboard for actual cost tracking")
+                logger.warning(
+                    "   Cost should be calculated from OpenAI response.usage data"
+                )
         else:
             logger.info("ℹ️  PostHog tracking not enabled (set POSTHOG_API_KEY)")
 
