@@ -39,6 +39,7 @@ from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.transports.daily.transport import DailyParams, DailyTransport
 
 from flow.steps.agent_call.bot.animation import TalkingAnimation
+from flow.steps.agent_call.bot.metrics_processor import UsageMetricsProcessor
 from flow.steps.agent_call.bot.result_processor import BotResultProcessor
 from flow.steps.agent_call.bot.speaker_tracking import SpeakerTrackingProcessor
 from flow.steps.agent_call.bot.transcript_handler import TranscriptHandler
@@ -258,6 +259,11 @@ IMPORTANT: Your output will be spoken aloud, so:
             quiet_frame, talking_frame = load_bot_video_frames(bot_config)
             ta = TalkingAnimation(quiet_frame=quiet_frame, talking_frame=talking_frame)
 
+            # Create metrics processor to track LLM usage costs in real-time
+            metrics_processor = UsageMetricsProcessor(
+                workflow_thread_id=workflow_thread_id
+            )
+
             # Build pipeline with Deepgram STT and TranscriptProcessor
             pipeline_components = [
                 transport.input(),  # Transport user input
@@ -266,6 +272,7 @@ IMPORTANT: Your output will be spoken aloud, so:
                 transcript.user(),  # User transcripts (from STT)
                 context_aggregator.user(),  # User responses
                 llm,  # LLM
+                metrics_processor,  # Track LLM usage metrics and costs
                 tts,  # TTS
                 ta,  # Talking animation (for video output)
                 transport.output(),  # Transport bot output
@@ -762,6 +769,30 @@ IMPORTANT: Your output will be spoken aloud, so:
                             logger.warning(
                                 f"⚠️ Failed to save bot_leave_time/bot_duration for {workflow_thread_id}"
                             )
+
+                        # Calculate and save Deepgram STT cost
+                        from flow.utils.pricing import calculate_deepgram_cost
+                        from flow.utils.usage_tracking import update_workflow_usage_cost
+
+                        try:
+                            deepgram_cost = calculate_deepgram_cost(bot_duration)
+                            success = update_workflow_usage_cost(
+                                workflow_thread_id, deepgram_cost, cost_category="stt"
+                            )
+                            if success:
+                                logger.debug(
+                                    f"✅ Saved Deepgram STT cost: ${deepgram_cost:.6f} "
+                                    f"for {bot_duration}s to workflow_threads: {workflow_thread_id}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"⚠️ Failed to save Deepgram STT cost for {workflow_thread_id}"
+                                )
+                        except Exception as cost_error:
+                            logger.warning(
+                                f"⚠️ Error calculating/saving Deepgram STT cost: {cost_error}",
+                                exc_info=True,
+                            )
                     except Exception as e:
                         logger.warning(
                             f"⚠️ Error saving bot_leave_time/bot_duration: {e}",
@@ -842,6 +873,21 @@ IMPORTANT: Your output will be spoken aloud, so:
                     thread_data["bot_leave_time"] = bot_leave_time.isoformat()
                     thread_data["bot_duration"] = bot_duration
                     save_workflow_thread_data(workflow_thread_id, thread_data)
+
+                    # Calculate and save Deepgram STT cost
+                    from flow.utils.pricing import calculate_deepgram_cost
+                    from flow.utils.usage_tracking import update_workflow_usage_cost
+
+                    try:
+                        deepgram_cost = calculate_deepgram_cost(bot_duration)
+                        update_workflow_usage_cost(
+                            workflow_thread_id, deepgram_cost, cost_category="stt"
+                        )
+                    except Exception as cost_error:
+                        logger.warning(
+                            f"⚠️ Error calculating/saving Deepgram STT cost on cancellation: {cost_error}",
+                            exc_info=True,
+                        )
                 except Exception as e:
                     logger.warning(
                         f"⚠️ Error saving bot_leave_time on cancellation: {e}",
@@ -904,6 +950,21 @@ IMPORTANT: Your output will be spoken aloud, so:
                     thread_data["bot_leave_time"] = bot_leave_time.isoformat()
                     thread_data["bot_duration"] = bot_duration
                     save_workflow_thread_data(workflow_thread_id, thread_data)
+
+                    # Calculate and save Deepgram STT cost
+                    from flow.utils.pricing import calculate_deepgram_cost
+                    from flow.utils.usage_tracking import update_workflow_usage_cost
+
+                    try:
+                        deepgram_cost = calculate_deepgram_cost(bot_duration)
+                        update_workflow_usage_cost(
+                            workflow_thread_id, deepgram_cost, cost_category="stt"
+                        )
+                    except Exception as cost_error:
+                        logger.warning(
+                            f"⚠️ Error calculating/saving Deepgram STT cost on error: {cost_error}",
+                            exc_info=True,
+                        )
                 except Exception as save_error:
                     logger.warning(
                         f"⚠️ Error saving bot_leave_time on error: {save_error}",

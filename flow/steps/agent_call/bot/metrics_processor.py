@@ -59,6 +59,9 @@ class UsageMetricsProcessor(FrameProcessor):
         This method is called for every frame in the pipeline. When it sees a MetricsFrame
         (which contains usage data), it extracts the usage information and saves it.
         """
+        # Call super().process_frame() first to handle StartFrame and other base frame processing
+        await super().process_frame(frame, direction)
+
         # Only process MetricsFrame events
         if not isinstance(frame, MetricsFrame):
             await self.push_frame(frame, direction)
@@ -98,16 +101,19 @@ class UsageMetricsProcessor(FrameProcessor):
             # Get model name from metrics (if available)
             model = getattr(metrics_data, "model", "gpt-4o")  # Default to gpt-4o
 
-            # Calculate cost (gpt-4o pricing as of 2025: $2.50/$10 per 1M tokens input/output)
-            input_cost_per_1k = (
-                2.50 / 1000
-            )  # $2.50 per 1M tokens = $0.0025 per 1K tokens
-            output_cost_per_1k = 10.0 / 1000  # $10 per 1M tokens = $0.01 per 1K tokens
-            cost_usd = (prompt_tokens / 1000 * input_cost_per_1k) + (
-                completion_tokens / 1000 * output_cost_per_1k
-            )
+            # Calculate cost using pricing.py
+            from flow.utils.pricing import calculate_cost
 
-            # Store usage data for aggregation
+            try:
+                cost_usd = calculate_cost(model, prompt_tokens, completion_tokens)
+            except KeyError as e:
+                logger.warning(
+                    f"⚠️ Model '{model}' not found in pricing - using default gpt-4o pricing: {e}"
+                )
+                # Fallback to gpt-4o pricing if model not found
+                cost_usd = calculate_cost("gpt-4o", prompt_tokens, completion_tokens)
+
+            # Store usage data for reference (optional, for debugging)
             usage_entry = {
                 "model": model,
                 "prompt_tokens": prompt_tokens,
@@ -117,34 +123,35 @@ class UsageMetricsProcessor(FrameProcessor):
             }
             self._usage_data.append(usage_entry)
 
-            # Get workflow thread data to find unkey_key_id
-            from flow.db import (
-                aggregate_usage_stats,
-                get_workflow_thread_data,
-                save_workflow_thread_data,
+            # Save cost to database immediately using update_workflow_usage_cost
+            from flow.utils.usage_tracking import update_workflow_usage_cost
+
+            success = update_workflow_usage_cost(
+                self.workflow_thread_id, cost_usd, cost_category="bot"
             )
+
+            if not success:
+                logger.warning(
+                    f"⚠️ Failed to save bot cost to database for {self.workflow_thread_id}"
+                )
+                return
+
+            # Get workflow thread data to find unkey_key_id for PostHog tracking
+            from flow.db import get_workflow_thread_data
 
             thread_data = get_workflow_thread_data(self.workflow_thread_id)
             if not thread_data:
-                logger.warning(
-                    f"⚠️ Could not find workflow_thread_data for {self.workflow_thread_id} - skipping usage tracking"
+                logger.debug(
+                    f"Could not find workflow_thread_data for {self.workflow_thread_id} - skipping PostHog tracking"
                 )
                 return
 
             unkey_key_id = thread_data.get("unkey_key_id")
             if not unkey_key_id:
                 logger.debug(
-                    f"No unkey_key_id found for workflow_thread_id {self.workflow_thread_id}"
+                    f"No unkey_key_id found for workflow_thread_id {self.workflow_thread_id} - skipping PostHog tracking"
                 )
                 return
-
-            # Aggregate usage stats
-            existing_stats = thread_data.get("usage_stats")
-            aggregated_stats = aggregate_usage_stats(existing_stats, usage_entry)
-
-            # Update workflow_thread_data
-            thread_data["usage_stats"] = aggregated_stats
-            save_workflow_thread_data(self.workflow_thread_id, thread_data)
 
             # Send to PostHog
             from flow.utils.posthog_config import capture_llm_generation
