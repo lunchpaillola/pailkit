@@ -9,7 +9,7 @@ This step extracts insights and assesses competencies from the interview.
 
 import json
 import logging
-import os
+import uuid
 from typing import Any, Dict, List, cast
 
 from flow.steps.agent_call.steps.base import InterviewStep
@@ -62,23 +62,53 @@ class ExtractInsightsStep(InterviewStep):
         else:
             logger.info("   Using default analysis prompt")
 
-        # Get OpenAI API key
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            logger.warning("⚠️ OPENAI_API_KEY not set - using placeholder insights")
+        # Get workflow_thread_id for usage tracking
+        workflow_thread_id = state.get("workflow_thread_id")
+        room_name = state.get("room_name")
+
+        # Get PostHog-wrapped OpenAI client (with graceful degradation)
+        # Simple Explanation: This gets an OpenAI client that automatically tracks
+        # all LLM calls to PostHog. If PostHog isn't configured, it returns a
+        # regular OpenAI client without tracking.
+        from flow.utils.posthog_config import get_posthog_llm_client
+        from flow.utils.usage_tracking import update_workflow_usage_cost
+        from flow.utils.pricing import calculate_cost
+        from flow.db import get_workflow_thread_data
+
+        client, is_posthog_enabled = get_posthog_llm_client()
+
+        if not client:
+            logger.warning("⚠️ Cannot create OpenAI client - using placeholder insights")
             return self._create_placeholder_insights(state, qa_pairs, [])
 
-        try:
-            # Import OpenAI client
-            try:
-                from openai import AsyncOpenAI
-            except ImportError:
-                logger.error(
-                    "❌ OpenAI package not installed. Install with: pip install openai"
-                )
-                return self._create_placeholder_insights(state, qa_pairs, [])
+        # Generate a reference ID for this workflow execution (for our own tracking)
+        # Note: This is NOT PostHog's trace_id. PostHog generates its own trace_id server-side
+        # and doesn't return it in the response. To find traces in PostHog, search by:
+        # - distinct_id (should be workflow_thread_id or unkey_key_id)
+        # - timestamp (when the call was made)
+        # - model name (e.g., "gpt-4.1")
+        posthog_trace_id = None
+        if workflow_thread_id:
+            thread_data = get_workflow_thread_data(workflow_thread_id)
+            if thread_data and thread_data.get("usage_stats"):
+                posthog_trace_id = thread_data["usage_stats"].get("posthog_trace_id")
 
-            client = AsyncOpenAI(api_key=openai_api_key)
+        if not posthog_trace_id:
+            posthog_trace_id = str(uuid.uuid4())
+            logger.debug(f"Generated new reference ID for tracking: {posthog_trace_id}")
+
+        # Get distinct_id for PostHog (unkey_key_id if available, fallback to workflow_thread_id)
+        # Simple Explanation: distinct_id identifies who made the API call. We prefer
+        # the API key ID (unkey_key_id) if available, otherwise use workflow_thread_id.
+        posthog_distinct_id = workflow_thread_id or "unknown"
+        if workflow_thread_id:
+            thread_data = get_workflow_thread_data(workflow_thread_id)
+            if thread_data:
+                unkey_key_id = thread_data.get("unkey_key_id")
+                if unkey_key_id:
+                    posthog_distinct_id = unkey_key_id
+
+        try:
 
             # Build transcript text from Q&A pairs
             qa_text = "\n\n".join(
@@ -137,24 +167,192 @@ Guidelines:
 
 Return ONLY valid JSON, no additional text."""
 
-            # Call OpenAI API
+            # Call OpenAI API with PostHog tracking
             logger.info("🤖 Calling OpenAI API for analysis...")
-            response = await client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert interview evaluator. Always respond with valid JSON only.",
-                    },
-                    {"role": "user", "content": final_prompt},
-                ],
-                temperature=0.3,  # Lower temperature for more consistent analysis
-                response_format={"type": "json_object"},
-            )
+            model_name = None  # Will be set based on which client we use
+            if is_posthog_enabled:
+                # Use PostHog-wrapped client with responses.create()
+                # Simple Explanation: PostHog's wrapper uses responses.create() instead of
+                # chat.completions.create(). We use the input parameter (same structure as messages)
+                # PostHog automatically tracks all calls made through this client.
+                # Note: response_format is not supported, so we rely on the prompt to request JSON format.
+                # PostHog tracking parameters:
+                # - posthog_distinct_id: Identifies the user/API key (required for tracking)
+                # - posthog_trace_id: Optional trace ID for correlating events
+                # - posthog_properties: Optional additional properties for the event
+                posthog_properties = {
+                    "workflow_thread_id": workflow_thread_id,
+                    "room_name": room_name,
+                    "step_name": "extract_insights",
+                }
+                logger.debug(
+                    f"📊 PostHog tracking parameters: distinct_id={posthog_distinct_id}, "
+                    f"trace_id={posthog_trace_id}, properties={posthog_properties}"
+                )
+                model_name = "gpt-4.1"
+                response = await client.responses.create(
+                    model=model_name,
+                    input=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert call evaluator. Always respond with valid JSON only.",
+                        },
+                        {"role": "user", "content": final_prompt},
+                    ],
+                    temperature=0.3,  # Lower temperature for more consistent analysis
+                    posthog_distinct_id=posthog_distinct_id,
+                    posthog_trace_id=posthog_trace_id,
+                    posthog_properties=posthog_properties,
+                )
+            else:
+                # Fallback to regular OpenAI API (no PostHog tracking)
+                model_name = "gpt-4o"
+                response = await client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert interview evaluator. Always respond with valid JSON only.",
+                        },
+                        {"role": "user", "content": final_prompt},
+                    ],
+                    temperature=0.3,  # Lower temperature for more consistent analysis
+                    response_format={"type": "json_object"},
+                )
 
             # Parse response
-            response_text = response.choices[0].message.content
+            # Simple Explanation: PostHog-wrapped responses use output_text attribute
+            # instead of the standard OpenAI response structure. For fallback (non-PostHog),
+            # we still use the standard structure.
+            if is_posthog_enabled:
+                response_text = response.output_text
+            else:
+                response_text = response.choices[0].message.content
             insights = json.loads(response_text)
+
+            # Extract token usage and calculate cost from OpenAI response
+            # Simple Explanation: We extract token usage directly from OpenAI's response.usage
+            # (standard OpenAI structure that works for both PostHog-wrapped and regular responses).
+            # We calculate the cost ourselves using the pricing module, then save it to the database.
+            # PostHog is only used for getting the trace ID (for correlation in PostHog dashboard).
+            cost_usd = 0.0
+            actual_posthog_trace_id = None
+
+            # Extract token usage from OpenAI response
+            # PostHog-wrapped responses may expose usage differently than regular OpenAI responses
+            prompt_tokens = 0
+            completion_tokens = 0
+
+            # Try multiple ways to access usage data
+            usage = None
+            if hasattr(response, "usage") and response.usage:
+                usage = response.usage
+            elif hasattr(response, "_response") and hasattr(
+                response._response, "usage"
+            ):
+                # PostHog might wrap the response
+                usage = response._response.usage
+            elif hasattr(response, "response") and hasattr(response.response, "usage"):
+                # Alternative wrapper structure
+                usage = response.response.usage
+
+            if usage:
+                # Try standard OpenAI usage attributes
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+
+                # If standard attributes don't work, try alternative names
+                if prompt_tokens == 0 and completion_tokens == 0:
+                    prompt_tokens = getattr(usage, "input_tokens", 0) or 0
+                    completion_tokens = getattr(usage, "output_tokens", 0) or 0
+
+                if prompt_tokens > 0 or completion_tokens > 0:
+                    logger.info(
+                        f"📊 Token usage: {prompt_tokens} prompt + {completion_tokens} completion = {prompt_tokens + completion_tokens} total"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ Usage object found but no token counts extracted. Usage object: {usage}, attributes: {dir(usage)}"
+                    )
+            else:
+                # Log response structure for debugging
+                logger.warning(
+                    f"⚠️ No usage information found in OpenAI response. Response type: {type(response)}, attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}"
+                )
+
+            # Calculate cost from token usage
+            if prompt_tokens > 0 or completion_tokens > 0:
+                try:
+                    cost_usd = calculate_cost(
+                        model_name, prompt_tokens, completion_tokens
+                    )
+                    logger.info(
+                        f"💰 Calculated LLM call cost: ${cost_usd:.6f} "
+                        f"(model: {model_name}, {prompt_tokens} input + {completion_tokens} output tokens)"
+                    )
+                except KeyError as e:
+                    logger.warning(
+                        f"⚠️ Cannot calculate cost: {e}. Cost will be set to 0.0"
+                    )
+                    cost_usd = 0.0
+                except Exception as e:
+                    logger.error(
+                        f"❌ Error calculating cost: {e}",
+                        exc_info=True,
+                    )
+                    cost_usd = 0.0
+
+            # Extract PostHog trace ID if available (for tracking purposes only)
+            if is_posthog_enabled and workflow_thread_id:
+                # Try to extract trace_id from PostHog response
+                # PostHog may or may not return trace_id in the response
+                for attr_name in [
+                    "trace_id",
+                    "$trace_id",
+                    "posthog_trace_id",
+                    "$posthog_trace_id",
+                ]:
+                    trace_id_value = getattr(response, attr_name, None)
+                    if trace_id_value:
+                        actual_posthog_trace_id = str(trace_id_value)
+                        logger.debug(
+                            f"✅ Found PostHog trace_id in response.{attr_name}: {actual_posthog_trace_id}"
+                        )
+                        break
+
+                # If we found a trace_id from PostHog, use it; otherwise use the one we generated
+                if actual_posthog_trace_id:
+                    posthog_trace_id = actual_posthog_trace_id
+                    logger.info(
+                        f"✅ Using PostHog trace_id from response: {posthog_trace_id}"
+                    )
+                else:
+                    # PostHog doesn't return trace_id in response - it generates its own server-side
+                    # The trace_id we're using is just for our own reference in the database
+                    logger.info(
+                        f"ℹ️ PostHog generates its own trace_id server-side (not in response). "
+                        f"Using reference ID for database: {posthog_trace_id}"
+                    )
+                    logger.info(
+                        f"   To find this trace in PostHog dashboard, search by: "
+                        f"distinct_id={posthog_distinct_id}, model={model_name}, timestamp={workflow_thread_id}"
+                    )
+
+            # Save cost and trace_id to database
+            if workflow_thread_id:
+                success = update_workflow_usage_cost(
+                    workflow_thread_id, cost_usd, posthog_trace_id
+                )
+                if success:
+                    logger.info(
+                        f"✅ Cost and trace_id saved to database for {workflow_thread_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ Failed to save cost to database for {workflow_thread_id}"
+                    )
+            else:
+                logger.debug("💰 No workflow_thread_id - skipping cost tracking")
 
             # Validate and normalize insights
             try:

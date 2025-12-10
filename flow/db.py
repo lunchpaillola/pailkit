@@ -970,6 +970,8 @@ def save_workflow_thread_data(
             "metadata": encrypted_data.get("metadata"),
             # checkpoint_id is an operational field (not sensitive), so get it directly from thread_data
             "checkpoint_id": thread_data.get("checkpoint_id"),
+            # usage_stats is an operational field (not sensitive), so get it directly from thread_data
+            "usage_stats": thread_data.get("usage_stats"),
         }
 
         # Remove None values to avoid overwriting with NULL
@@ -1070,6 +1072,8 @@ def get_workflow_thread_data(workflow_thread_id: str) -> Dict[str, Any] | None:
             "metadata": row.get("metadata"),
             # checkpoint_id is an operational field (not sensitive), so include it directly
             "checkpoint_id": row.get("checkpoint_id"),
+            # usage_stats is an operational field (not sensitive), so include it directly
+            "usage_stats": row.get("usage_stats"),
         }
 
         # Remove None values
@@ -1171,6 +1175,8 @@ def get_workflow_threads_by_room_name(room_name: str) -> list[Dict[str, Any]]:
                 "metadata": row.get("metadata"),
                 # checkpoint_id is an operational field (not sensitive), so include it directly
                 "checkpoint_id": row.get("checkpoint_id"),
+                # usage_stats is an operational field (not sensitive), so include it directly
+                "usage_stats": row.get("usage_stats"),
             }
 
             # Remove None values
@@ -1191,3 +1197,66 @@ def get_workflow_threads_by_room_name(room_name: str) -> list[Dict[str, Any]]:
             exc_info=True,
         )
         return []
+
+
+def increment_workflow_usage_cost(
+    workflow_thread_id: str, cost_usd: float, posthog_trace_id: str | None = None
+) -> bool:
+    """
+    Increment the total cost for a workflow thread.
+
+    **Simple Explanation:**
+    This is a convenience function that adds a cost amount to the existing total
+    cost stored in the workflow_threads.usage_stats JSONB column. It reads the
+    current value, adds the new cost, and saves it back.
+
+    This is a lower-level helper - for most use cases, use the function in
+    flow.utils.usage_tracking instead, which provides better error handling.
+
+    Args:
+        workflow_thread_id: Unique identifier for the workflow run
+        cost_usd: Cost in USD to add to the total
+        posthog_trace_id: Optional PostHog trace ID to store for correlation
+
+    Returns:
+        True if updated successfully, False otherwise
+    """
+    if not workflow_thread_id:
+        logger.warning("⚠️ Cannot increment usage cost: workflow_thread_id is required")
+        return False
+
+    try:
+        # Get current workflow thread data
+        thread_data = get_workflow_thread_data(workflow_thread_id)
+        if not thread_data:
+            logger.warning(
+                f"⚠️ Workflow thread not found: {workflow_thread_id} - cannot increment usage cost"
+            )
+            return False
+
+        # Get current usage_stats or initialize
+        usage_stats = thread_data.get("usage_stats") or {}
+        if not usage_stats:
+            usage_stats = {
+                "total_cost_usd": 0.0,
+                "posthog_trace_id": None,
+            }
+
+        # Increment total cost
+        current_total = usage_stats.get("total_cost_usd", 0.0)
+        usage_stats["total_cost_usd"] = current_total + cost_usd
+
+        # Update posthog_trace_id if provided
+        if posthog_trace_id:
+            usage_stats["posthog_trace_id"] = posthog_trace_id
+
+        # Save updated data
+        thread_data["usage_stats"] = usage_stats
+        return save_workflow_thread_data(workflow_thread_id, thread_data)
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error incrementing usage cost for {workflow_thread_id}: {e}",
+            exc_info=True,
+        )
+        return False
