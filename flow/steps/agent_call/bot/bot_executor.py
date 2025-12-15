@@ -793,6 +793,57 @@ IMPORTANT: Your output will be spoken aloud, so:
                                 f"⚠️ Error calculating/saving Deepgram STT cost: {cost_error}",
                                 exc_info=True,
                             )
+
+                        # Create usage transaction when bot leaves (fail-safe primary point)
+                        # This ensures transaction is created even if process_transcript fails later
+                        try:
+                            from flow.db import (
+                                get_workflow_thread_data,
+                                create_usage_transaction,
+                            )
+
+                            # Get current usage stats to check if we have costs
+                            thread_data = (
+                                get_workflow_thread_data(workflow_thread_id) or {}
+                            )
+                            usage_stats = thread_data.get("usage_stats") or {}
+                            total_cost_usd = usage_stats.get("total_cost_usd", 0.0)
+
+                            if total_cost_usd > 0 and bot_duration:
+                                logger.info(
+                                    f"💰 Creating usage transaction when bot leaves: "
+                                    f"workflow_thread_id={workflow_thread_id}, "
+                                    f"cost=${total_cost_usd:.6f}, duration={bot_duration}s"
+                                )
+                                transaction_success = create_usage_transaction(
+                                    workflow_thread_id=workflow_thread_id,
+                                    amount_usd=total_cost_usd,
+                                    duration_seconds=bot_duration,
+                                )
+                                if transaction_success:
+                                    logger.info(
+                                        f"✅ Successfully created usage transaction when bot left: {workflow_thread_id}"
+                                    )
+                                else:
+                                    # Transaction might already exist (duplicate check), which is fine
+                                    logger.debug(
+                                        f"ℹ️ Usage transaction already exists or failed (may be duplicate): {workflow_thread_id}"
+                                    )
+                            elif total_cost_usd <= 0:
+                                logger.debug(
+                                    f"⏭️ Skipping usage transaction when bot leaves: "
+                                    f"total_cost_usd is {total_cost_usd} (non-positive)"
+                                )
+                            elif not bot_duration:
+                                logger.debug(
+                                    "⏭️ Skipping usage transaction when bot leaves: "
+                                    "bot_duration is not available"
+                                )
+                        except Exception as transaction_error:
+                            logger.warning(
+                                f"⚠️ Error creating usage transaction when bot leaves: {transaction_error}",
+                                exc_info=True,
+                            )
                     except Exception as e:
                         logger.warning(
                             f"⚠️ Error saving bot_leave_time/bot_duration: {e}",

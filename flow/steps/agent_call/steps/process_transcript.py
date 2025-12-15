@@ -1489,10 +1489,10 @@ class ProcessTranscriptStep(InterviewStep):
                     }
                 )
 
-                # Update meeting_status to "completed" if it's currently "ended"
-                if thread_data.get("meeting_status") == "ended":
-                    thread_data["meeting_status"] = "completed"
-                    logger.info("✅ Updated meeting_status to 'completed'")
+                # Always set meeting_status to "completed" when processing completes successfully
+                # (for other workflow logic, but transaction creation doesn't depend on this)
+                thread_data["meeting_status"] = "completed"
+                logger.info("✅ Set meeting_status to 'completed'")
 
                 # Merge in any existing session_data fields that might not be in thread_data yet
                 # (like candidate_name, email_results_to, etc.)
@@ -1521,6 +1521,52 @@ class ProcessTranscriptStep(InterviewStep):
                 logger.info(
                     f"✅ Saved all processing results to workflow_threads table for workflow_thread_id: {workflow_thread_id}"
                 )
+
+                # Create usage transaction when workflow completes (based on cost, not status)
+                # This is a backup/verification - transaction should already exist from bot leave
+                # The duplicate check in create_usage_transaction prevents double-charging
+                usage_stats = thread_data.get("usage_stats") or {}
+                total_cost_usd = usage_stats.get("total_cost_usd", 0.0)
+
+                if total_cost_usd > 0:
+                    # Get duration from bot_duration or duration field
+                    duration_seconds = thread_data.get(
+                        "bot_duration"
+                    ) or thread_data.get("duration")
+
+                    from flow.db import create_usage_transaction
+
+                    logger.info(
+                        f"💰 Verifying/creating usage transaction for completed workflow: "
+                        f"workflow_thread_id={workflow_thread_id}, cost=${total_cost_usd:.6f}"
+                        + (
+                            f", duration={duration_seconds}s"
+                            if duration_seconds
+                            else ""
+                        )
+                    )
+
+                    # create_usage_transaction has duplicate prevention, so safe to call again
+                    transaction_success = create_usage_transaction(
+                        workflow_thread_id=workflow_thread_id,
+                        amount_usd=total_cost_usd,
+                        duration_seconds=duration_seconds,
+                    )
+
+                    if transaction_success:
+                        logger.info(
+                            f"✅ Usage transaction verified/created for workflow_thread_id: {workflow_thread_id}"
+                        )
+                    else:
+                        # Transaction might already exist (duplicate check), which is fine
+                        logger.debug(
+                            f"ℹ️ Usage transaction already exists or failed (may be duplicate): {workflow_thread_id}"
+                        )
+                else:
+                    logger.debug(
+                        f"⏭️ Skipping usage transaction for workflow_thread_id {workflow_thread_id}: "
+                        f"total_cost_usd is {total_cost_usd} (non-positive)"
+                    )
             else:
                 logger.warning(
                     "⚠️ No workflow_thread_id - cannot save processing results to workflow_threads"

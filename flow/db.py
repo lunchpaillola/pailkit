@@ -1272,3 +1272,311 @@ def increment_workflow_usage_cost(
             exc_info=True,
         )
         return False
+
+
+def get_user_id_from_unkey_key_id(unkey_key_id: str) -> str | None:
+    """
+    Get user ID from unkey_key_id by querying public.users table.
+
+    **Simple Explanation:**
+    This function looks up a user in the public.users table by searching for
+    the unkeyId column.
+
+    Args:
+        unkey_key_id: The Unkey key identifier to look up
+
+    Returns:
+        User ID (UUID string) if found, None otherwise
+    """
+    if not unkey_key_id:
+        logger.warning("⚠️ Cannot lookup user: unkey_key_id is required")
+        return None
+
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot lookup user: Supabase client not available")
+        return None
+
+    try:
+        response = (
+            client.table("users")
+            .select("id")
+            .eq("unkeyId", unkey_key_id)
+            .limit(1)
+            .execute()
+        )
+
+        if response.data and len(response.data) > 0:
+            user_id = str(response.data[0]["id"])
+            logger.debug(f"✅ Found user_id {user_id} for unkey_key_id {unkey_key_id}")
+            return user_id
+
+        logger.warning(f"⚠️ No user found for unkey_key_id: {unkey_key_id}")
+        return None
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error looking up user by unkey_key_id {unkey_key_id}: {e}",
+            exc_info=True,
+        )
+        return None
+
+
+def get_user_balance(user_id: str) -> float:
+    """
+    Get current balance for a user.
+
+    **Simple Explanation:**
+    This function retrieves the current balance from the users table.
+    The balance field should already exist in the users table.
+    Tries public.users first, then auth.users if not found.
+
+    Args:
+        user_id: User ID (UUID string)
+
+    Returns:
+        Current balance as float, default 0.0 if not found or error
+    """
+    if not user_id:
+        logger.warning("⚠️ Cannot get balance: user_id is required")
+        return 0.0
+
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot get balance: Supabase client not available")
+        return 0.0
+
+    try:
+        # Try public.users first (since usage_transactions references it)
+        response = (
+            client.table("users").select("credit_balance").eq("id", user_id).execute()
+        )
+
+        if response.data and len(response.data) > 0:
+            balance = response.data[0].get("credit_balance")
+            if balance is not None:
+                return float(balance)
+            return 0.0
+
+        # If not found in public.users, try auth.users using raw SQL
+        db_url = _get_db_connection_string()
+        if db_url:
+            try:
+                import psycopg
+
+                with psycopg.connect(db_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT credit_balance FROM auth.users WHERE id = %s LIMIT 1",
+                            (user_id,),
+                        )
+                        row = cur.fetchone()
+                        if row and row[0] is not None:
+                            return float(row[0])
+            except ImportError:
+                pass  # psycopg not available, continue
+            except Exception:
+                pass  # Error querying auth.users, continue
+
+        logger.warning(f"⚠️ User not found for balance lookup: {user_id}")
+        return 0.0
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error getting balance for user {user_id}: {e}",
+            exc_info=True,
+        )
+        return 0.0
+
+
+def create_usage_transaction(
+    workflow_thread_id: str,
+    amount_usd: float,
+    duration_seconds: int | None = None,
+) -> bool:
+    """
+    Create a usage transaction and deduct balance when workflow completes.
+
+    **Simple Explanation:**
+    This function creates a transaction record in the usage_transactions table
+    and deducts the amount from the user's balance. It looks up the user via
+    unkey_key_id stored in the workflow_threads table.
+
+    Args:
+        workflow_thread_id: Unique workflow thread identifier
+        amount_usd: Amount to deduct (positive value, will be stored as negative)
+        duration_seconds: Optional duration in seconds for bot usage
+
+    Returns:
+        True if transaction created successfully, False otherwise
+    """
+    if not workflow_thread_id:
+        logger.warning(
+            "⚠️ Cannot create usage transaction: workflow_thread_id is required"
+        )
+        return False
+
+    if amount_usd <= 0:
+        logger.debug(
+            f"⏭️ Skipping transaction creation for {workflow_thread_id}: amount is {amount_usd} (non-positive)"
+        )
+        return False
+
+    client = get_supabase_client()
+    if not client:
+        logger.error(
+            "❌ Cannot create usage transaction: Supabase client not available"
+        )
+        return False
+
+    try:
+        # Get workflow thread data to extract unkey_key_id and duration
+        thread_data = get_workflow_thread_data(workflow_thread_id)
+        if not thread_data:
+            logger.warning(
+                f"⚠️ Workflow thread not found: {workflow_thread_id} - cannot create transaction"
+            )
+            return False
+
+        unkey_key_id = thread_data.get("unkey_key_id")
+        if not unkey_key_id:
+            logger.warning(
+                f"⚠️ No unkey_key_id found for workflow_thread_id {workflow_thread_id} - cannot create transaction"
+            )
+            return False
+
+        # Get duration from thread_data if not provided
+        if duration_seconds is None:
+            duration_seconds = thread_data.get("bot_duration") or thread_data.get(
+                "duration"
+            )
+
+        # Look up user_id from unkey_key_id (returns auth.users.id)
+        auth_user_id = get_user_id_from_unkey_key_id(unkey_key_id)
+        if not auth_user_id:
+            logger.warning(
+                f"⚠️ User not found for unkey_key_id {unkey_key_id} - cannot create transaction"
+            )
+            return False
+
+        # Verify user exists in public.users (since usage_transactions.user_id references it)
+        # In most Supabase setups, auth.users.id == public.users.id, but we verify
+        user_check = (
+            client.table("users").select("id").eq("id", auth_user_id).limit(1).execute()
+        )
+
+        if not user_check.data or len(user_check.data) == 0:
+            logger.warning(
+                f"⚠️ User {auth_user_id} not found in public.users - "
+                "cannot create transaction (user may need to be synced)"
+            )
+            return False
+
+        user_id = auth_user_id  # Use the same ID if it exists in both tables
+
+        # Get current balance
+        balance_before = get_user_balance(user_id)
+        balance_after = balance_before - amount_usd
+
+        # Check for existing transaction to prevent duplicates
+        # Check by user_id, amount, and type within last hour
+        from datetime import datetime, timedelta
+
+        one_hour_ago = (datetime.utcnow() - timedelta(hours=1)).isoformat() + "Z"
+
+        existing_check = (
+            client.table("usage_transactions")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("amount", -amount_usd)  # Negative amount
+            .eq("type", "usage_burn")
+            .gte("created_at", one_hour_ago)
+            .limit(1)
+            .execute()
+        )
+
+        if existing_check.data and len(existing_check.data) > 0:
+            logger.warning(
+                f"⚠️ Duplicate transaction detected for workflow_thread_id {workflow_thread_id} - skipping"
+            )
+            return False
+
+        # Create transaction record
+        transaction_data = {
+            "user_id": user_id,
+            "amount": -amount_usd,  # Store as negative for deductions
+            "type": "usage_burn",
+        }
+
+        if duration_seconds is not None:
+            transaction_data["duration"] = duration_seconds
+
+        # Insert transaction
+        transaction_response = (
+            client.table("usage_transactions").insert(transaction_data).execute()
+        )
+
+        if not transaction_response.data:
+            logger.error(
+                f"❌ Failed to create usage transaction for {workflow_thread_id}"
+            )
+            return False
+
+        # Update user balance
+        # Try public.users first (since usage_transactions references it)
+        try:
+            update_response = (
+                client.table("users")
+                .update({"credit_balance": balance_after})
+                .eq("id", user_id)
+                .execute()
+            )
+
+            if not update_response.data:
+                # If not found in public.users, try auth.users using raw SQL
+                db_url = _get_db_connection_string()
+                if db_url:
+                    try:
+                        import psycopg
+
+                        with psycopg.connect(db_url) as conn:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    "UPDATE auth.users SET credit_balance = %s WHERE id = %s",
+                                    (balance_after, user_id),
+                                )
+                                conn.commit()
+                                if cur.rowcount > 0:
+                                    update_response = type(
+                                        "obj", (object,), {"data": [{"id": user_id}]}
+                                    )()
+                    except ImportError:
+                        pass  # psycopg not available
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error updating auth.users balance: {e}")
+
+            if update_response.data:
+                logger.info(
+                    f"✅ Created usage transaction for workflow_thread_id {workflow_thread_id}: "
+                    f"user_id={user_id}, amount=${amount_usd:.6f}, "
+                    f"balance ${balance_before:.6f} → ${balance_after:.6f}"
+                    + (f", duration={duration_seconds}s" if duration_seconds else "")
+                )
+                return True
+            else:
+                logger.error(f"❌ Failed to update balance for user {user_id}")
+                return False
+
+        except Exception as e:
+            logger.error(
+                f"❌ Error updating balance for user {user_id}: {e}",
+                exc_info=True,
+            )
+            return False
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error creating usage transaction for {workflow_thread_id}: {e}",
+            exc_info=True,
+        )
+        return False
