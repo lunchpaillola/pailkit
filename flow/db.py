@@ -1393,6 +1393,7 @@ def create_usage_transaction(
     workflow_thread_id: str,
     amount_usd: float,
     duration_seconds: int | None = None,
+    lpl_cost: float | None = None,
 ) -> bool:
     """
     Create a usage transaction and deduct balance when workflow completes.
@@ -1405,7 +1406,9 @@ def create_usage_transaction(
     Args:
         workflow_thread_id: Unique workflow thread identifier
         amount_usd: Amount to deduct (positive value, will be stored as negative)
+                   This is the customer cost (what they're charged)
         duration_seconds: Optional duration in seconds for bot usage
+        lpl_cost: Optional actual cost incurred by LPL (LLM, STT, etc.) for internal analytics
 
     Returns:
         True if transaction created successfully, False otherwise
@@ -1511,6 +1514,9 @@ def create_usage_transaction(
         if duration_seconds is not None:
             transaction_data["duration"] = duration_seconds
 
+        if lpl_cost is not None:
+            transaction_data["lpl_cost"] = lpl_cost
+
         # Insert transaction
         transaction_response = (
             client.table("usage_transactions").insert(transaction_data).execute()
@@ -1556,11 +1562,15 @@ def create_usage_transaction(
                         logger.warning(f"⚠️ Error updating auth.users balance: {e}")
 
             if update_response.data:
+                lpl_cost_info = (
+                    f", lpl_cost=${lpl_cost:.6f}" if lpl_cost is not None else ""
+                )
                 logger.info(
                     f"✅ Created usage transaction for workflow_thread_id {workflow_thread_id}: "
-                    f"user_id={user_id}, amount=${amount_usd:.6f}, "
+                    f"user_id={user_id}, amount=${amount_usd:.6f} (customer_cost), "
                     f"balance ${balance_before:.6f} → ${balance_after:.6f}"
                     + (f", duration={duration_seconds}s" if duration_seconds else "")
+                    + lpl_cost_info
                 )
                 return True
             else:

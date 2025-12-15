@@ -1528,29 +1528,36 @@ class ProcessTranscriptStep(InterviewStep):
                 usage_stats = thread_data.get("usage_stats") or {}
                 total_cost_usd = usage_stats.get("total_cost_usd", 0.0)
 
-                if total_cost_usd > 0:
-                    # Get duration from bot_duration or duration field
-                    duration_seconds = thread_data.get(
-                        "bot_duration"
-                    ) or thread_data.get("duration")
+                # Get duration from bot_duration or duration field
+                duration_seconds = thread_data.get("bot_duration") or thread_data.get(
+                    "duration"
+                )
 
+                if duration_seconds:
                     from flow.db import create_usage_transaction
+                    from flow.utils.pricing import calculate_bot_call_cost
 
+                    # Calculate customer cost based on duration
+                    customer_cost = calculate_bot_call_cost(duration_seconds)
+                    lpl_cost = total_cost_usd if total_cost_usd > 0 else None
+
+                    lpl_cost_str = (
+                        f"${lpl_cost:.6f}" if lpl_cost is not None else "$0.000000"
+                    )
                     logger.info(
                         f"💰 Verifying/creating usage transaction for completed workflow: "
-                        f"workflow_thread_id={workflow_thread_id}, cost=${total_cost_usd:.6f}"
-                        + (
-                            f", duration={duration_seconds}s"
-                            if duration_seconds
-                            else ""
-                        )
+                        f"workflow_thread_id={workflow_thread_id}, "
+                        f"customer_cost=${customer_cost:.6f}, "
+                        f"lpl_cost={lpl_cost_str}, "
+                        f"duration={duration_seconds}s"
                     )
 
                     # create_usage_transaction has duplicate prevention, so safe to call again
                     transaction_success = create_usage_transaction(
                         workflow_thread_id=workflow_thread_id,
-                        amount_usd=total_cost_usd,
+                        amount_usd=customer_cost,
                         duration_seconds=duration_seconds,
+                        lpl_cost=lpl_cost,
                     )
 
                     if transaction_success:
@@ -1565,7 +1572,7 @@ class ProcessTranscriptStep(InterviewStep):
                 else:
                     logger.debug(
                         f"⏭️ Skipping usage transaction for workflow_thread_id {workflow_thread_id}: "
-                        f"total_cost_usd is {total_cost_usd} (non-positive)"
+                        f"duration_seconds is not available"
                     )
             else:
                 logger.warning(

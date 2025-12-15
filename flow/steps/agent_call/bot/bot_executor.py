@@ -801,6 +801,7 @@ IMPORTANT: Your output will be spoken aloud, so:
                                 get_workflow_thread_data,
                                 create_usage_transaction,
                             )
+                            from flow.utils.pricing import calculate_bot_call_cost
 
                             # Get current usage stats to check if we have costs
                             thread_data = (
@@ -809,16 +810,30 @@ IMPORTANT: Your output will be spoken aloud, so:
                             usage_stats = thread_data.get("usage_stats") or {}
                             total_cost_usd = usage_stats.get("total_cost_usd", 0.0)
 
-                            if total_cost_usd > 0 and bot_duration:
+                            if bot_duration:
+                                # Calculate customer cost based on duration
+                                customer_cost = calculate_bot_call_cost(bot_duration)
+                                lpl_cost = (
+                                    total_cost_usd if total_cost_usd > 0 else None
+                                )
+
+                                lpl_cost_str = (
+                                    f"${lpl_cost:.6f}"
+                                    if lpl_cost is not None
+                                    else "$0.000000"
+                                )
                                 logger.info(
                                     f"💰 Creating usage transaction when bot leaves: "
                                     f"workflow_thread_id={workflow_thread_id}, "
-                                    f"cost=${total_cost_usd:.6f}, duration={bot_duration}s"
+                                    f"customer_cost=${customer_cost:.6f}, "
+                                    f"lpl_cost={lpl_cost_str}, "
+                                    f"duration={bot_duration}s"
                                 )
                                 transaction_success = create_usage_transaction(
                                     workflow_thread_id=workflow_thread_id,
-                                    amount_usd=total_cost_usd,
+                                    amount_usd=customer_cost,
                                     duration_seconds=bot_duration,
+                                    lpl_cost=lpl_cost,
                                 )
                                 if transaction_success:
                                     logger.info(
@@ -829,12 +844,7 @@ IMPORTANT: Your output will be spoken aloud, so:
                                     logger.debug(
                                         f"ℹ️ Usage transaction already exists or failed (may be duplicate): {workflow_thread_id}"
                                     )
-                            elif total_cost_usd <= 0:
-                                logger.debug(
-                                    f"⏭️ Skipping usage transaction when bot leaves: "
-                                    f"total_cost_usd is {total_cost_usd} (non-positive)"
-                                )
-                            elif not bot_duration:
+                            else:
                                 logger.debug(
                                     "⏭️ Skipping usage transaction when bot leaves: "
                                     "bot_duration is not available"

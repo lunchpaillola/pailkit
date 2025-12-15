@@ -7,6 +7,8 @@ Pricing Module for LLM Cost Calculation
 Provides model pricing information and cost calculation utilities.
 """
 
+import os
+
 # Deepgram STT Pricing (per minute)
 DEEPGRAM_NOVA2_PER_MIN = 0.0058  # Nova-2 model pricing
 DEEPGRAM_DIARIZATION_PER_MIN = 0.0020  # Speaker diarization pricing
@@ -403,4 +405,42 @@ def calculate_deepgram_cost(duration_seconds: int) -> float:
     # Convert seconds to minutes and multiply by per-minute rate
     duration_minutes = duration_seconds / 60.0
     cost = duration_minutes * DEEPGRAM_TOTAL_PER_MIN
+    return round(cost, 6)
+
+
+def calculate_bot_call_cost(duration_seconds: int) -> float:
+    """
+    Calculate the customer cost for a bot call based on duration.
+
+    **Simple Explanation:**
+    This function calculates how much to charge customers for bot call usage based on:
+    - The duration of the call (in seconds)
+    - Configurable rate per minute (default: $0.15/min, set via BOT_CALL_RATE_PER_MINUTE env var)
+
+    Args:
+        duration_seconds: Duration of the bot call in seconds
+
+    Returns:
+        Customer cost in USD (rounded to 6 decimal places)
+
+    Example:
+        ```python
+        # 60 seconds (1 minute) of call at default $0.15/min
+        cost = calculate_bot_call_cost(60)
+        # Returns: 0.150000
+
+        # 120 seconds (2 minutes) of call
+        cost = calculate_bot_call_cost(120)
+        # Returns: 0.300000
+        ```
+    """
+    if duration_seconds < 0:
+        raise ValueError("duration_seconds must be non-negative")
+
+    # Get rate from environment variable, default to $0.15 per minute
+    rate_per_minute = float(os.getenv("BOT_CALL_RATE_PER_MINUTE", "0.15"))
+
+    # Convert seconds to minutes and multiply by per-minute rate
+    duration_minutes = duration_seconds / 60.0
+    cost = duration_minutes * rate_per_minute
     return round(cost, 6)
