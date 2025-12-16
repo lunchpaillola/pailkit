@@ -584,7 +584,7 @@ async def get_bot_status() -> dict[str, Any]:
 
     Useful for monitoring and detecting long-running bots.
     """
-    from flow.steps.interview.bot_service import bot_service
+    from flow.steps.agent_call import bot_service
 
     active_bots = bot_service.list_active_bots()
 
@@ -621,7 +621,7 @@ async def cleanup_bots(max_hours: float = 2.0) -> dict[str, Any]:
     Args:
         max_hours: Stop bots running longer than this (default: 2 hours)
     """
-    from flow.steps.interview.bot_service import bot_service
+    from flow.steps.agent_call import bot_service
 
     stopped_count = await bot_service.cleanup_long_running_bots(max_hours)
 
@@ -635,7 +635,7 @@ async def stop_bot_for_room(room_name: str) -> dict[str, Any]:
 
     Useful for cleaning up duplicate bots or stopping bots manually.
     """
-    from flow.steps.interview.bot_service import bot_service
+    from flow.steps.agent_call import bot_service
 
     success = await bot_service.stop_bot(room_name)
 
@@ -988,7 +988,7 @@ async def handle_meeting_ended_webhook(
                         f"⚠️ Could not resume workflow from checkpoint: {e}, processing transcript directly"
                     )
                     # Process transcript directly (same logic as else block below)
-                    from flow.steps.interview.process_transcript import (
+                    from flow.steps.agent_call import (
                         ProcessTranscriptStep,
                     )
 
