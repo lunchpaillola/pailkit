@@ -30,7 +30,7 @@ from fastapi import (  # noqa: E402
     Request,
 )
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import HTMLResponse, Response  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse, Response  # noqa: E402
 from mcp.server import FastMCP  # noqa: E402
 from pydantic import BaseModel, Field, field_validator  # noqa: E402
 from shared.auth import UnkeyAuthMiddleware  # noqa: E402
@@ -162,6 +162,100 @@ def create_error_response(
     if available_workflows:
         response["available_workflows"] = available_workflows
     return response
+
+
+def check_credits_for_request(
+    request: Request, required_credits: float = 0.15
+) -> tuple[bool, dict[str, Any] | None]:
+    """
+    Check if the authenticated user has sufficient credits for the request.
+
+    **Simple Explanation:**
+    This function checks if the user (identified by unkey_key_id from request state)
+    has sufficient credits in their account. It follows the error handling pattern
+    from bot_call.py with clear, actionable error messages.
+
+    Args:
+        request: FastAPI Request object (contains unkey_key_id in request.state)
+        required_credits: Minimum credits required (default: 0.15 for bot calls)
+
+    Returns:
+        Tuple of (success: bool, error_response: dict | None)
+        - If successful: (True, None)
+        - If error: (False, error_response_dict)
+    """
+    try:
+        # Extract unkey_key_id from request state (set by UnkeyAuthMiddleware)
+        unkey_key_id = None
+        if hasattr(request.state, "unkey_key_id"):
+            unkey_key_id = request.state.unkey_key_id
+
+        if not unkey_key_id:
+            logger.warning("⚠️ No unkey_key_id in request state - cannot check credits")
+            return (
+                False,
+                {
+                    "error": "authentication_error",
+                    "detail": "API key authentication failed.",
+                    "message": "Please verify your API key or contact support.",
+                },
+            )
+
+        # Check user credits using database helper
+        from flow.db import check_user_credits
+
+        has_credits, current_balance = check_user_credits(
+            unkey_key_id, required_credits
+        )
+
+        if current_balance is None:
+            # User not found in database - could mean:
+            # 1. User hasn't added credits yet (exists in auth.users but not in public.users)
+            # 2. Invalid/wrong API key
+            logger.warning("⚠️ User not found in database")
+            return (
+                False,
+                {
+                    "error": "user_not_found",
+                    "detail": "You haven't added credits yet, or this is the wrong API key.",
+                    "message": "Please add credits to your account or verify your API key.",
+                },
+            )
+
+        if not has_credits:
+            # Insufficient credits
+            logger.warning(
+                f"⚠️ Insufficient credits: balance={current_balance}, required={required_credits}"
+            )
+            return (
+                False,
+                {
+                    "error": "insufficient_credits",
+                    "detail": "Your account has insufficient credits to perform this action.",
+                    "balance": current_balance,
+                    "message": "Please add credits to your account to continue.",
+                },
+            )
+
+        # Success - user has sufficient credits
+        logger.debug(
+            f"✅ Credit check passed: balance={current_balance}, required={required_credits}"
+        )
+        return (True, None)
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error checking credits: {e}",
+            exc_info=True,
+        )
+        return (
+            False,
+            {
+                "error": "credit_check_error",
+                "detail": "An error occurred while checking your account credits.",
+                "message": "Please try again or contact support if the issue persists.",
+            },
+        )
 
 
 # REST API Endpoints
@@ -307,6 +401,34 @@ async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinRes
     The bot runs in the background. Use GET /api/bot/{bot_id}/status to check progress.
     """
     try:
+        # Check credits before processing
+        # Simple Explanation: We check if the user has sufficient credits before starting
+        # the bot. This prevents starting expensive operations when credits are insufficient.
+        # The check follows the error handling pattern from bot_call.py.
+        credit_check_success, credit_error = check_credits_for_request(
+            http_request, required_credits=0.15
+        )
+        if not credit_check_success:
+            # Determine appropriate HTTP status code based on error type
+            if credit_error.get("error") == "insufficient_credits":
+                # Use custom JSONResponse for 402 to set "Insufficient Credits" status text
+                return JSONResponse(
+                    status_code=402,
+                    content=credit_error,
+                    headers={"X-Status-Reason": "Insufficient Credits"},
+                )
+            elif credit_error.get("error") == "user_not_found":
+                status_code = 401  # Unauthorized for user not found
+            elif credit_error.get("error") == "authentication_error":
+                status_code = 401  # Unauthorized for auth errors
+            else:
+                status_code = 401  # Default to 401 for other errors
+            # Pass the full error dict as detail (FastAPI supports dict for detail)
+            raise HTTPException(
+                status_code=status_code,
+                detail=credit_error,
+            )
+
         # Generate a unique bot_id for this bot session
         bot_id = str(uuid.uuid4())
 
@@ -1232,6 +1354,7 @@ def get_provider_keys() -> dict[str, str]:
 @app.post("/api/flows/start-bot")
 async def start_bot_conversation(
     request: StartBotRequest,
+    http_request: Request,
 ) -> dict[str, Any]:
     """
     Start a bot conversation with customizable prompts.
@@ -1330,6 +1453,34 @@ async def start_bot_conversation(
     ```
     """
     try:
+        # Check credits before processing
+        # Simple Explanation: We check if the user has sufficient credits before starting
+        # the bot conversation. This prevents starting expensive operations when credits are insufficient.
+        # The check follows the error handling pattern from bot_call.py.
+        credit_check_success, credit_error = check_credits_for_request(
+            http_request, required_credits=0.15
+        )
+        if not credit_check_success:
+            # Determine appropriate HTTP status code based on error type
+            if credit_error.get("error") == "insufficient_credits":
+                # Use custom JSONResponse for 402 to set "Insufficient Credits" status text
+                return JSONResponse(
+                    status_code=402,
+                    content=credit_error,
+                    headers={"X-Status-Reason": "Insufficient Credits"},
+                )
+            elif credit_error.get("error") == "user_not_found":
+                status_code = 401  # Unauthorized for user not found
+            elif credit_error.get("error") == "authentication_error":
+                status_code = 401  # Unauthorized for auth errors
+            else:
+                status_code = 401  # Default to 401 for other errors
+            # Pass the full error dict as detail (FastAPI supports dict for detail)
+            raise HTTPException(
+                status_code=status_code,
+                detail=credit_error,
+            )
+
         # Get provider keys from environment variables (hosted service)
         provider_keys = get_provider_keys()
 

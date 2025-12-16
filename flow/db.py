@@ -1272,3 +1272,136 @@ def increment_workflow_usage_cost(
             exc_info=True,
         )
         return False
+
+
+def get_user_by_unkey_id(unkey_id: str) -> Dict[str, Any] | None:
+    """
+    Look up user directly in public.users table by unkeyId.
+
+    **Simple Explanation:**
+    This function looks up a user in the public.users table using the unkeyId column.
+    The unkeyId matches the unkey_key_id that was extracted from the API key verification
+    and stored in request.state by the UnkeyAuthMiddleware.
+
+    Args:
+        unkey_id: Unkey key identifier (from request.state.unkey_key_id)
+
+    Returns:
+        Dictionary with user data, or None if user not found
+    """
+    client = get_supabase_client()
+    if not client:
+        logger.error("❌ Cannot look up user from Supabase: client not available")
+        return None
+
+    try:
+        response = client.table("users").select("*").eq("unkeyId", unkey_id).execute()
+
+        if not response.data or len(response.data) == 0:
+            logger.debug(f"No user found in Supabase for unkeyId: {unkey_id}")
+            return None
+
+        # Get the first (and should be only) row
+        user_data = response.data[0]
+        logger.debug(f"✅ Found user in Supabase for unkeyId: {unkey_id}")
+        return user_data
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error looking up user by unkeyId from Supabase for {unkey_id}: {e}",
+            exc_info=True,
+        )
+        return None
+
+
+def get_user_credit_balance(unkey_id: str) -> float | None:
+    """
+    Get current credit balance for user (looks up by unkeyId).
+
+    **Simple Explanation:**
+    This function retrieves the credit_balance for a user by looking them up
+    using their unkeyId. Returns None if user not found.
+
+    Args:
+        unkey_id: Unkey key identifier (from request.state.unkey_key_id)
+
+    Returns:
+        Credit balance as float, or None if user not found
+    """
+    user = get_user_by_unkey_id(unkey_id)
+    if not user:
+        return None
+
+    credit_balance = user.get("credit_balance")
+    if credit_balance is None:
+        logger.warning(
+            f"⚠️ User found but credit_balance is None for unkeyId: {unkey_id}"
+        )
+        return None
+
+    try:
+        # Convert to float if it's a string or other type
+        return float(credit_balance)
+    except (ValueError, TypeError) as e:
+        logger.warning(
+            f"⚠️ Invalid credit_balance value for unkeyId {unkey_id}: {credit_balance} - {e}"
+        )
+        return None
+
+
+def check_user_credits(
+    unkey_id: str, required_credits: float = 0.15
+) -> tuple[bool, float | None]:
+    """
+    Check if user has sufficient credits.
+
+    **Simple Explanation:**
+    This function looks up the user by unkeyId and checks if their credit_balance
+    is >= required_credits. Returns a tuple of (has_credits, current_balance).
+
+    Args:
+        unkey_id: Unkey key identifier (from request.state.unkey_key_id)
+        required_credits: Minimum credits required (default: 0.15 for bot calls)
+
+    Returns:
+        Tuple of (has_sufficient_credits: bool, current_balance: float | None)
+        - If user not found, returns (False, None)
+        - If credits insufficient, returns (False, current_balance)
+        - If credits sufficient, returns (True, current_balance)
+    """
+    user = get_user_by_unkey_id(unkey_id)
+    if not user:
+        logger.warning(
+            f"⚠️ User not found for unkeyId: {unkey_id} - cannot check credits"
+        )
+        return (False, None)
+
+    credit_balance = user.get("credit_balance")
+    if credit_balance is None:
+        logger.warning(
+            f"⚠️ User found but credit_balance is None for unkeyId: {unkey_id}"
+        )
+        return (False, None)
+
+    try:
+        # Convert to float if it's a string or other type
+        balance = float(credit_balance)
+    except (ValueError, TypeError) as e:
+        logger.warning(
+            f"⚠️ Invalid credit_balance value for unkeyId {unkey_id}: {credit_balance} - {e}"
+        )
+        return (False, None)
+
+    # Check if balance is sufficient
+    has_credits = balance >= required_credits
+
+    if not has_credits:
+        logger.info(
+            f"⚠️ Insufficient credits for unkeyId {unkey_id}: balance={balance}, required={required_credits}"
+        )
+    else:
+        logger.debug(
+            f"✅ Sufficient credits for unkeyId {unkey_id}: balance={balance}, required={required_credits}"
+        )
+
+    return (has_credits, balance)
