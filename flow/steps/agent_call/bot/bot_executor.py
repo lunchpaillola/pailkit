@@ -1,11 +1,23 @@
 # Copyright 2025 Lunch Pail Labs, LLC
 # Licensed under the Apache License, Version 2.0
 
-"""Bot executor for running the Pipecat bot pipeline."""
+"""
+Bot executor for running the Pipecat bot pipeline.
 
+Can be used as a module or run directly as a script:
+
+Usage:
+    python bot_executor.py -u <room_url> -t <token> [--bot-config <json>] [--workflow-thread-id <id>]
+
+The bot_config can also be provided via BOT_CONFIG environment variable.
+"""
+
+import argparse
 import asyncio
+import json
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
@@ -1001,3 +1013,91 @@ IMPORTANT: Your output will be spoken aloud, so:
                 # Remove transport from map after cleanup
                 self.transport_map.pop(room_name, None)
             raise
+
+
+def main():
+    """
+    Main entry point for running bot_executor as a standalone script.
+
+    This allows the bot executor to be run directly from the command line,
+    useful for Fly.io machines or other containerized deployments.
+    """
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger(__name__)
+
+    parser = argparse.ArgumentParser(
+        description="Run a Pipecat bot in a separate container"
+    )
+    parser.add_argument(
+        "-u", "--url", dest="room_url", required=True, help="Daily.co room URL"
+    )
+    parser.add_argument("-t", "--token", required=True, help="Daily.co meeting token")
+    parser.add_argument(
+        "--bot-config",
+        help="Bot configuration as JSON string (or use BOT_CONFIG env var)",
+    )
+    parser.add_argument(
+        "--workflow-thread-id",
+        help="Workflow thread ID to associate with this bot session (or use WORKFLOW_THREAD_ID env var)",
+    )
+
+    args = parser.parse_args()
+
+    # Get bot config from command line or environment variable
+    bot_config_str = args.bot_config or os.getenv("BOT_CONFIG", "{}")
+    try:
+        bot_config = json.loads(bot_config_str)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse bot_config JSON: {e}")
+        sys.exit(1)
+
+    # Get workflow_thread_id from command line or environment variable
+    workflow_thread_id = args.workflow_thread_id or os.getenv("WORKFLOW_THREAD_ID")
+
+    logger.info(f"Starting bot for room: {args.room_url}")
+    logger.info(f"Bot config: {bot_config}")
+    if workflow_thread_id:
+        logger.info(f"Workflow thread ID: {workflow_thread_id}")
+
+    # Extract room name from URL
+    room_name = args.room_url.split("/")[-1]
+
+    # Create minimal dependencies for standalone execution
+    # For standalone execution, bot_config_map and bot_id_map can be empty
+    # process_full_pipeline() will still work (it doesn't require these maps)
+    result_processor = BotResultProcessor(
+        bot_config_map={room_name: bot_config},  # Minimal map
+        bot_id_map={},  # Empty - not needed for standalone
+    )
+    transport_map = {}  # Empty - will be populated by executor
+
+    # Create executor and run
+    executor = BotExecutor(
+        result_processor=result_processor,
+        transport_map=transport_map,
+    )
+
+    # Run the bot
+    try:
+        asyncio.run(
+            executor.run(
+                room_url=args.room_url,
+                token=args.token,
+                bot_config=bot_config,
+                room_name=room_name,
+                workflow_thread_id=workflow_thread_id,
+            )
+        )
+    except KeyboardInterrupt:
+        logger.info("Bot interrupted by user")
+    except Exception as e:
+        logger.error(f"Bot failed: {e}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

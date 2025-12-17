@@ -40,7 +40,13 @@ class FlyMachineSpawner:
         self.fly_app_name = fly_app_name
         self.fly_api_key = fly_api_key
 
-    def spawn(self, room_url: str, token: str, bot_config: Dict[str, Any]) -> str:
+    def spawn(
+        self,
+        room_url: str,
+        token: str,
+        bot_config: Dict[str, Any],
+        workflow_thread_id: str = None,
+    ) -> str:
         """
         Spawn a new Fly.io machine to run the bot.
 
@@ -48,6 +54,7 @@ class FlyMachineSpawner:
             room_url: Full Daily.co room URL
             token: Meeting token for authentication
             bot_config: Bot configuration dictionary
+            workflow_thread_id: Optional workflow thread ID to associate with this bot session
 
         Returns:
             Machine ID of the spawned machine
@@ -87,7 +94,7 @@ class FlyMachineSpawner:
         # Machine configuration
         cmd = [
             "python3",
-            "flow/steps/interview/bot.py",
+            "flow/steps/agent_call/bot/bot_executor.py",
             "-u",
             room_url,
             "-t",
@@ -95,6 +102,9 @@ class FlyMachineSpawner:
             "--bot-config",
             bot_config_json,
         ]
+        # Add workflow_thread_id if provided
+        if workflow_thread_id:
+            cmd.extend(["--workflow-thread-id", workflow_thread_id])
 
         worker_props = {
             "config": {

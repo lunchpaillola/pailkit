@@ -145,7 +145,9 @@ class BotService:
                         should_use_fly = False
                     else:
                         try:
-                            vm_id = self.fly_spawner.spawn(room_url, token, bot_config)
+                            vm_id = self.fly_spawner.spawn(
+                                room_url, token, bot_config, workflow_thread_id
+                            )
                             logger.info(
                                 f"✅ Bot spawned on Fly.io machine {vm_id} for room {room_name}"
                             )
