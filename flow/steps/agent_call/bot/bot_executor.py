@@ -87,7 +87,7 @@ class BotExecutor:
     async def run(
         self,
         room_url: str,
-        token: str,
+        token: Optional[str],
         bot_config: Dict[str, Any],
         room_name: str,
         workflow_thread_id: Optional[str] = None,
@@ -134,7 +134,7 @@ IMPORTANT: Your output will be spoken aloud, so:
 
             transport = DailyTransport(
                 room_url,
-                token,
+                token or "",
                 bot_name,
                 DailyParams(
                     audio_in_enabled=True,
@@ -1035,7 +1035,12 @@ def main():
     parser.add_argument(
         "-u", "--url", dest="room_url", required=True, help="Daily.co room URL"
     )
-    parser.add_argument("-t", "--token", required=True, help="Daily.co meeting token")
+    parser.add_argument(
+        "-t",
+        "--token",
+        default="",
+        help="Daily.co meeting token (optional for public rooms)",
+    )
     parser.add_argument(
         "--bot-config",
         help="Bot configuration as JSON string (or use BOT_CONFIG env var)",

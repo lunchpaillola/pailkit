@@ -98,7 +98,7 @@ class FlyMachineSpawner:
             "-u",
             room_url,
             "-t",
-            token,
+            token or "",  # Use empty string if token is None
             "--bot-config",
             bot_config_json,
         ]
@@ -118,10 +118,21 @@ class FlyMachineSpawner:
                     "memory_mb": 1024,  # 1GB RAM - enough for VAD and bot processing
                 },
                 "env": {
-                    # Pass through required environment variables
+                    # Set PYTHONPATH so Python can find the flow module
+                    "PYTHONPATH": "/app",
+                    # Pass through required environment variables for bot execution
                     "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
                     "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY", ""),
-                    "DAILY_API_KEY": os.getenv("DAILY_API_KEY", ""),
+                    # Supabase credentials for saving workflow thread data and LangGraph checkpoints
+                    # Support both SUPABASE_SERVICE_ROLE_KEY and SUPABASE_SECRET_KEY (modern naming)
+                    "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),
+                    "SUPABASE_SERVICE_ROLE_KEY": os.getenv(
+                        "SUPABASE_SERVICE_ROLE_KEY", ""
+                    ),
+                    "SUPABASE_SECRET_KEY": os.getenv("SUPABASE_SECRET_KEY", ""),
+                    "SUPABASE_DB_PASSWORD": os.getenv("SUPABASE_DB_PASSWORD", ""),
+                    # Note: DAILY_API_KEY is not needed - bot only joins rooms via WebSocket
+                    # (room URL and optional token are passed as command args, not env vars)
                 },
             },
         }
