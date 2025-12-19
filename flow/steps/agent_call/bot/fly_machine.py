@@ -194,58 +194,17 @@ class FlyMachineSpawner:
                 vm_id = res.json()["id"]
                 logger.info(f"✅ Machine created: {vm_id}")
 
-                # Wait for the machine to enter the started state (with timeout)
-                logger.info(
-                    f"⏳ Waiting for machine {vm_id} to start (timeout: {timeout}s)..."
+                # Start background task to monitor machine startup (non-blocking)
+                # This allows the API to return immediately while the machine starts in the background
+                asyncio.create_task(
+                    self._monitor_machine_startup(vm_id, room_name, timeout, headers)
                 )
-                try:
-                    res = await asyncio.wait_for(
-                        client.get(
-                            f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}/wait?state=started",
-                            headers=headers,
-                        ),
-                        timeout=timeout,
-                    )
-                except asyncio.TimeoutError:
-                    error_msg = (
-                        f"Machine {vm_id} failed to start within {timeout} seconds"
-                    )
-                    logger.error(f"❌ {error_msg}")
-                    # Try to get machine status for more context
-                    try:
-                        status_res = await client.get(
-                            f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}",
-                            headers=headers,
-                        )
-                        if status_res.status_code == 200:
-                            machine_status = status_res.json()
-                            logger.error(
-                                f"   Machine status: {machine_status.get('state', 'unknown')}"
-                            )
-                            error_msg += f" (current state: {machine_status.get('state', 'unknown')})"
-                    except Exception as e:
-                        logger.debug(f"Could not fetch machine status: {e}")
 
-                    raise FlyMachineError(
-                        operation="wait_for_started",
-                        machine_id=vm_id,
-                        status_code=408,  # Request Timeout
-                        response_body="",
-                        message=error_msg,
-                    )
-
-                if res.status_code != 200:
-                    error_msg = f"Bot was unable to enter started state (status {res.status_code})"
-                    logger.error(f"❌ {error_msg}: {res.text}")
-                    raise FlyMachineError(
-                        operation="wait_for_started",
-                        machine_id=vm_id,
-                        status_code=res.status_code,
-                        response_body=res.text,
-                        message=error_msg,
-                    )
-
-                logger.info(f"✅ Machine {vm_id} is started and ready")
+                # Return immediately after machine creation - don't wait for startup
+                # The machine will start and join the room in the background
+                logger.info(
+                    f"🚀 Machine {vm_id} created - starting in background (room: {room_name})"
+                )
                 return vm_id
 
             except httpx.TimeoutException as e:
@@ -287,6 +246,85 @@ class FlyMachineSpawner:
                     response_body=str(e),
                     message=error_msg,
                 )
+
+    async def _monitor_machine_startup(
+        self,
+        vm_id: str,
+        room_name: str,
+        timeout: float,
+        headers: Dict[str, str],
+    ) -> None:
+        """
+        Background task to monitor machine startup for logging/observability.
+
+        This runs asynchronously and does not block the API response.
+        It logs when the machine starts successfully or if it fails to start.
+
+        Args:
+            vm_id: Machine ID to monitor
+            room_name: Room name for logging context
+            timeout: Timeout in seconds for machine startup
+            headers: HTTP headers for Fly API requests
+        """
+        try:
+            logger.info(
+                f"⏳ [Background] Monitoring machine {vm_id} startup (room: {room_name}, timeout: {timeout}s)..."
+            )
+
+            # Create a new client for the background task
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                try:
+                    # Wait for the machine to enter the started state
+                    res = await asyncio.wait_for(
+                        client.get(
+                            f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}/wait?state=started",
+                            headers=headers,
+                        ),
+                        timeout=timeout,
+                    )
+                except asyncio.TimeoutError:
+                    # Machine failed to start within timeout
+                    error_msg = (
+                        f"Machine {vm_id} failed to start within {timeout} seconds"
+                    )
+                    logger.warning(f"⚠️ [Background] {error_msg} (room: {room_name})")
+                    # Try to get machine status for more context
+                    try:
+                        status_res = await client.get(
+                            f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}",
+                            headers=headers,
+                        )
+                        if status_res.status_code == 200:
+                            machine_status = status_res.json()
+                            logger.warning(
+                                f"   [Background] Machine {vm_id} status: {machine_status.get('state', 'unknown')}"
+                            )
+                    except Exception as e:
+                        logger.debug(
+                            f"[Background] Could not fetch machine status: {e}"
+                        )
+                    # Don't raise - this is just for logging/observability
+                    return
+
+                if res.status_code != 200:
+                    error_msg = f"Machine {vm_id} unable to enter started state (status {res.status_code})"
+                    logger.warning(
+                        f"⚠️ [Background] {error_msg} (room: {room_name}): {res.text}"
+                    )
+                    # Don't raise - this is just for logging/observability
+                    return
+
+                # Machine started successfully
+                logger.info(
+                    f"✅ [Background] Machine {vm_id} is started and ready (room: {room_name})"
+                )
+
+        except Exception as e:
+            # Log but don't raise - this is a background monitoring task
+            logger.warning(
+                f"⚠️ [Background] Error monitoring machine {vm_id} startup (room: {room_name}): {e}",
+                exc_info=True,
+            )
 
 
 class FlyMachineError(Exception):
