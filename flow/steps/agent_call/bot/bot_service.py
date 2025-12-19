@@ -102,7 +102,7 @@ class BotService:
         use_fly_machines: Optional[bool] = None,
         bot_id: Optional[str] = None,
         workflow_thread_id: Optional[str] = None,
-    ) -> bool:
+    ) -> tuple[bool, Optional[str]]:
         """
         Start a bot instance for the given room.
 
@@ -114,6 +114,10 @@ class BotService:
             use_fly_machines: Whether to use Fly.io machines (None = auto-detect from config)
             bot_id: Optional bot ID for tracking
             workflow_thread_id: Optional workflow thread ID to associate with this bot session
+
+        Returns:
+            Tuple of (success: bool, error_message: Optional[str])
+            If success is False, error_message contains the error details.
         """
         try:
             if not room_name:
@@ -134,7 +138,7 @@ class BotService:
                     and self.active_bots[room_name].is_running
                 ):
                     logger.warning(f"Bot already running for room: {room_name}")
-                    return True
+                    return True, None
 
                 if should_use_fly:
                     # Spawn a Fly.io machine for the bot
@@ -145,20 +149,44 @@ class BotService:
                         should_use_fly = False
                     else:
                         try:
-                            vm_id = self.fly_spawner.spawn(room_url, token, bot_config)
+                            vm_id = await self.fly_spawner.spawn(
+                                room_url, token, bot_config, workflow_thread_id
+                            )
                             logger.info(
                                 f"✅ Bot spawned on Fly.io machine {vm_id} for room {room_name}"
                             )
                             # For Fly.io machines, we don't track them in active_bots
                             # because they run independently and auto-destroy when done
-                            return True
+                            return True, None
                         except Exception as e:
-                            logger.error(
-                                f"❌ Failed to spawn Fly.io machine: {e}", exc_info=True
+                            # Import here to avoid circular dependency
+                            from flow.steps.agent_call.bot.fly_machine import (
+                                FlyMachineError,
                             )
+
+                            error_message = None
+                            if isinstance(e, FlyMachineError):
+                                error_message = f"Fly.io machine spawn failed: {e.operation} - {e.message}"
+                                if e.machine_id:
+                                    error_message += f" (machine_id: {e.machine_id})"
+                                logger.error(
+                                    f"❌ {error_message}",
+                                    extra={
+                                        "machine_id": e.machine_id,
+                                        "status_code": e.status_code,
+                                        "operation": e.operation,
+                                    },
+                                )
+                            else:
+                                error_message = (
+                                    f"Failed to spawn Fly.io machine: {str(e)}"
+                                )
+                                logger.error(f"❌ {error_message}", exc_info=True)
                             # Fall back to direct execution if Fly.io fails
                             logger.info("Falling back to direct execution...")
                             should_use_fly = False
+                            # Return error message so workflow can use it
+                            # But we'll still try direct execution, so don't return False yet
 
                 if not should_use_fly:
                     # Direct execution: run bot in current process
@@ -192,18 +220,18 @@ class BotService:
                         try:
                             await bot_task  # This will raise the exception if there was one
                         except Exception as e:
-                            logger.error(
-                                f"❌ Bot task failed immediately: {e}", exc_info=True
-                            )
-                            return False
+                            error_msg = f"Bot task failed immediately: {str(e)}"
+                            logger.error(f"❌ {error_msg}", exc_info=True)
+                            return False, error_msg
                     else:
                         logger.info("✅ Bot task is running (not done yet)")
 
-                return True
+                return True, None
 
         except Exception as e:
-            logger.error(f"Failed to start bot: {e}", exc_info=True)
-            return False
+            error_msg = f"Failed to start bot: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return False, error_msg
 
     def _cleanup_bot(self, room_name: str) -> None:
         """Clean up a bot that has finished."""
@@ -416,9 +444,12 @@ class BotService:
         room_name = room_url.split("/")[-1]
 
         try:
-            success = await self.start_bot(room_url, token, bot_config)
+            success, error_msg = await self.start_bot(room_url, token, bot_config)
             if not success:
-                raise RuntimeError(f"Failed to start bot for room {room_name}")
+                error_message = error_msg or "Failed to start bot"
+                raise RuntimeError(
+                    f"Failed to start bot for room {room_name}: {error_message}"
+                )
 
             yield self.get_bot_status(room_name)
 

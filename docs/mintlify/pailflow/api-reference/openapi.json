@@ -1,0 +1,363 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "PailFlow API",
+    "description": "API for adding AI bots to Daily.co video meetings",
+    "version": "0.1.0"
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Your API key from pailflow.com"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error type"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Error detail message"
+          },
+          "message": {
+            "type": "string",
+            "description": "User-friendly error message"
+          },
+          "balance": {
+            "type": "number",
+            "description": "Current account balance (for insufficient_credits errors)"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/bot/join": {
+      "post": {
+        "summary": "Start a bot in a Daily.co room",
+        "description": "Start an AI bot that will join an existing Daily.co video room. The bot will transcribe the conversation and can process insights when the meeting ends.",
+        "operationId": "joinBot",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["room_url", "bot_config"],
+                "properties": {
+                  "room_url": {
+                    "type": "string",
+                    "description": "Full Daily.co room URL (e.g., https://your-domain.daily.co/room-name)",
+                    "example": "https://your-domain.daily.co/your-room"
+                  },
+                  "token": {
+                    "type": "string",
+                    "description": "Optional meeting token for private rooms",
+                    "nullable": true
+                  },
+                  "bot_config": {
+                    "type": "object",
+                    "required": ["bot_prompt"],
+                    "properties": {
+                      "bot_prompt": {
+                        "type": "string",
+                        "description": "The prompt that defines the bot's behavior",
+                        "example": "You are conducting a technical interview."
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Bot name (default: PailBot)",
+                        "default": "PailBot",
+                        "example": "InterviewBot"
+                      },
+                      "video_mode": {
+                        "type": "string",
+                        "description": "Video mode: 'static' or 'animated'",
+                        "enum": ["static", "animated"],
+                        "default": "animated",
+                        "example": "animated"
+                      },
+                      "static_image": {
+                        "type": "string",
+                        "description": "Image filename for static mode (default: robot01.png)",
+                        "default": "robot01.png",
+                        "example": "robot01.png"
+                      }
+                    }
+                  },
+                  "process_insights": {
+                    "type": "boolean",
+                    "description": "Whether to extract insights after bot finishes (default: true)",
+                    "default": true,
+                    "example": true
+                  },
+                  "candidate_name": {
+                    "type": "string",
+                    "description": "Candidate/participant name (optional)",
+                    "nullable": true
+                  },
+                  "candidate_email": {
+                    "type": "string",
+                    "description": "Email to send results to (optional)",
+                    "nullable": true
+                  },
+                  "interview_type": {
+                    "type": "string",
+                    "description": "Type of interview (optional)",
+                    "nullable": true,
+                    "example": "Technical Interview"
+                  },
+                  "position": {
+                    "type": "string",
+                    "description": "Job position being interviewed for (optional)",
+                    "nullable": true
+                  },
+                  "interviewer_context": {
+                    "type": "string",
+                    "description": "Context about the interviewer/interview (optional)",
+                    "nullable": true
+                  },
+                  "analysis_prompt": {
+                    "type": "string",
+                    "description": "Custom prompt for AI analysis (optional)",
+                    "nullable": true
+                  },
+                  "summary_format_prompt": {
+                    "type": "string",
+                    "description": "Custom prompt for summary formatting (optional)",
+                    "nullable": true
+                  },
+                  "webhook_callback_url": {
+                    "type": "string",
+                    "description": "Webhook URL to send results to (optional)",
+                    "nullable": true
+                  }
+                }
+              },
+              "example": {
+                "room_url": "https://your-domain.daily.co/your-room",
+                "bot_config": {
+                  "bot_prompt": "You are conducting a technical interview.",
+                  "name": "InterviewBot",
+                  "video_mode": "animated",
+                  "static_image": "robot01.png"
+                },
+                "process_insights": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bot started successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "started"
+                    },
+                    "bot_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "258b06fc-6bc9-4261-9f29-bc8a4474af0a"
+                    },
+                    "room_url": {
+                      "type": "string",
+                      "example": "https://your-domain.daily.co/your-room"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "started",
+                  "bot_id": "258b06fc-6bc9-4261-9f29-bc8a4474af0a",
+                  "room_url": "https://your-domain.daily.co/your-room"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication error or user not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "authentication_error",
+                  "detail": "API key authentication failed.",
+                  "message": "Please verify your API key or contact support."
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient credits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "insufficient_credits",
+                  "detail": "Your account has insufficient credits to perform this action.",
+                  "balance": 0.0,
+                  "message": "Please add credits to your account to continue."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/bot/{bot_id}/status": {
+      "get": {
+        "summary": "Get bot status and results",
+        "description": "Check the status of a bot session and retrieve results (transcript, Q&A pairs, insights) when the bot has finished.",
+        "operationId": "getBotStatus",
+        "parameters": [
+          {
+            "name": "bot_id",
+            "in": "path",
+            "required": true,
+            "description": "The bot ID returned from POST /api/bot/join",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "258b06fc-6bc9-4261-9f29-bc8a4474af0a"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bot status and results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["running", "completed", "failed"],
+                      "description": "Current bot status"
+                    },
+                    "bot_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "room_url": {
+                      "type": "string"
+                    },
+                    "started_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "When the bot started"
+                    },
+                    "completed_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true,
+                      "description": "When the bot finished"
+                    },
+                    "transcript": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Full transcript text (available when completed)"
+                    },
+                    "qa_pairs": {
+                      "type": "array",
+                      "nullable": true,
+                      "description": "Q&A pairs extracted from transcript (available when completed)",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "insights": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "AI-generated insights (available when completed)"
+                    },
+                    "error": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Error message if bot failed"
+                    }
+                  }
+                },
+                "examples": {
+                  "running": {
+                    "summary": "Bot is still running",
+                    "value": {
+                      "status": "running",
+                      "bot_id": "258b06fc-6bc9-4261-9f29-bc8a4474af0a",
+                      "room_url": "https://your-domain.daily.co/your-room",
+                      "started_at": "2025-01-15T10:00:00Z"
+                    }
+                  },
+                  "completed": {
+                    "summary": "Bot has completed",
+                    "value": {
+                      "status": "completed",
+                      "bot_id": "258b06fc-6bc9-4261-9f29-bc8a4474af0a",
+                      "room_url": "https://your-domain.daily.co/your-room",
+                      "started_at": "2025-01-15T10:00:00Z",
+                      "completed_at": "2025-01-15T10:30:00Z",
+                      "transcript": "Full transcript text here...",
+                      "qa_pairs": [
+                        {
+                          "question": "What is your experience with Python?",
+                          "answer": "I have 5 years of experience..."
+                        }
+                      ],
+                      "insights": {
+                        "summary": "Candidate demonstrated strong technical skills..."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bot session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "not_found",
+                  "detail": "Bot session 258b06fc-6bc9-4261-9f29-bc8a4474af0a not found"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -296,7 +296,7 @@ class BotCallWorkflow:
             # Simple Explanation: bot_service.start_bot() starts the bot in the
             # background. The bot will join the room and start transcribing.
             bot_id = state.get("bot_id")
-            success = await bot_service.start_bot(
+            success, error_msg = await bot_service.start_bot(
                 room_url=state["room_url"],
                 token=state.get("token") or "",
                 bot_config=state["bot_config"],
@@ -306,9 +306,9 @@ class BotCallWorkflow:
             )
 
             if not success:
-                error_msg = "Failed to start bot"
-                logger.error(f"   ❌ {error_msg}")
-                state["error"] = error_msg
+                error_message = error_msg or "Failed to start bot"
+                logger.error(f"   ❌ {error_message}")
+                state["error"] = error_message
                 return state
 
             logger.info(f"   ✅ Bot started successfully (bot_id: {bot_id})")

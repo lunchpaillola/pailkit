@@ -16,15 +16,16 @@
         "groups": [
           {
             "group": "Getting started",
-            "pages": [
-              "introduction"
-            ]
+            "pages": ["introduction"]
+          },
+          {
+            "group": "PailFlow",
+            "openapi": "pailflow/api-reference/openapi.json",
+            "pages": ["pailflow/getting-started"]
           },
           {
             "group": "Plugins for Bubble",
-            "pages": [
-              "bubble/overview"
-            ]
+            "pages": ["bubble/overview"]
           },
           {
             "group": "Video, Audio & Live Bundle",
@@ -171,9 +172,7 @@
                   },
                   {
                     "group": "Video player",
-                    "pages": [
-                      "bubble/player-style-video/video-element"
-                    ]
+                    "pages": ["bubble/player-style-video/video-element"]
                   },
                   {
                     "group": "Tavus",
@@ -343,9 +342,7 @@
               "bubble/tavus/getting-started",
               {
                 "group": "How to",
-                "pages": [
-                  "bubble/tavus/how-tos/create-conversation"
-                ]
+                "pages": ["bubble/tavus/how-tos/create-conversation"]
               },
               {
                 "group": "Reference",
@@ -456,9 +453,7 @@
               "bubble/twilio-sms/getting-started",
               {
                 "group": "Reference",
-                "pages": [
-                  "bubble/twilio-sms/send-sms"
-                ]
+                "pages": ["bubble/twilio-sms/send-sms"]
               }
             ]
           },
@@ -474,9 +469,7 @@
               },
               {
                 "group": "Reference",
-                "pages": [
-                  "bubble/player-style-video/video-element"
-                ]
+                "pages": ["bubble/player-style-video/video-element"]
               },
               "bubble/player-style-video/changelog"
             ]
@@ -487,9 +480,7 @@
               "bubble/player-style-audio/getting-started",
               {
                 "group": "Reference",
-                "pages": [
-                  "bubble/player-style-audio/audio-element"
-                ]
+                "pages": ["bubble/player-style-audio/audio-element"]
               }
             ]
           },
@@ -538,9 +529,7 @@
           },
           {
             "group": "Components for Adalo",
-            "pages": [
-              "adalo/overview"
-            ]
+            "pages": ["adalo/overview"]
           },
           {
             "group": "Daily Video Chat",

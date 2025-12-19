@@ -1,0 +1,83 @@
+---
+description: "Get started with the PailFlow API for adding AI bots to your Daily.co video meetings."
+---
+
+This guide will help you get started with the PailFlow API to add AI bots to your Daily.co video meetings.
+
+## What is PailFlow?
+
+PailFlow is an API that allows you to add AI-powered bots to your Daily.co video rooms. These bots can:
+
+- Join video meetings and interact with participants
+- Conduct interviews, take notes, or provide assistance
+- Automatically transcribe conversations
+- Extract insights, Q&A pairs, and summaries from meetings
+- Send results via email or webhook callbacks
+
+## Getting Started
+
+### 1. Sign Up
+
+Visit [pailflow.com](https://pailflow.com) and create an account.
+
+### 2. Get Your API Key
+
+Once you've signed up, navigate to your account settings to generate an API key. You'll use this key to authenticate all API requests.
+
+### 3. Add Funds
+
+Before making API calls, you'll need to add credits to your account. Each bot call costs 0.15 credits. You can add funds from your account dashboard.
+
+<Note>
+  Make sure you have sufficient credits before making API calls. Requests will
+  fail with a 402 error if you don't have enough credits.
+</Note>
+
+### 4. Make Your First API Call
+
+Once you have your API key and credits, you can start making API calls. Here's a simple example:
+
+```bash
+curl -X POST https://api.pailflow.com/api/bot/join \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "room_url": "https://your-domain.daily.co/room-name",
+    "bot_config": {
+      "bot_prompt": "You are a helpful AI assistant.",
+      "name": "AssistantBot",
+      "video_mode": "animated",
+      "static_image": "robot01.png"
+    },
+    "process_insights": true
+  }'
+```
+
+## What Can You Build?
+
+Here's what you can do with the PailFlow API:
+
+<CardGroup cols={2}>
+  <Card
+    title="AI Interview Bots"
+    icon="user-check"
+    href="/pailflow/api-reference/introduction"
+  >
+    Create AI-powered interview bots that can conduct technical interviews, ask
+    questions, and provide feedback.
+  </Card>
+  <Card
+    title="Meeting Assistants"
+    icon="headphones"
+    href="/pailflow/api-reference/introduction"
+  >
+    Add AI assistants to meetings that can take notes, answer questions, and
+    provide real-time support.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+- Explore the [API Reference](/pailflow/api-reference/introduction) to see all available endpoints
+- Start a bot using the [POST /api/bot/join](/pailflow/api-reference/introduction) endpoint
+- Check bot status and retrieve results with [GET /api/bot/{bot_id}/status](/pailflow/api-reference/introduction)

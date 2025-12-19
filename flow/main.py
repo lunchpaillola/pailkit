@@ -4,7 +4,7 @@
 """
 PailFlow FastAPI Application
 
-Main entry point for the PailFlow API server with REST API and MCP integration.
+Main entry point for the PailFlow API server with REST API.
 """
 
 import logging
@@ -24,22 +24,15 @@ from dotenv import load_dotenv  # noqa: E402
 from fastapi import (  # noqa: E402
     BackgroundTasks,
     FastAPI,
-    Header,
     HTTPException,
     Query,
     Request,
 )
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import HTMLResponse, Response  # noqa: E402
-from mcp.server import FastMCP  # noqa: E402
-from pydantic import BaseModel, Field, field_validator  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse, Response  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
 from shared.auth import UnkeyAuthMiddleware  # noqa: E402
 
-from flow.workflows import (  # noqa: E402
-    WorkflowNotFoundError,
-    get_workflow,
-    get_workflows,
-)
 
 # Setup logging first so we can use logger
 logging.basicConfig(
@@ -61,7 +54,7 @@ else:
 
 app = FastAPI(
     title="PailFlow API",
-    description="Workflow orchestration system with MCP integration",
+    description="Bot API for joining bots to Daily.co rooms",
     version="0.1.0",
 )
 
@@ -75,121 +68,105 @@ app.add_middleware(
 
 app.add_middleware(UnkeyAuthMiddleware)
 
-mcp = FastMCP("PailFlow")
-
 
 # Shared Business Logic
 
 
-def list_workflows_logic() -> dict[str, Any]:
-    """List all available workflows."""
-    workflows_dict = get_workflows()
-    workflows_list = [
-        {
-            "name": name,
-            "description": getattr(workflow, "description", f"Workflow: {name}"),
-        }
-        for name, workflow in workflows_dict.items()
-    ]
-
-    return {
-        "workflows": workflows_list,
-        "count": len(workflows_list),
-    }
-
-
-def execute_workflow_logic(
-    workflow_name: str,
-    message: str,
-    user_id: str | None = None,
-    channel_id: str | None = None,
-) -> dict[str, Any]:
+def check_credits_for_request(
+    request: Request, required_credits: float = 0.15
+) -> tuple[bool, dict[str, Any] | None]:
     """
-    Execute a workflow with context.
+    Check if the authenticated user has sufficient credits for the request.
 
-    Raises:
-        WorkflowNotFoundError: If the workflow doesn't exist
-        ValueError: If message is missing or empty
+    **Simple Explanation:**
+    This function checks if the user (identified by unkey_key_id from request state)
+    has sufficient credits in their account. It follows the error handling pattern
+    from bot_call.py with clear, actionable error messages.
+
+    Args:
+        request: FastAPI Request object (contains unkey_key_id in request.state)
+        required_credits: Minimum credits required (default: 0.15 for bot calls)
+
+    Returns:
+        Tuple of (success: bool, error_response: dict | None)
+        - If successful: (True, None)
+        - If error: (False, error_response_dict)
     """
-    if not message or not message.strip():
-        raise ValueError("Missing required field: message")
+    try:
+        # Extract unkey_key_id from request state (set by UnkeyAuthMiddleware)
+        unkey_key_id = None
+        if hasattr(request.state, "unkey_key_id"):
+            unkey_key_id = request.state.unkey_key_id
 
-    logger.info(
-        f"Executing workflow '{workflow_name}' with message: {message[:100]}..."
-    )
+        if not unkey_key_id:
+            logger.warning("⚠️ No unkey_key_id in request state - cannot check credits")
+            return (
+                False,
+                {
+                    "error": "authentication_error",
+                    "detail": "API key authentication failed.",
+                    "message": "Please verify your API key or contact support.",
+                },
+            )
 
-    workflow = get_workflow(workflow_name)
-    result = workflow.execute(
-        message=message,
-        user_id=user_id,
-        channel_id=channel_id,
-    )
+        # Check user credits using database helper
+        from flow.db import check_user_credits
 
-    logger.info(f"Workflow '{workflow_name}' executed successfully")
-    return result
+        has_credits, current_balance = check_user_credits(
+            unkey_key_id, required_credits
+        )
 
+        if current_balance is None:
+            # User not found in database - could mean:
+            # 1. User hasn't added credits yet (exists in auth.users but not in public.users)
+            # 2. Invalid/wrong API key
+            logger.warning("⚠️ User not found in database")
+            return (
+                False,
+                {
+                    "error": "user_not_found",
+                    "detail": "You haven't added credits yet, or this is the wrong API key.",
+                    "message": "Please add credits to your account or verify your API key.",
+                },
+            )
 
-def get_workflow_info_logic(workflow_name: str) -> dict[str, Any]:
-    """Get detailed information about a workflow."""
-    workflow = get_workflow(workflow_name)
+        if not has_credits:
+            # Insufficient credits
+            logger.warning(
+                f"⚠️ Insufficient credits: balance={current_balance}, required={required_credits}"
+            )
+            return (
+                False,
+                {
+                    "error": "insufficient_credits",
+                    "detail": "Your account has insufficient credits to perform this action.",
+                    "balance": current_balance,
+                    "message": "Please add credits to your account to continue.",
+                },
+            )
 
-    info = {
-        "name": workflow_name,
-        "description": getattr(workflow, "description", "No description available"),
-        "parameters": getattr(workflow, "parameters", {}),
-        "outputs": getattr(workflow, "outputs", {}),
-    }
+        # Success - user has sufficient credits
+        logger.debug(
+            f"✅ Credit check passed: balance={current_balance}, required={required_credits}"
+        )
+        return (True, None)
 
-    if hasattr(workflow, "metadata"):
-        info["metadata"] = workflow.metadata
-
-    return info
-
-
-def create_error_response(
-    error: str,
-    workflow_name: str | None = None,
-    available_workflows: list[str] | None = None,
-) -> dict[str, Any]:
-    """
-    Create a standardized error response structure.
-
-    Used by both REST API endpoints and MCP tools for consistent error handling.
-    """
-    response: dict[str, Any] = {"error": error}
-    if workflow_name:
-        response["workflow_name"] = workflow_name
-    if available_workflows:
-        response["available_workflows"] = available_workflows
-    return response
+    except Exception as e:
+        logger.error(
+            f"❌ Error checking credits: {e}",
+            exc_info=True,
+        )
+        return (
+            False,
+            {
+                "error": "credit_check_error",
+                "detail": "An error occurred while checking your account credits.",
+                "message": "Please try again or contact support if the issue persists.",
+            },
+        )
 
 
 # REST API Endpoints
-
-
-class WorkflowRequest(BaseModel):
-    """Request model for workflow execution."""
-
-    message: str = Field(
-        ...,
-        description="The message or input data for the workflow",
-        min_length=1,
-        max_length=10000,
-    )
-    user_id: str | None = Field(
-        None, description="Optional user identifier for context"
-    )
-    channel_id: str | None = Field(
-        None, description="Optional channel identifier for context"
-    )
-
-    @field_validator("message")
-    @classmethod
-    def validate_message(cls, v: str) -> str:
-        """Validate message is not empty after stripping whitespace."""
-        if not v.strip():
-            raise ValueError("Message cannot be empty or only whitespace")
-        return v.strip()
 
 
 @app.get("/health")
@@ -307,6 +284,34 @@ async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinRes
     The bot runs in the background. Use GET /api/bot/{bot_id}/status to check progress.
     """
     try:
+        # Check credits before processing
+        # Simple Explanation: We check if the user has sufficient credits before starting
+        # the bot. This prevents starting expensive operations when credits are insufficient.
+        # The check follows the error handling pattern from bot_call.py.
+        credit_check_success, credit_error = check_credits_for_request(
+            http_request, required_credits=0.15
+        )
+        if not credit_check_success:
+            # Determine appropriate HTTP status code based on error type
+            if credit_error.get("error") == "insufficient_credits":
+                # Use custom JSONResponse for 402 to set "Insufficient Credits" status text
+                return JSONResponse(
+                    status_code=402,
+                    content=credit_error,
+                    headers={"X-Status-Reason": "Insufficient Credits"},
+                )
+            elif credit_error.get("error") == "user_not_found":
+                status_code = 401  # Unauthorized for user not found
+            elif credit_error.get("error") == "authentication_error":
+                status_code = 401  # Unauthorized for auth errors
+            else:
+                status_code = 401  # Default to 401 for other errors
+            # Pass the full error dict as detail (FastAPI supports dict for detail)
+            raise HTTPException(
+                status_code=status_code,
+                detail=credit_error,
+            )
+
         # Generate a unique bot_id for this bot session
         bot_id = str(uuid.uuid4())
 
@@ -572,298 +577,6 @@ async def get_bot_status_by_id(bot_id: str) -> BotStatusResponse:
     )
 
 
-# ============================================================================
-# Rooms API Router
-# ============================================================================
-
-from flow.rooms.providers.daily import DailyRooms  # noqa: E402
-
-
-class RoomCreateRequest(BaseModel):
-    """Request model for creating a room."""
-
-    profile: str = "conversation"
-    overrides: dict[str, Any] | None = None
-
-
-def get_rooms_provider(provider_name: str, api_key: str) -> DailyRooms:
-    """Create a provider instance with user-provided API key."""
-    normalized_provider = provider_name.lower().strip()
-
-    if normalized_provider == "daily":
-        return DailyRooms(api_key=api_key)
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported provider: {provider_name}. Supported: daily",
-        )
-
-
-@app.post("/api/rooms/create")
-async def create_room(
-    request: RoomCreateRequest,
-    x_provider_auth: str = Header(
-        ..., description="Provider API key (Bearer token or raw key)"
-    ),
-    x_provider: str = Header("daily", description="Provider name (default: daily)"),
-) -> dict[str, Any]:
-    """
-    Create a new room for video, audio, or live collaboration.
-
-    **Authentication:**
-    Provide your provider API key via the `X-Provider-Auth` header:
-    - Format: `Bearer <your-api-key>` or just `<your-api-key>`
-    - For Daily.co: Get your API key from https://dashboard.daily.co/developers
-
-    **Providers:**
-    Specify provider via `X-Provider` header (default: "daily")
-    - `daily` - Daily.co video rooms
-
-    **Available profiles:**
-    - `conversation` - Standard video chat
-    - `audio_room` - Audio-only conversation
-    - `broadcast` - One-to-many presentation
-    - `podcast` - Audio recording session
-    - `live_stream` - Stream to external platforms
-    - `workshop` - Interactive collaborative session
-    """
-    try:
-        provider_name = x_provider.lower().strip() if x_provider else "daily"
-        api_key = x_provider_auth.strip()
-        if api_key.startswith("Bearer "):
-            api_key = api_key[7:].strip()
-
-        if not api_key:
-            raise HTTPException(
-                status_code=401,
-                detail="X-Provider-Auth header is required. Provide your provider API key.",
-            )
-
-        provider = get_rooms_provider(provider_name, api_key)
-        result: dict[str, Any] = await provider.create_room(
-            profile=request.profile, overrides=request.overrides
-        )
-
-        if not result["success"]:
-            raise HTTPException(status_code=500, detail=result["message"])
-
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create room: {str(e)}"
-        ) from e
-
-
-@app.delete("/api/rooms/delete/{room_name}")
-async def delete_room(
-    room_name: str,
-    x_provider_auth: str = Header(
-        ..., description="Provider API key (Bearer token or raw key)"
-    ),
-    x_provider: str = Header("daily", description="Provider name (default: daily)"),
-) -> dict[str, Any]:
-    """Delete a room."""
-    try:
-        provider_name = x_provider.lower().strip() if x_provider else "daily"
-        api_key = x_provider_auth.strip()
-        if api_key.startswith("Bearer "):
-            api_key = api_key[7:].strip()
-
-        if not api_key:
-            raise HTTPException(
-                status_code=401,
-                detail="X-Provider-Auth header is required. Provide your provider API key.",
-            )
-
-        provider_instance = get_rooms_provider(provider_name, api_key)
-        result: dict[str, Any] = await provider_instance.delete_room(room_name)
-
-        if not result["success"]:
-            raise HTTPException(status_code=500, detail=result["message"])
-
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to delete room: {str(e)}"
-        ) from e
-
-
-@app.get("/api/rooms/get/{room_name}")
-async def get_room(
-    room_name: str,
-    x_provider_auth: str = Header(
-        ..., description="Provider API key (Bearer token or raw key)"
-    ),
-    x_provider: str = Header("daily", description="Provider name (default: daily)"),
-) -> dict[str, Any]:
-    """Get room details."""
-    try:
-        provider_name = x_provider.lower().strip() if x_provider else "daily"
-        api_key = x_provider_auth.strip()
-        if api_key.startswith("Bearer "):
-            api_key = api_key[7:].strip()
-
-        if not api_key:
-            raise HTTPException(
-                status_code=401,
-                detail="X-Provider-Auth header is required. Provide your provider API key.",
-            )
-
-        provider_instance = get_rooms_provider(provider_name, api_key)
-        result: dict[str, Any] = await provider_instance.get_room(room_name)
-
-        if not result["success"]:
-            raise HTTPException(status_code=500, detail=result["message"])
-
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get room: {str(e)}"
-        ) from e
-
-
-# ============================================================================
-# Transcription API Router
-# ============================================================================
-
-from flow.transcribe.config_builder import build_config  # noqa: E402
-from flow.transcribe.providers.base import TranscriptionProvider  # noqa: E402
-
-
-class StartTranscriptionRequest(BaseModel):
-    """Request model for starting a transcription."""
-
-    profile: str = "meeting"
-    audio_url: str | None = None
-    overrides: dict[str, Any] | None = None
-
-
-class StopTranscriptionRequest(BaseModel):
-    """Request model for stopping a transcription."""
-
-    transcription_id: str
-
-
-def extract_provider_api_key(x_provider_auth: str) -> str:
-    """Extract API key from X-Provider-Auth header."""
-    api_key = x_provider_auth.strip()
-    if api_key.startswith("Bearer "):
-        api_key = api_key[7:].strip()
-
-    if not api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="X-Provider-Auth header is required. Provide your provider API key.",
-        )
-
-    return api_key
-
-
-def get_transcribe_provider(provider_name: str, api_key: str) -> TranscriptionProvider:
-    """Create a transcription provider instance with user-provided API key."""
-    _normalized_provider = provider_name.lower().strip()
-
-    if _normalized_provider == "daily":
-        from flow.transcribe.providers.daily import DailyTranscription
-
-        return DailyTranscription(api_key=api_key)
-
-    raise HTTPException(
-        status_code=400,
-        detail=f"Transcription provider not yet implemented: {provider_name}. "
-        "Supported providers: daily. More providers will be added in future updates.",
-    )
-
-
-@app.post("/api/transcribe/start")
-async def start_transcription(
-    request: StartTranscriptionRequest,
-    x_provider_auth: str = Header(
-        ..., description="Provider API key (Bearer token or raw key)"
-    ),
-    x_provider: str = Header("daily", description="Provider name (default: daily)"),
-) -> dict[str, Any]:
-    """
-    Start a real-time or streaming transcription.
-
-    Begins transcribing audio in real-time from live streams, audio URLs, or direct input.
-    Requires X-Provider-Auth header with provider API key and optional X-Provider header.
-
-    Available profiles: meeting, general, medical, finance, podcast.
-    """
-    try:
-        provider_name = x_provider.lower().strip() if x_provider else "daily"
-        api_key = extract_provider_api_key(x_provider_auth)
-        provider = get_transcribe_provider(provider_name, api_key)
-
-        config = build_config(profile=request.profile, overrides=request.overrides)
-
-        result: dict[str, Any] = await provider.start_transcription(
-            audio_url=request.audio_url, config=config
-        )
-
-        if not result.get("success", False):
-            raise HTTPException(
-                status_code=500, detail=result.get("message", "Unknown error")
-            )
-
-        return result
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start transcription: {str(e)}"
-        ) from e
-
-
-@app.post("/api/transcribe/stop")
-async def stop_transcription(
-    request: StopTranscriptionRequest,
-    x_provider_auth: str = Header(
-        ..., description="Provider API key (Bearer token or raw key)"
-    ),
-    x_provider: str = Header("daily", description="Provider name (default: daily)"),
-) -> dict[str, Any]:
-    """
-    Stop an active transcription session.
-
-    Stops a transcription started with /start and returns the final transcript.
-    Requires X-Provider-Auth header with provider API key.
-    """
-    try:
-        if not request.transcription_id:
-            raise HTTPException(status_code=400, detail="transcription_id is required")
-
-        provider_name = x_provider.lower().strip() if x_provider else "daily"
-        api_key = extract_provider_api_key(x_provider_auth)
-        provider = get_transcribe_provider(provider_name, api_key)
-
-        result: dict[str, Any] = await provider.stop_transcription(
-            request.transcription_id
-        )
-
-        if not result.get("success", False):
-            raise HTTPException(
-                status_code=500, detail=result.get("message", "Unknown error")
-            )
-
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to stop transcription: {str(e)}"
-        ) from e
-
-
 @app.get("/bots/status")
 async def get_bot_status() -> dict[str, Any]:
     """
@@ -871,7 +584,7 @@ async def get_bot_status() -> dict[str, Any]:
 
     Useful for monitoring and detecting long-running bots.
     """
-    from flow.steps.interview.bot_service import bot_service
+    from flow.steps.agent_call import bot_service
 
     active_bots = bot_service.list_active_bots()
 
@@ -908,7 +621,7 @@ async def cleanup_bots(max_hours: float = 2.0) -> dict[str, Any]:
     Args:
         max_hours: Stop bots running longer than this (default: 2 hours)
     """
-    from flow.steps.interview.bot_service import bot_service
+    from flow.steps.agent_call import bot_service
 
     stopped_count = await bot_service.cleanup_long_running_bots(max_hours)
 
@@ -922,7 +635,7 @@ async def stop_bot_for_room(room_name: str) -> dict[str, Any]:
 
     Useful for cleaning up duplicate bots or stopping bots manually.
     """
-    from flow.steps.interview.bot_service import bot_service
+    from flow.steps.agent_call import bot_service
 
     success = await bot_service.stop_bot(room_name)
 
@@ -941,100 +654,6 @@ async def stop_bot_for_room(room_name: str) -> dict[str, Any]:
 async def favicon() -> Response:
     """Return empty favicon to prevent 401 errors."""
     return Response(status_code=204)  # No Content
-
-
-@app.get("/test-embed", response_class=HTMLResponse)
-async def test_embed() -> HTMLResponse:
-    """
-    Serve a test page for the embeddable widget.
-
-    This endpoint serves a simple test page where you can test the embeddable
-    widget by entering a room name. Useful for development and testing.
-    """
-    try:
-        test_file = Path(__file__).parent / "hosting" / "test-embed.html"
-        if not test_file.exists():
-            raise HTTPException(status_code=404, detail="Test page not found")
-        with open(test_file, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    except Exception as e:
-        logger.error(f"Error serving test page: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to serve test page: {str(e)}"
-        )
-
-
-@app.get("/embed.js")
-async def serve_embed_script() -> Response:
-    """
-    Serve the embeddable JavaScript widget for video meetings.
-
-    This endpoint serves a JavaScript file that creates a video meeting widget
-    that can be embedded in any website. The DAILY_DOMAIN is automatically
-    injected into the script so users don't need to provide it.
-
-    **Usage:**
-    ```html
-    <div id="meeting-container" style="width: 100%; height: 600px;"></div>
-    <script src="https://your-domain.com/embed.js"></script>
-    <script>
-      PailFlow.init({
-        container: '#meeting-container',
-        roomName: 'my-room-123'
-      });
-    </script>
-    ```
-
-    **Note:** The Daily.co SDK is automatically loaded by the embed script, so you don't need to include it separately.
-
-    **Configuration Options:**
-    - `container` (required): CSS selector or DOM element for the widget
-    - `roomName` (required): Daily.co room name
-    - `token` (optional): Meeting token for authenticated rooms
-    - `accentColor` (optional): Accent color hex code (default: '#1f2de6')
-    - `logoText` (optional): Logo text (default: 'PailFlow')
-    - `showHeader` (optional): Show header (default: true)
-    - `showBrandLine` (optional): Show top brand line (default: true)
-    - `autoRecord` (optional): Auto-start recording (default: false)
-    - `autoTranscribe` (optional): Auto-start transcription (default: false)
-    - `onLoaded`, `onJoined`, `onLeft`, `onError`, etc.: Event callbacks
-    """
-    try:
-        # Get the path to the JavaScript file
-        hosting_dir = Path(__file__).parent / "hosting"
-        js_file = hosting_dir / "embed.js"
-
-        if not js_file.exists():
-            logger.error(f"Embed script not found: {js_file}")
-            raise HTTPException(status_code=500, detail="Embed script not found")
-
-        # Read the JavaScript file
-        with open(js_file, "r", encoding="utf-8") as f:
-            js_content = f.read()
-
-        # Inject DAILY_DOMAIN into the JavaScript file
-        daily_domain = os.getenv("DAILY_DOMAIN", "https://your-domain.daily.co").rstrip(
-            "/"
-        )
-        js_content = js_content.replace(
-            "const DAILY_DOMAIN = null; // Will be replaced by server",
-            f'const DAILY_DOMAIN = "{daily_domain}";',
-        )
-
-        # Return as JavaScript with proper content type
-        return Response(
-            content=js_content,
-            media_type="application/javascript",
-            headers={
-                "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
-            },
-        )
-
-    except Exception as e:
-        logger.error(f"Error serving embed script: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to serve embed script: {str(e)}"
-        )
 
 
 @app.get("/meet/{room_name}", response_class=HTMLResponse)
@@ -1108,651 +727,9 @@ async def serve_meeting_page(
         )
 
 
-@app.get("/workflows")
-async def list_workflows() -> dict[str, Any]:
-    """List all available workflows."""
-    try:
-        return list_workflows_logic()
-    except Exception as e:
-        logger.error(f"Error listing workflows: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error listing workflows: {str(e)}",
-        )
-
-
-@app.post("/workflow/{workflow_name}")
-async def execute_workflow(
-    workflow_name: str, request: WorkflowRequest
-) -> dict[str, Any]:
-    """Execute a specific workflow with context."""
-    try:
-        return execute_workflow_logic(
-            workflow_name=workflow_name,
-            message=request.message,
-            user_id=request.user_id,
-            channel_id=request.channel_id,
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    except WorkflowNotFoundError:
-        available_workflows = list(get_workflows().keys())
-        logger.warning(f"Workflow not found: {workflow_name}")
-        error_msg = f"Workflow '{workflow_name}' not found. Available workflows: {', '.join(available_workflows)}"
-        raise HTTPException(status_code=404, detail=error_msg)
-
-    except Exception as e:
-        logger.error(f"Error executing workflow '{workflow_name}': {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error executing workflow: {str(e)}",
-        )
-
-
-# ============================================================================
-# Flow Endpoints - Hosted Workflow Service
-# ============================================================================
-
-
-class StartBotRequest(BaseModel):
-    """Request model for starting a bot conversation."""
-
-    participant_info: dict[str, Any] = Field(
-        ...,
-        description="Participant information (name, email, role, etc.) - generic field for any use case",
-    )
-    meeting_config: dict[str, Any] = Field(
-        ...,
-        description="Meeting configuration with prompts for bot behavior, analysis, and summary formatting",
-    )
-    webhook_callback_url: str | None = Field(
-        None,
-        description="Optional webhook URL to receive results when complete",
-    )
-    email_results_to: str | None = Field(
-        None,
-        description="Optional email address to receive results",
-    )
-
-    @field_validator("participant_info")
-    @classmethod
-    def validate_participant_info(cls, v: dict[str, Any]) -> dict[str, Any]:
-        """Validate participant_info has required fields."""
-        if not isinstance(v, dict):
-            raise ValueError("participant_info must be a dictionary")
-        if not v.get("name"):
-            raise ValueError("participant_info must include 'name' field")
-        return v
-
-    @field_validator("meeting_config")
-    @classmethod
-    def validate_meeting_config(cls, v: dict[str, Any]) -> dict[str, Any]:
-        """Validate meeting_config is a dictionary."""
-        if not isinstance(v, dict):
-            raise ValueError("meeting_config must be a dictionary")
-        # Ensure bot is enabled
-        bot_config = v.get("bot", {})
-        if not bot_config.get("enabled", False):
-            raise ValueError("meeting_config.bot.enabled must be true")
-        if not bot_config.get("bot_prompt"):
-            raise ValueError("meeting_config.bot.bot_prompt is required")
-        return v
-
-
-# Keep old name for backwards compatibility
-AIInterviewerRequest = StartBotRequest
-
-
-def get_provider_keys() -> dict[str, str]:
-    """
-    Get provider API keys from environment variables.
-
-    This function retrieves the service's provider API keys from environment
-    variables. Since this is a hosted service, the keys are managed by the
-    service, not provided by users.
-
-    Returns:
-        Dictionary with provider keys (e.g., {"room_provider_key": "...", "room_provider": "daily"})
-    """
-    daily_api_key = os.getenv("DAILY_API_KEY")
-    if not daily_api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="Service configuration error: DAILY_API_KEY not found",
-        )
-
-    return {
-        "room_provider_key": daily_api_key,
-        "room_provider": "daily",
-    }
-
-
-@app.post("/api/flows/start-bot")
-async def start_bot_conversation(
-    request: StartBotRequest,
-) -> dict[str, Any]:
-    """
-    Start a bot conversation with customizable prompts.
-
-    This endpoint creates a video room with an AI bot that can be configured for any purpose
-    (interviews, consultations, training, etc.). You provide:
-    - Participant information (name, email, etc.)
-    - Bot prompt (defines what the bot says/does)
-    - Analysis prompt (defines how to analyze the conversation)
-    - Summary format prompt (defines how to format results)
-    - Optional webhook URL and email for results
-
-    The endpoint returns immediately with a room URL where the conversation will take place.
-    Results (transcript, analysis, summary) will be sent to your webhook URL when complete.
-
-    **Key Features:**
-    - Fully prompt-driven: Control bot behavior, analysis, and output format via text prompts
-    - Generic: Not limited to interviews - use for any conversation scenario
-    - Flexible: Customize analysis and summary format for your use case
-
-    **Authentication:**
-    Provide your PailKit API key via the `Authorization` header:
-    - Format: `Bearer <your-pailkit-api-key>`
-    - Get your key from your PailKit dashboard
-
-    **Request Body:**
-    ```json
-    {
-      "participant_info": {
-        "name": "John Doe",
-        "email": "john@example.com",
-        "role": "Software Engineer"
-      },
-      "meeting_config": {
-        "bot": {
-          "enabled": true,
-          "bot_prompt": "You are a friendly AI assistant conducting a technical interview. Ask questions about Python, system design, and problem-solving. Wait for responses before asking the next question."
-        },
-        "analysis_prompt": "Analyze this conversation transcript. Provide scores, strengths, and areas for improvement. Use {transcript} as a placeholder for the transcript.",
-        "summary_format_prompt": "Format as a professional scorecard with overall score, competency breakdown, and detailed Q&A sections."
-      },
-      "webhook_callback_url": "https://your-app.com/webhooks/conversation-complete",
-      "email_results_to": "results@example.com"
-    }
-    ```
-
-    **Prompt Placeholders:**
-    - In `analysis_prompt`, use `{transcript}` or `{qa_text}` to inject the conversation transcript
-    - If no placeholder is used, the transcript will be appended automatically
-
-    **Response:**
-    Returns immediately with room URL and session info. Results sent via webhook when complete.
-
-    **Example - Technical Interview:**
-    ```bash
-    curl -X POST https://api.pailkit.com/api/flows/start-bot \\
-      -H "Authorization: Bearer <your-pailkit-key>" \\
-      -H "Content-Type: application/json" \\
-      -d '{
-        "participant_info": {
-          "name": "John Doe",
-          "email": "john@example.com"
-        },
-        "meeting_config": {
-          "bot": {
-            "enabled": true,
-            "bot_prompt": "You are conducting a technical interview. Ask questions about Python, system design, and problem-solving."
-          },
-          "analysis_prompt": "Analyze this interview transcript. Provide scores, strengths, and areas for improvement. Transcript: {transcript}",
-          "summary_format_prompt": "Format as a scorecard with overall score, competency breakdown, and detailed Q&A."
-        },
-        "webhook_callback_url": "https://your-app.com/webhooks/interview-complete"
-      }'
-    ```
-
-    **Example - Customer Support:**
-    ```bash
-    curl -X POST https://api.pailkit.com/api/flows/start-bot \\
-      -H "Authorization: Bearer <your-pailkit-key>" \\
-      -H "Content-Type: application/json" \\
-      -d '{
-        "participant_info": {
-          "name": "Jane Smith",
-          "email": "jane@example.com"
-        },
-        "meeting_config": {
-          "bot": {
-            "enabled": true,
-            "bot_prompt": "You are a customer support agent. Help the customer with their issue. Be friendly and solution-oriented."
-          },
-          "analysis_prompt": "Analyze this support conversation. Identify the issue, resolution, and customer satisfaction. Transcript: {transcript}",
-          "summary_format_prompt": "Format as a support ticket summary with issue description, resolution steps, and customer feedback."
-        },
-        "webhook_callback_url": "https://your-app.com/webhooks/support-complete"
-      }'
-    ```
-    """
-    try:
-        # Get provider keys from environment variables (hosted service)
-        provider_keys = get_provider_keys()
-
-        # Prepare workflow context
-        # Include webhook and email in meeting_config so they're saved to session data
-        meeting_config = request.meeting_config.copy()
-        if request.webhook_callback_url:
-            meeting_config["webhook_callback_url"] = request.webhook_callback_url
-        if request.email_results_to:
-            meeting_config["email_results_to"] = request.email_results_to
-
-        context = {
-            "participant_info": request.participant_info,
-            "meeting_config": meeting_config,
-            "provider_keys": provider_keys,
-        }
-
-        # Use AI Interviewer workflow (it's generic enough for any bot conversation)
-        workflow = get_workflow("ai_interviewer")
-
-        # Execute the workflow asynchronously
-        # We use execute_async() directly instead of execute() because:
-        # 1. execute() creates a new event loop in a thread and closes it when done
-        # 2. This kills the bot task which runs in that loop
-        # 3. execute_async() runs in the current event loop, so the bot task keeps running
-        result = await workflow.execute_async(context)
-
-        # Check for errors
-        if not result.get("success"):
-            error_msg = result.get("error", "Unknown error occurred")
-            logger.error(f"❌ Workflow execution failed: {error_msg}")
-            raise HTTPException(status_code=500, detail=error_msg)
-
-        # Extract results from workflow response
-        # execute_async() returns the result directly (not wrapped in "results")
-        processing_status = result.get("processing_status", "unknown")
-
-        # Get hosted_url and room_url from workflow result (from one_time_meeting subgraph)
-        # execute_async() returns these directly in the result dict
-        hosted_url = result.get("hosted_url")
-        room_url = result.get("room_url")
-        room_name = result.get("room_name")
-
-        # Get session_id - might be in result or in _state
-        session_id = result.get("session_id") or result.get("_state", {}).get(
-            "session_id"
-        )
-
-        # Build response with room information
-        # Results will be sent via webhook when complete
-        response = {
-            "success": True,
-            "message": "Bot conversation started successfully",
-            "session_id": session_id,
-            "room_url": room_url,
-            "room_name": room_name,
-            "hosted_url": hosted_url,  # The hosted meeting.html link
-            "processing_status": processing_status,
-            "note": (
-                "Interview results will be sent to your webhook URL when complete. "
-                "Use the hosted_url to join the interview."
-            ),
-        }
-
-        return response
-
-    except HTTPException:
-        raise
-    except ValueError as e:
-        logger.error(f"Validation error: {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
-    except WorkflowNotFoundError:
-        raise
-    except Exception as e:
-        logger.error(f"Error starting bot conversation: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
-# Keep old endpoint for backwards compatibility
-@app.post("/api/flows/ai-interviewer")
-async def execute_ai_interviewer_workflow(
-    request: AIInterviewerRequest,
-) -> dict[str, Any]:
-    """
-    Execute the AI Interviewer workflow (deprecated - use /api/flows/start-bot instead).
-
-    This endpoint is kept for backwards compatibility. New integrations should use /api/flows/start-bot.
-    """
-    # Delegate to the new endpoint
-    return await start_bot_conversation(request)
-
-
 # Webhook Handlers and Endpoints
 # These functions handle webhooks from Daily.co that are routed by the Cloudflare Worker.
 # The worker routes Daily.co webhooks here based on event type.
-
-
-async def handle_recording_ready_to_download(payload: dict[str, Any]) -> dict[str, Any]:
-    """
-    Handle 'recording.ready-to-download' webhook event.
-
-    This function is called when a Daily.co recording is ready to download.
-    According to Daily.co docs: https://docs.daily.co/reference/rest-api/webhooks/events/recording-ready-to-download
-
-    You can add logic here to:
-    - Download the recording from the provided URL
-    - Process the video
-    - Store metadata
-    - Send notifications
-    """
-    # Daily.co webhook format has nested payload structure
-    webhook_payload = payload.get("payload", payload)
-    room_name = webhook_payload.get("room_name")
-    recording_id = webhook_payload.get("recording_id")
-
-    logger.info(f"Recording ready to download for room: {room_name}")
-    logger.info(f"Recording ID: {recording_id}")
-
-    # Extract additional info
-    s3_key = webhook_payload.get("s3_key")
-    duration = webhook_payload.get("duration")
-
-    logger.info(f"S3 Key: {s3_key}")
-    logger.info(f"Duration: {duration} seconds")
-
-    # Add your custom logic here
-    # Example: Download the recording, process it, store it, etc.
-    # You can use the recording_id to fetch the download URL from Daily.co API if needed
-
-    return {
-        "status": "processed",
-        "event": "recording.ready-to-download",
-        "recording_id": recording_id,
-        "room_name": room_name,
-    }
-
-
-async def handle_transcript_ready_to_download(
-    payload: dict[str, Any],
-) -> dict[str, Any]:
-    """
-    Handle 'transcript.ready-to-download' webhook event.
-
-    This function is called when a Daily.co transcript is ready to download.
-    It extracts the webhook data and triggers the ProcessTranscriptStep,
-    which will fetch the download link via the Daily.co API.
-
-    According to Daily.co docs: https://docs.daily.co/reference/rest-api/webhooks/events/transcript-ready-to-download
-    """
-    webhook_payload = payload.get("payload", payload)
-    transcript_id = webhook_payload.get("id")
-    room_id = webhook_payload.get("room_id")
-    room_name = webhook_payload.get("room_name")
-    duration = webhook_payload.get("duration")
-
-    logger.info(f"📨 Transcript webhook received: {transcript_id}")
-
-    try:
-        from flow.db import get_session_data
-
-        # Note: AIInterviewerWorkflow was removed in simplification
-        # New bot system processes automatically when bot finishes
-        try:
-            from flow.workflows.ai_interviewer import AIInterviewerWorkflow
-        except ImportError:
-            AIInterviewerWorkflow = None
-
-        # Check if there's a paused workflow for this room
-        session_data = get_session_data(room_name) if room_name else None
-        workflow_paused = session_data and session_data.get("workflow_paused", False)
-        thread_id = session_data.get("workflow_thread_id") if session_data else None
-
-        # Check if we're waiting for this webhook based on configuration
-        waiting_for_transcript_webhook = session_data and session_data.get(
-            "waiting_for_transcript_webhook", False
-        )
-
-        if workflow_paused and thread_id:
-            # Only resume if we're actually waiting for this webhook
-            # (or if no explicit waiting flag is set, for backward compatibility)
-            if not waiting_for_transcript_webhook and session_data:
-                # Check if we should be waiting for meeting.ended instead
-                waiting_for_meeting_ended = session_data.get(
-                    "waiting_for_meeting_ended", False
-                )
-                if waiting_for_meeting_ended:
-                    logger.info(
-                        "⏸️  Waiting for meeting.ended webhook, not transcript webhook"
-                    )
-                    return {
-                        "status": "waiting_for_meeting",
-                        "transcript_id": transcript_id,
-                        "room_name": room_name,
-                        "message": "Workflow is waiting for meeting.ended webhook, not transcript webhook",
-                    }
-            # Resume the paused workflow using thread_id
-            logger.info(f"🔄 Resuming paused workflow with thread_id: {thread_id}")
-
-            # Create workflow instance (must use same instance to access same checkpointer)
-            if AIInterviewerWorkflow is None:
-                logger.info(
-                    "⚠️ AIInterviewerWorkflow not available - new simplified bot system processes automatically"
-                )
-                return {
-                    "status": "success",
-                    "room_name": room_name,
-                    "message": "Bot processes automatically - no workflow to resume",
-                }
-            workflow = AIInterviewerWorkflow()
-
-            # Config with thread_id to resume from checkpoint
-            config = {"configurable": {"thread_id": thread_id}}
-
-            # Get the latest checkpoint state
-            # LangGraph stores state in checkpoints, we need to get it and update it
-            try:
-                # Get the latest checkpoint for this thread
-                # checkpointer.list() returns an iterator of (checkpoint_id, checkpoint_data) tuples
-                checkpoints = list(workflow.checkpointer.list(config))
-                if checkpoints:
-                    # Get the latest checkpoint - checkpoints[-1] is a tuple (checkpoint_id, checkpoint_data)
-                    # Access checkpoint_id as the first element of the tuple
-                    latest_checkpoint_tuple = checkpoints[-1]
-                    if isinstance(latest_checkpoint_tuple, tuple):
-                        latest_checkpoint_id = latest_checkpoint_tuple[0]
-                    else:
-                        # Fallback: if it's a dict, use the old way
-                        latest_checkpoint_id = (
-                            latest_checkpoint_tuple.get("checkpoint_id")
-                            if isinstance(latest_checkpoint_tuple, dict)
-                            else str(latest_checkpoint_tuple)
-                        )
-                    checkpoint_tuple = await workflow.checkpointer.aget_tuple(
-                        config, {"checkpoint_id": latest_checkpoint_id}
-                    )
-                    checkpoint, returned_checkpoint_id, parent_checkpoint_id = (
-                        checkpoint_tuple
-                    )
-
-                    if checkpoint and checkpoint.get("channel_values"):
-                        # Get current state from checkpoint
-                        current_state = checkpoint["channel_values"]
-                        # Update state with transcript_id from webhook
-                        current_state["transcript_id"] = transcript_id
-                        current_state["room_id"] = room_id
-                        current_state["duration"] = duration
-
-                        # Resume the workflow from where it paused
-                        # LangGraph will continue from the interrupt point
-                        result = await workflow.graph.ainvoke(
-                            current_state, config=config
-                        )
-                    else:
-                        raise ValueError("Checkpoint state not found")
-                else:
-                    raise ValueError("No checkpoints found for thread")
-            except Exception as e:
-                # Fallback: if checkpoint retrieval fails, process transcript directly
-                logger.warning(
-                    f"⚠️ Could not resume workflow from checkpoint: {e}, processing transcript directly"
-                )
-                from flow.steps.agent_call.steps.process_transcript import (
-                    ProcessTranscriptStep,
-                )
-
-                # Get workflow_thread_id from session_data if available
-                workflow_thread_id = (
-                    session_data.get("workflow_thread_id") if session_data else None
-                )
-
-                state = {
-                    "transcript_id": transcript_id,
-                    "room_id": room_id,
-                    "room_name": room_name,
-                    "duration": duration,
-                    "workflow_thread_id": workflow_thread_id,  # Pass thread_id for per-workflow tracking
-                }
-                step = ProcessTranscriptStep()
-                result = await step.execute(state)
-
-            # Check for errors
-            if result.get("error"):
-                return {
-                    "status": "error",
-                    "transcript_id": transcript_id,
-                    "error": result.get("error"),
-                }
-
-            # Return success response
-            candidate_name = result.get("candidate_info", {}).get("name", "Unknown")
-            return {
-                "status": "success",
-                "transcript_id": transcript_id,
-                "candidate_name": candidate_name,
-                "webhook_sent": result.get("webhook_sent", False),
-                "email_sent": result.get("email_sent", False),
-                "workflow_resumed": True,
-            }
-        else:
-            # No paused workflow - process transcript directly (legacy behavior)
-            logger.info("📝 Processing transcript directly (no paused workflow)")
-            from flow.steps.agent_call.steps.process_transcript import (
-                ProcessTranscriptStep,
-            )
-
-            # Get workflow_thread_id from session_data if available
-            from flow.db import get_session_data
-
-            session_data = get_session_data(room_name) if room_name else None
-            workflow_thread_id = (
-                session_data.get("workflow_thread_id") if session_data else None
-            )
-
-            # Create state from webhook payload
-            state = {
-                "transcript_id": transcript_id,
-                "room_id": room_id,
-                "room_name": room_name,
-                "duration": duration,
-                "workflow_thread_id": workflow_thread_id,  # Pass thread_id for per-workflow tracking
-            }
-
-            # Execute the processing step
-            step = ProcessTranscriptStep()
-            result = await step.execute(state)
-
-            # Check for errors
-            if result.get("error"):
-                return {
-                    "status": "error",
-                    "transcript_id": transcript_id,
-                    "error": result.get("error"),
-                }
-
-            # Return success response
-            return {
-                "status": "success",
-                "transcript_id": transcript_id,
-                "candidate_name": result.get("candidate_info", {}).get("name"),
-                "webhook_sent": result.get("webhook_sent", False),
-                "email_sent": result.get("email_sent", False),
-            }
-
-    except Exception as e:
-        logger.error(f"❌ Transcript webhook error: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "transcript_id": transcript_id,
-            "error": str(e),
-        }
-
-
-@app.post("/webhooks/recording-ready-to-download")
-async def webhook_recording_ready_to_download(
-    payload: dict[str, Any],
-) -> dict[str, Any]:
-    """
-    Handle 'recording.ready-to-download' webhook from Daily.co.
-
-    This endpoint receives webhooks when a Daily.co recording is ready to download.
-    The Cloudflare Worker routes 'recording.ready-to-download' events here.
-
-    **Error Handling:**
-    This endpoint ALWAYS returns 200 OK, even on errors, to prevent Daily.co
-    from retrying the webhook. Errors are logged but don't cause 500 responses.
-
-    See: https://docs.daily.co/reference/rest-api/webhooks/events/recording-ready-to-download
-    """
-    try:
-        result = await handle_recording_ready_to_download(payload)
-        return result
-    except Exception as e:
-        # **CRITICAL:** Always return 200 OK for webhooks, even on errors
-        # This prevents Daily.co from retrying the webhook repeatedly
-        logger.error(
-            f"❌ Error handling recording.ready-to-download webhook: {e}", exc_info=True
-        )
-        webhook_payload = payload.get("payload", payload)
-        room_name = webhook_payload.get("room_name", "unknown")
-        return {
-            "status": "error",
-            "room_name": room_name,
-            "message": "Webhook received but processing failed",
-            "error": str(e),
-            "note": "This error was logged. Please check server logs for details.",
-        }
-
-
-@app.post("/webhooks/transcript-ready-to-download")
-async def webhook_transcript_ready_to_download(
-    payload: dict[str, Any],
-) -> dict[str, Any]:
-    """
-    Handle 'transcript.ready-to-download' webhook from Daily.co.
-
-    This endpoint receives webhooks when a Daily.co transcript is ready to download.
-    The Cloudflare Worker routes 'transcript.ready-to-download' events here.
-
-    **Error Handling:**
-    This endpoint ALWAYS returns 200 OK, even on errors, to prevent Daily.co
-    from retrying the webhook. Errors are logged but don't cause 500 responses.
-
-    See: https://docs.daily.co/reference/rest-api/webhooks/events/transcript-ready-to-download
-    """
-    try:
-        result = await handle_transcript_ready_to_download(payload)
-        return result
-    except Exception as e:
-        # **CRITICAL:** Always return 200 OK for webhooks, even on errors
-        # This prevents Daily.co from retrying the webhook repeatedly
-        logger.error(
-            f"❌ Error handling transcript.ready-to-download webhook: {e}",
-            exc_info=True,
-        )
-        webhook_payload = payload.get("payload", payload)
-        room_name = webhook_payload.get("room_name", "unknown")
-        return {
-            "status": "error",
-            "room_name": room_name,
-            "message": "Webhook received but processing failed",
-            "error": str(e),
-            "note": "This error was logged. Please check server logs for details.",
-        }
 
 
 async def handle_meeting_ended_webhook(
@@ -2011,7 +988,7 @@ async def handle_meeting_ended_webhook(
                         f"⚠️ Could not resume workflow from checkpoint: {e}, processing transcript directly"
                     )
                     # Process transcript directly (same logic as else block below)
-                    from flow.steps.interview.process_transcript import (
+                    from flow.steps.agent_call import (
                         ProcessTranscriptStep,
                     )
 
@@ -2189,154 +1166,6 @@ async def webhook_meeting_ended(
             "error": str(e),
             "note": "This error was logged. Please check server logs for details.",
         }
-
-
-# MCP Tools
-
-
-@mcp.tool()
-def list_workflows_mcp() -> dict[str, Any]:
-    """List all available workflows."""
-    try:
-        return list_workflows_logic()
-    except Exception as e:
-        logger.error(f"Error listing workflows: {e}", exc_info=True)
-        return create_error_response(f"Error listing workflows: {str(e)}")
-
-
-@mcp.tool()
-def execute_workflow_mcp(
-    workflow_name: str,
-    message: str,
-    user_id: str | None = None,
-    channel_id: str | None = None,
-) -> dict[str, Any]:
-    """Execute a specific workflow with context."""
-    try:
-        result = execute_workflow_logic(
-            workflow_name=workflow_name,
-            message=message,
-            user_id=user_id,
-            channel_id=channel_id,
-        )
-
-        return {
-            "success": True,
-            "result": result,
-            "workflow_name": workflow_name,
-        }
-
-    except ValueError as e:
-        logger.warning(f"Invalid request: {e}")
-        return create_error_response(str(e), workflow_name=workflow_name)
-
-    except WorkflowNotFoundError:
-        available_workflows = list(get_workflows().keys())
-        logger.warning(f"Workflow not found: {workflow_name}")
-        error_msg = f"Workflow '{workflow_name}' not found"
-        return create_error_response(
-            error_msg,
-            workflow_name=workflow_name,
-            available_workflows=available_workflows,
-        )
-
-    except NotImplementedError:
-        logger.warning(f"Workflow not yet implemented: {workflow_name}")
-        return create_error_response(
-            f"Workflow '{workflow_name}' is not yet implemented",
-            workflow_name=workflow_name,
-        )
-
-    except Exception as e:
-        logger.error(f"Error executing workflow '{workflow_name}': {e}", exc_info=True)
-        return create_error_response(str(e), workflow_name=workflow_name)
-
-
-@mcp.tool()
-def get_workflow_info_mcp(workflow_name: str) -> dict[str, Any]:
-    """Get detailed information about a workflow."""
-    try:
-        return get_workflow_info_logic(workflow_name)
-    except WorkflowNotFoundError:
-        logger.warning(f"Workflow not found: {workflow_name}")
-        return create_error_response(
-            f"Workflow '{workflow_name}' not found", workflow_name=workflow_name
-        )
-    except NotImplementedError:
-        logger.warning(f"Workflow not yet implemented: {workflow_name}")
-        return create_error_response(
-            f"Workflow '{workflow_name}' is not yet implemented",
-            workflow_name=workflow_name,
-        )
-    except Exception as e:
-        logger.error(
-            f"Error getting workflow info for '{workflow_name}': {e}", exc_info=True
-        )
-        return create_error_response(str(e), workflow_name=workflow_name)
-
-
-@mcp.tool()
-def order_food_mcp(
-    query: str,
-    customer: dict[str, Any],
-    address: str | None = None,
-    latitude: float | None = None,
-    longitude: float | None = None,
-    dropoff_instructions: str | None = None,
-    quantity: int = 1,
-) -> dict[str, Any]:
-    """
-    Execute the order_food workflow via MCP with structured parameters.
-
-    This tool orchestrates the complete food ordering process through the MealMe API:
-    1. Geocodes address (if provided)
-    2. Searches for products near the location
-    3. Creates a shopping cart
-    4. Adds the selected product to the cart
-    5. Creates an order with customer details
-    6. Retrieves a checkout link for payment
-
-    Args:
-        query: Product search term (e.g., "coffee", "Cold Brew")
-        customer: Customer information dict with name, email, phone_number, and address
-        address: Delivery address (optional if latitude/longitude provided)
-        latitude: Latitude coordinate (optional if address provided)
-        longitude: Longitude coordinate (optional if address provided)
-        dropoff_instructions: Optional delivery instructions
-        quantity: Quantity of product to order (default: 1)
-
-    Returns:
-        Dictionary with status, order_id, product name, and checkout_url
-    """
-    from flow.workflows.order_food import run as order_food_run
-
-    try:
-        params = {
-            "query": query,
-            "address": address,
-            "latitude": latitude,
-            "longitude": longitude,
-            "customer": customer,
-            "dropoff_instructions": dropoff_instructions,
-            "quantity": quantity,
-        }
-
-        # Call the workflow's run function
-        result = order_food_run(params)
-
-        # Return the result directly (it already has the correct structure)
-        return result
-
-    except Exception as e:
-        logger.error(f"Error executing order_food workflow via MCP: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "error": f"Error executing order_food workflow: {str(e)}",
-        }
-
-
-# Mount FastMCP into FastAPI
-app.mount("/mcp", mcp.streamable_http_app())
 
 
 # Server Startup
