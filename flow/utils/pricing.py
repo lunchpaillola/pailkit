@@ -14,6 +14,9 @@ DEEPGRAM_TOTAL_PER_MIN = (
     DEEPGRAM_NOVA2_PER_MIN + DEEPGRAM_DIARIZATION_PER_MIN
 )  # Total: $0.0078/min
 
+# Bot Call Pricing (per minute)
+BOT_CALL_RATE_PER_MINUTE = 0.15  # Amount charged to users per minute of bot usage
+
 MODEL_PRICING = {
     # GPT-5 Series (Standard tier)
     "gpt-5.1": {

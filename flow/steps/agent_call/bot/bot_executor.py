@@ -805,6 +805,51 @@ IMPORTANT: Your output will be spoken aloud, so:
                                 f"⚠️ Error calculating/saving Deepgram STT cost: {cost_error}",
                                 exc_info=True,
                             )
+
+                        # Create usage transaction and deduct credits
+                        from flow.db import (
+                            create_bot_usage_transaction,
+                            deduct_user_credits,
+                        )
+
+                        try:
+                            result = create_bot_usage_transaction(
+                                workflow_thread_id, bot_duration
+                            )
+                            if result:
+                                transaction_id, user_id = result
+                                logger.info(
+                                    f"✅ Created usage transaction: {transaction_id} for workflow_thread_id: {workflow_thread_id}"
+                                )
+
+                                # Calculate amount to deduct
+                                from flow.utils.pricing import (
+                                    BOT_CALL_RATE_PER_MINUTE,
+                                )
+
+                                duration_minutes = bot_duration / 60.0
+                                amount = round(
+                                    duration_minutes * BOT_CALL_RATE_PER_MINUTE, 2
+                                )
+
+                                # Deduct credits
+                                if deduct_user_credits(user_id, amount):
+                                    logger.info(
+                                        f"✅ Deducted ${amount:.2f} credits for user_id: {user_id}"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"⚠️ Failed to deduct credits for user_id: {user_id}"
+                                    )
+                            else:
+                                logger.warning(
+                                    f"⚠️ Failed to create usage transaction for workflow_thread_id: {workflow_thread_id}"
+                                )
+                        except Exception as transaction_error:
+                            logger.warning(
+                                f"⚠️ Error creating usage transaction/deducting credits: {transaction_error}",
+                                exc_info=True,
+                            )
                     except Exception as e:
                         logger.warning(
                             f"⚠️ Error saving bot_leave_time/bot_duration: {e}",
@@ -900,6 +945,40 @@ IMPORTANT: Your output will be spoken aloud, so:
                             f"⚠️ Error calculating/saving Deepgram STT cost on cancellation: {cost_error}",
                             exc_info=True,
                         )
+
+                    # Create usage transaction and deduct credits
+                    from flow.db import (
+                        create_bot_usage_transaction,
+                        deduct_user_credits,
+                    )
+
+                    try:
+                        result = create_bot_usage_transaction(
+                            workflow_thread_id, bot_duration
+                        )
+                        if result:
+                            transaction_id, user_id = result
+                            logger.info(
+                                f"✅ Created usage transaction (cancelled): {transaction_id} for workflow_thread_id: {workflow_thread_id}"
+                            )
+
+                            # Calculate amount to deduct
+                            from flow.utils.pricing import BOT_CALL_RATE_PER_MINUTE
+
+                            duration_minutes = bot_duration / 60.0
+                            amount = round(
+                                duration_minutes * BOT_CALL_RATE_PER_MINUTE, 2
+                            )
+
+                            if deduct_user_credits(user_id, amount):
+                                logger.info(
+                                    f"✅ Deducted ${amount:.2f} credits (cancelled) for user_id: {user_id}"
+                                )
+                    except Exception as transaction_error:
+                        logger.warning(
+                            f"⚠️ Error creating usage transaction/deducting credits on cancellation: {transaction_error}",
+                            exc_info=True,
+                        )
                 except Exception as e:
                     logger.warning(
                         f"⚠️ Error saving bot_leave_time on cancellation: {e}",
@@ -975,6 +1054,40 @@ IMPORTANT: Your output will be spoken aloud, so:
                     except Exception as cost_error:
                         logger.warning(
                             f"⚠️ Error calculating/saving Deepgram STT cost on error: {cost_error}",
+                            exc_info=True,
+                        )
+
+                    # Create usage transaction and deduct credits
+                    from flow.db import (
+                        create_bot_usage_transaction,
+                        deduct_user_credits,
+                    )
+
+                    try:
+                        result = create_bot_usage_transaction(
+                            workflow_thread_id, bot_duration
+                        )
+                        if result:
+                            transaction_id, user_id = result
+                            logger.info(
+                                f"✅ Created usage transaction (error): {transaction_id} for workflow_thread_id: {workflow_thread_id}"
+                            )
+
+                            # Calculate amount to deduct
+                            from flow.utils.pricing import BOT_CALL_RATE_PER_MINUTE
+
+                            duration_minutes = bot_duration / 60.0
+                            amount = round(
+                                duration_minutes * BOT_CALL_RATE_PER_MINUTE, 2
+                            )
+
+                            if deduct_user_credits(user_id, amount):
+                                logger.info(
+                                    f"✅ Deducted ${amount:.2f} credits (error) for user_id: {user_id}"
+                                )
+                    except Exception as transaction_error:
+                        logger.warning(
+                            f"⚠️ Error creating usage transaction/deducting credits on error: {transaction_error}",
                             exc_info=True,
                         )
                 except Exception as save_error:
