@@ -28,13 +28,11 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from supabase import Client
 
-# Fields that should be encrypted (sensitive candidate data)
+# Fields that should be encrypted (sensitive data)
 ENCRYPTED_FIELDS = {
-    "candidate_email",
-    "candidate_name",
-    "webhook_callback_url",
+    "email",
     "email_results_to",
-    "interviewer_context",
+    "webhook_callback_url",
     "transcript_text",
     "candidate_summary",
 }
@@ -490,9 +488,6 @@ def save_session_data(room_name: str, session_data: Dict[str, Any]) -> bool:
             "meeting_status": encrypted_data.get("meeting_status", "in_progress"),
             "meeting_start_time": encrypted_data.get("meeting_start_time"),
             "meeting_end_time": encrypted_data.get("meeting_end_time"),
-            "interview_type": encrypted_data.get("interview_type"),
-            "difficulty_level": encrypted_data.get("difficulty_level"),
-            "position": encrypted_data.get("position"),
             "bot_enabled": encrypted_data.get("bot_enabled", False),
             "waiting_for_meeting_ended": encrypted_data.get(
                 "waiting_for_meeting_ended", False
@@ -507,9 +502,7 @@ def save_session_data(room_name: str, session_data: Dict[str, Any]) -> bool:
             # Encrypted fields
             "webhook_callback_url": encrypted_data.get("webhook_callback_url"),
             "email_results_to": encrypted_data.get("email_results_to"),
-            "candidate_name": encrypted_data.get("candidate_name"),
-            "candidate_email": encrypted_data.get("candidate_email"),
-            "interviewer_context": encrypted_data.get("interviewer_context"),
+            "email": encrypted_data.get("email"),
             "analysis_prompt": encrypted_data.get("analysis_prompt"),
             "summary_format_prompt": encrypted_data.get("summary_format_prompt"),
             "transcript_text": encrypted_data.get("transcript_text"),
@@ -572,9 +565,6 @@ def get_session_data(room_name: str) -> Dict[str, Any] | None:
             "meeting_status": row.get("meeting_status"),
             "meeting_start_time": row.get("meeting_start_time"),
             "meeting_end_time": row.get("meeting_end_time"),
-            "interview_type": row.get("interview_type"),
-            "difficulty_level": row.get("difficulty_level"),
-            "position": row.get("position"),
             "bot_enabled": row.get("bot_enabled"),
             "waiting_for_meeting_ended": row.get("waiting_for_meeting_ended"),
             "waiting_for_transcript_webhook": row.get("waiting_for_transcript_webhook"),
@@ -585,9 +575,7 @@ def get_session_data(room_name: str) -> Dict[str, Any] | None:
             # Encrypted fields (will be decrypted below)
             "webhook_callback_url": row.get("webhook_callback_url"),
             "email_results_to": row.get("email_results_to"),
-            "candidate_name": row.get("candidate_name"),
-            "candidate_email": row.get("candidate_email"),
-            "interviewer_context": row.get("interviewer_context"),
+            "email": row.get("email"),
             "analysis_prompt": row.get("analysis_prompt"),
             "summary_format_prompt": row.get("summary_format_prompt"),
             "transcript_text": row.get("transcript_text"),
@@ -907,7 +895,7 @@ def save_workflow_thread_data(
         thread_data: Dictionary containing workflow thread information:
             - room_name: Room name this workflow is using
             - room_url: Full Daily.co room URL
-            - candidate_name, candidate_email: User/candidate info (encrypted)
+            - email: Email to send results to (encrypted)
             - transcript_text: Transcript (encrypted)
             - transcript_processed, email_sent, webhook_sent: Processing state
             - candidate_summary: Summary (encrypted)
@@ -934,12 +922,8 @@ def save_workflow_thread_data(
             "room_url": encrypted_data.get("room_url"),
             "room_id": encrypted_data.get("room_id"),
             "session_id": encrypted_data.get("session_id"),
-            "candidate_name": encrypted_data.get("candidate_name"),
-            "candidate_email": encrypted_data.get("candidate_email"),
-            "interview_type": encrypted_data.get("interview_type"),
-            "position": encrypted_data.get("position"),
-            "difficulty_level": encrypted_data.get("difficulty_level"),
-            "interviewer_context": encrypted_data.get("interviewer_context"),
+            "email": encrypted_data.get("email"),
+            "provider": encrypted_data.get("provider"),
             "analysis_prompt": encrypted_data.get("analysis_prompt"),
             "summary_format_prompt": encrypted_data.get("summary_format_prompt"),
             "bot_enabled": encrypted_data.get("bot_enabled", False),
@@ -1046,12 +1030,8 @@ def get_workflow_thread_data(workflow_thread_id: str) -> Dict[str, Any] | None:
             "room_url": row.get("room_url"),
             "room_id": row.get("room_id"),
             "session_id": row.get("session_id"),
-            "candidate_name": row.get("candidate_name"),
-            "candidate_email": row.get("candidate_email"),
-            "interview_type": row.get("interview_type"),
-            "position": row.get("position"),
-            "difficulty_level": row.get("difficulty_level"),
-            "interviewer_context": row.get("interviewer_context"),
+            "email": row.get("email"),
+            "provider": row.get("provider"),
             "analysis_prompt": row.get("analysis_prompt"),
             "summary_format_prompt": row.get("summary_format_prompt"),
             "bot_enabled": row.get("bot_enabled"),
@@ -1153,12 +1133,8 @@ def get_workflow_threads_by_room_name(room_name: str) -> list[Dict[str, Any]]:
                 "room_url": row.get("room_url"),
                 "room_id": row.get("room_id"),
                 "session_id": row.get("session_id"),
-                "candidate_name": row.get("candidate_name"),
-                "candidate_email": row.get("candidate_email"),
-                "interview_type": row.get("interview_type"),
-                "position": row.get("position"),
-                "difficulty_level": row.get("difficulty_level"),
-                "interviewer_context": row.get("interviewer_context"),
+                "email": row.get("email"),
+                "provider": row.get("provider"),
                 "analysis_prompt": row.get("analysis_prompt"),
                 "summary_format_prompt": row.get("summary_format_prompt"),
                 "bot_enabled": row.get("bot_enabled"),

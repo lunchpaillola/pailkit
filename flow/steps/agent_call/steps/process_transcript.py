@@ -754,8 +754,8 @@ def format_summary_html(summary_text: str) -> str:
 def generate_html_email(
     summary_text: str,
     transcript_text: str,
-    candidate_name: str = "Unknown",
-    interview_type: str = "Interview",
+    candidate_name: str | None = None,
+    interview_type: str | None = None,
     insights: Dict[str, Any] | None = None,
     bot_name: str = None,
 ) -> str:
@@ -781,14 +781,14 @@ def generate_html_email(
     transcript_html = format_transcript_html(transcript_text, bot_name)
 
     # Use sensible defaults if values are missing
-    if not interview_type or interview_type == "Unknown":
+    if not interview_type:
         interview_type = "Session"
-    if not candidate_name:
-        candidate_name = "Unknown"
 
     # Escape user-provided content for security
     escaped_interview_type = html.escape(str(interview_type))
-    escaped_candidate_name = html.escape(str(candidate_name))
+    escaped_candidate_name = (
+        html.escape(str(candidate_name)) if candidate_name else None
+    )
 
     # Build the complete HTML email
     # Use brand colors: #1f2de6 (brand blue), clean flat design
@@ -816,7 +816,7 @@ def generate_html_email(
                                 <div style="font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px;">Workspace</div>
                             </div>
                             <h1 style="margin: 0; color: #1e293b; font-size: 22px; font-weight: 600; line-height: 1.3;">{escaped_interview_type} Complete</h1>
-                            {f'<p style="margin: 8px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.5;">{escaped_candidate_name}</p>' if escaped_candidate_name and escaped_candidate_name != "Unknown" else ''}
+                            {f'<p style="margin: 8px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.5;">{escaped_candidate_name}</p>' if escaped_candidate_name else ''}
                         </td>
                     </tr>
 
@@ -859,8 +859,8 @@ async def send_email(
     to_email: str,
     subject: str,
     body: str,
-    candidate_name: str = "Unknown",
-    interview_type: str = "Interview",
+    candidate_name: str | None = None,
+    interview_type: str | None = None,
     transcript_text: str = "",
     insights: Dict[str, Any] | None = None,
     bot_name: str = None,
@@ -902,11 +902,15 @@ async def send_email(
         from_email = f"PailFlow <noreply@{email_domain}>"
 
         # Generate beautiful HTML email
+        # Use defaults if not provided
+        email_candidate_name = candidate_name if candidate_name else None
+        email_interview_type = interview_type if interview_type else "Session"
+
         html_body = generate_html_email(
             summary_text=body,
             transcript_text=transcript_text,
-            candidate_name=candidate_name,
-            interview_type=interview_type,
+            candidate_name=email_candidate_name,
+            interview_type=email_interview_type,
             insights=insights,
             bot_name=bot_name,
         )
@@ -1143,34 +1147,21 @@ class ProcessTranscriptStep(InterviewStep):
                 )
 
             webhook_callback_url = session_data.get("webhook_callback_url")
-            email_results_to = session_data.get("email_results_to")
-            candidate_name = session_data.get("candidate_name", "Unknown")
-            position = session_data.get("position", "Unknown")
-            interview_type = session_data.get("interview_type", "Interview")
-            interviewer_context = session_data.get("interviewer_context", "")
-
-            # For lead qualification, the name might be extracted in insights as person_name
-            # We'll check insights later after they're extracted and update candidate_name if needed
-
-            logger.info(f"   👤 Candidate: {candidate_name}")
-            logger.info(f"   💼 Position: {position}")
-            logger.info(f"   📋 Interview Type: {interview_type}")
+            email_results_to = session_data.get("email_results_to") or session_data.get(
+                "email"
+            )
 
             # Note: email_already_sent and webhook_already_sent are already checked above
             # using the processing_status_by_key structure
 
             # Build participant_info from session_data
-            # Note: session_data uses "candidate_name" for backwards compatibility with existing DB records
+            # Use email from session_data (renamed from candidate_email)
             participant_info = {
-                "name": candidate_name,
-                "role": position,
-                "email": session_data.get("candidate_email"),
+                "name": "Unknown",  # Will be extracted from insights if available
+                "email": session_data.get("email")
+                or session_data.get("email_results_to"),
             }
             state["participant_info"] = participant_info
-
-            # Store interview metadata for summary
-            state["interview_type"] = interview_type
-            state["interviewer_context"] = interviewer_context
 
             # Get prompts from session_data (passed from meeting_config)
             analysis_prompt = session_data.get("analysis_prompt")
@@ -1178,14 +1169,6 @@ class ProcessTranscriptStep(InterviewStep):
 
             # Build meeting_config with prompts for steps to access
             state["meeting_config"] = {
-                "analysis_prompt": analysis_prompt,
-                "summary_format_prompt": summary_format_prompt,
-            }
-
-            # Also store in interview_config for backwards compatibility
-            state["interview_config"] = {
-                "interview_type": interview_type,
-                "interviewer_context": interviewer_context,
                 "analysis_prompt": analysis_prompt,
                 "summary_format_prompt": summary_format_prompt,
             }
@@ -1233,12 +1216,6 @@ class ProcessTranscriptStep(InterviewStep):
 
             # Build a simple summary from insights
             summary_parts = []
-            if candidate_name and candidate_name != "Unknown":
-                summary_parts.append(f"Participant: {candidate_name}")
-            if position and position != "Unknown":
-                summary_parts.append(f"Role: {position}")
-            if interview_type:
-                summary_parts.append(f"Interview Type: {interview_type}")
 
             if insights:
                 overall_score = insights.get("overall_score")
@@ -1267,15 +1244,13 @@ class ProcessTranscriptStep(InterviewStep):
             logger.info("\n📤 STEP 9: Sending results")
 
             results_payload = {
-                "event": "interview_complete",
+                "event": "session_complete",
                 "transcript_id": transcript_id,
                 "room_id": room_id,
                 "room_name": room_name,
-                "candidate_name": candidate_name,
-                "position": position,
                 "duration_seconds": duration,
                 "transcript_text": transcript_text,
-                "candidate_summary": candidate_summary,
+                "summary": candidate_summary,
                 "insights": state.get("insights"),
             }
 
@@ -1300,13 +1275,9 @@ class ProcessTranscriptStep(InterviewStep):
             if email_results_to and not email_already_sent:
                 logger.info(f"📧 Sending email to: {email_results_to}")
 
-                # For lead qualification, try to extract name from insights if available
+                # Try to extract name from insights if available
                 # The insights might have person_name (from lead qualification) or the name might be in the summary JSON
-                email_candidate_name = (
-                    candidate_name
-                    if candidate_name and candidate_name != "Unknown"
-                    else "Unknown"
-                )
+                email_candidate_name = "Unknown"
                 insights = state.get("insights", {})
 
                 # Check if insights has person_name (for lead qualification flows)
@@ -1404,34 +1375,13 @@ class ProcessTranscriptStep(InterviewStep):
                                 f"   📝 Updated summary text to use name: {email_candidate_name}"
                             )
 
-                # Generate appropriate subject based on interview_type
-                # For lead qualification, use "Qualification Complete", otherwise use interview_type
-                is_qualification = (
-                    interview_type and "qualification" in interview_type.lower()
-                )
-                if is_qualification:
-                    subject_prefix = "Qualification Complete"
-                elif interview_type and interview_type != "Interview":
-                    subject_prefix = interview_type + " Complete"
-                else:
-                    subject_prefix = "Session Complete"
-
-                # Build subject with name and position/role (use extracted name if available)
-                # For qualification calls, don't include position (it's usually just "Lead")
-                # For other calls, include position if it's meaningful
-                if is_qualification:
-                    # For qualification: just use name
-                    subject = f"{subject_prefix}: {email_candidate_name}"
-                elif position and position != "Unknown" and position != "Lead":
-                    # For interviews: include position if it's meaningful
-                    subject = f"{subject_prefix}: {email_candidate_name} - {position}"
-                else:
-                    # Fallback: just use name
-                    subject = f"{subject_prefix}: {email_candidate_name}"
+                # Generate subject: "Session Complete" (generic, not interview-specific)
+                subject = "Session Complete"
+                if email_candidate_name != "Unknown":
+                    subject = f"{subject}: {email_candidate_name}"
 
                 logger.info(f"   Subject: {subject}")
 
-                email_interview_type = interview_type if interview_type else "Session"
                 email_transcript = transcript_text if transcript_text else ""
 
                 email_sent = await send_email(
@@ -1439,7 +1389,7 @@ class ProcessTranscriptStep(InterviewStep):
                     subject=subject,
                     body=email_summary,  # Summary text (may have been updated with extracted name)
                     candidate_name=email_candidate_name,
-                    interview_type=email_interview_type,
+                    interview_type="Session",  # Generic "Session" instead of interview_type
                     transcript_text=email_transcript,  # Transcript formatted separately
                     insights=insights,  # Include insights for potential JSON formatting
                     bot_name=bot_name,  # Bot name for transcript formatting
@@ -1495,15 +1445,12 @@ class ProcessTranscriptStep(InterviewStep):
                     logger.info("✅ Updated meeting_status to 'completed'")
 
                 # Merge in any existing session_data fields that might not be in thread_data yet
-                # (like candidate_name, email_results_to, etc.)
+                # (like email, email_results_to, etc.)
                 for key in [
-                    "candidate_name",
-                    "candidate_email",
+                    "email",
                     "email_results_to",
                     "webhook_callback_url",
-                    "interview_type",
-                    "position",
-                    "interviewer_context",
+                    "provider",
                     "analysis_prompt",
                     "summary_format_prompt",
                     "bot_enabled",

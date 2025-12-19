@@ -193,24 +193,25 @@ class BotConfig(BaseModel):
 
     bot_prompt: str
     name: str = "PailBot"
-    video_mode: str = "animated"  # "static" or "animated"
-    static_image: str = "robot01.png"
+    video_mode: str | None = (
+        "animated"  # "static" or "animated" (optional, defaults to "animated")
+    )
+    static_image: str | None = None  # Only used when video_mode="static"
 
 
 class BotJoinRequest(BaseModel):
     """Request to start a bot in an existing room."""
 
+    provider: str = (
+        "daily"  # Provider (default: "daily" for future multi-provider support)
+    )
     room_url: str  # Full Daily.co room URL
     token: str | None = None  # Optional meeting token
     bot_config: BotConfig
     process_insights: bool = True  # Whether to extract insights after bot finishes
 
-    # Optional: Candidate/interview configuration
-    candidate_name: str | None = None  # Candidate/participant name
-    candidate_email: str | None = None  # Email to send results to
-    interview_type: str | None = None  # Type of interview (e.g., "Technical Interview")
-    position: str | None = None  # Job position being interviewed for
-    interviewer_context: str | None = None  # Context about the interviewer/interview
+    # Optional: Email and processing configuration
+    email: str | None = None  # Email to send results to (renamed from candidate_email)
     analysis_prompt: str | None = None  # Custom prompt for AI analysis
     summary_format_prompt: str | None = None  # Custom prompt for summary formatting
     webhook_callback_url: str | None = None  # Webhook URL to send results to
@@ -362,13 +363,12 @@ async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinRes
                 "bot_id": bot_id,  # bot_id is defined above (line 310)
                 # API key ID for user attribution
                 "unkey_key_id": unkey_key_id,
-                # Candidate/interview configuration
-                "candidate_name": request.candidate_name,
-                "candidate_email": request.candidate_email,
-                "email_results_to": request.candidate_email,  # Use candidate_email as email_results_to
-                "interview_type": request.interview_type,
-                "position": request.position,
-                "interviewer_context": request.interviewer_context,
+                # Provider support (default: "daily")
+                "provider": request.provider,
+                # Email configuration (renamed from candidate_email)
+                "email": request.email,
+                "email_results_to": request.email,  # Use email as email_results_to
+                # Processing configuration
                 "analysis_prompt": request.analysis_prompt,
                 "summary_format_prompt": request.summary_format_prompt,
                 "webhook_callback_url": request.webhook_callback_url,
@@ -394,12 +394,25 @@ async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinRes
             )
 
         # Convert bot_config to dictionary format expected by bot_service
+        # Default video_mode to "animated" if not provided
+        video_mode = request.bot_config.video_mode or "animated"
+
+        # Validate static_image is provided when video_mode="static"
+        if video_mode == "static" and not request.bot_config.static_image:
+            raise HTTPException(
+                status_code=400,
+                detail="static_image is required when video_mode='static'",
+            )
+
         bot_config_dict = {
             "bot_prompt": request.bot_config.bot_prompt,
             "name": request.bot_config.name,
-            "video_mode": request.bot_config.video_mode,
-            "static_image": request.bot_config.static_image,
+            "video_mode": video_mode,
         }
+
+        # Only include static_image when video_mode="static"
+        if video_mode == "static" and request.bot_config.static_image:
+            bot_config_dict["static_image"] = request.bot_config.static_image
 
         # Create bot session record in Supabase database
         bot_session_data = {

@@ -66,6 +66,12 @@
                     "description": "Optional meeting token for private rooms",
                     "nullable": true
                   },
+                  "provider": {
+                    "type": "string",
+                    "description": "Provider (default: 'daily' for future multi-provider support)",
+                    "default": "daily",
+                    "example": "daily"
+                  },
                   "bot_config": {
                     "type": "object",
                     "required": ["bot_prompt"],
@@ -83,15 +89,15 @@
                       },
                       "video_mode": {
                         "type": "string",
-                        "description": "Video mode: 'static' or 'animated'",
+                        "description": "Video mode: 'static' or 'animated' (optional, default: 'animated')",
                         "enum": ["static", "animated"],
                         "default": "animated",
                         "example": "animated"
                       },
                       "static_image": {
                         "type": "string",
-                        "description": "Image filename for static mode (default: robot01.png)",
-                        "default": "robot01.png",
+                        "description": "Image filename for static mode (required when video_mode='static', optional otherwise)",
+                        "nullable": true,
                         "example": "robot01.png"
                       }
                     }
@@ -102,30 +108,9 @@
                     "default": true,
                     "example": true
                   },
-                  "candidate_name": {
-                    "type": "string",
-                    "description": "Candidate/participant name (optional)",
-                    "nullable": true
-                  },
-                  "candidate_email": {
+                  "email": {
                     "type": "string",
                     "description": "Email to send results to (optional)",
-                    "nullable": true
-                  },
-                  "interview_type": {
-                    "type": "string",
-                    "description": "Type of interview (optional)",
-                    "nullable": true,
-                    "example": "Technical Interview"
-                  },
-                  "position": {
-                    "type": "string",
-                    "description": "Job position being interviewed for (optional)",
-                    "nullable": true
-                  },
-                  "interviewer_context": {
-                    "type": "string",
-                    "description": "Context about the interviewer/interview (optional)",
                     "nullable": true
                   },
                   "analysis_prompt": {
@@ -146,14 +131,15 @@
                 }
               },
               "example": {
+                "provider": "daily",
                 "room_url": "https://your-domain.daily.co/your-room",
                 "bot_config": {
                   "bot_prompt": "You are conducting a technical interview.",
                   "name": "InterviewBot",
-                  "video_mode": "animated",
-                  "static_image": "robot01.png"
+                  "video_mode": "animated"
                 },
-                "process_insights": true
+                "process_insights": true,
+                "email": "user@example.com"
               }
             }
           }

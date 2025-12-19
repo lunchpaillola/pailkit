@@ -92,9 +92,7 @@ async def start_bot(
     room_url: str,
     token: str = None,
     bot_prompt: str = None,
-    candidate_name: str = None,
-    candidate_email: str = None,
-    interview_type: str = None,
+    email: str = None,
     analysis_prompt: str = None,
     webhook_url: str = None,
 ) -> dict:
@@ -128,23 +126,19 @@ Guidelines:
         "bot_prompt": bot_prompt,
         "name": "InterviewBot",
         "video_mode": "animated",
-        "static_image": "robot01.png",
     }
 
     payload = {
+        "provider": "daily",
         "room_url": room_url,
         "token": token,
         "bot_config": bot_config,
         "process_insights": True,  # Enable automatic insight extraction
     }
 
-    # Add optional candidate/interview configuration to payload
-    if candidate_name:
-        payload["candidate_name"] = candidate_name
-    if candidate_email:
-        payload["candidate_email"] = candidate_email
-    if interview_type:
-        payload["interview_type"] = interview_type
+    # Add optional email and processing configuration to payload
+    if email:
+        payload["email"] = email
     if analysis_prompt:
         payload["analysis_prompt"] = analysis_prompt
     if webhook_url:
@@ -195,11 +189,9 @@ async def main():
 
     # Get optional configuration for interview context (like create_room_with_bot.py)
     test_email = os.getenv("TEST_EMAIL", "test@example.com")
-    test_name = os.getenv("TEST_NAME", "Alex Johnson")
     test_webhook_site = os.getenv(
         "TEST_WEBHOOK_SITE", "https://webhook.site/38c8fcd9-00e6-48d2-a169-32856a7e76fe"
     )
-    interview_type = os.getenv("INTERVIEW_TYPE", "Technical Interview")
 
     if not test_room_url:
         print("❌ Missing required: TEST_ROOM_URL")
@@ -221,11 +213,9 @@ async def main():
     print(f"   Room Name: {room_name}")
     print(f"   Room URL: {room_url}\n")
 
-    # Show candidate info (like create_room_with_bot.py)
-    print("👤 Candidate Information:")
-    print(f"   Name: {test_name}")
-    print(f"   Email: {test_email}")
-    print(f"   Interview Type: {interview_type}\n")
+    # Show email info
+    print("📧 Email Configuration:")
+    print(f"   Email: {test_email}\n")
 
     # Step 2: Start bot
     print(f"{'='*80}")
@@ -278,9 +268,7 @@ Guidelines:
             room_url,
             token=test_room_token,  # Pass token if provided
             bot_prompt=bot_prompt,
-            candidate_name=test_name,
-            candidate_email=test_email,
-            interview_type=interview_type,
+            email=test_email,
             analysis_prompt=analysis_prompt,
             webhook_url=test_webhook_site,
         )
