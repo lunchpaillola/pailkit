@@ -36,7 +36,7 @@ psycopg[binary,pool]>=3.1.0
 # LangGraph PostgreSQL checkpointer (async support)
 langgraph-checkpoint-postgres>=0.1.0
 
-# HTTP client for Fly.io API calls (synchronous requests)
+# HTTP client for Fly.io API calls (async httpx is used, requests kept for compatibility)
 requests>=2.31.0
 
 # Development dependencies
