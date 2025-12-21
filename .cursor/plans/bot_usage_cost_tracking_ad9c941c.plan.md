@@ -94,4 +94,3 @@ Add cost category for insights tracking:
 ## Future Enhancements (Not in this plan)
 
 - TTS cost tracking (currently commented out in `metrics_processor.py`)
-- STT (Deepgram) cost tracking

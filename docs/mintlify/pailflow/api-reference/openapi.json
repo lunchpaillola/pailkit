@@ -79,13 +79,13 @@
                       "bot_prompt": {
                         "type": "string",
                         "description": "The prompt that defines the bot's behavior",
-                        "example": "You are conducting a technical interview."
+                        "example": "You are a helpful AI assistant."
                       },
                       "name": {
                         "type": "string",
                         "description": "Bot name (default: PailBot)",
                         "default": "PailBot",
-                        "example": "InterviewBot"
+                        "example": "MeetingBot"
                       },
                       "video_mode": {
                         "type": "string",
@@ -134,8 +134,8 @@
                 "provider": "daily",
                 "room_url": "https://your-domain.daily.co/your-room",
                 "bot_config": {
-                  "bot_prompt": "You are conducting a technical interview.",
-                  "name": "InterviewBot",
+                  "bot_prompt": "You are a helpful AI assistant.",
+                  "name": "MeetingBot",
                   "video_mode": "animated"
                 },
                 "process_insights": true,
@@ -315,12 +315,12 @@
                       "transcript": "Full transcript text here...",
                       "qa_pairs": [
                         {
-                          "question": "What is your experience with Python?",
-                          "answer": "I have 5 years of experience..."
+                          "question": "What was discussed in the meeting?",
+                          "answer": "The team discussed project timelines and deliverables..."
                         }
                       ],
                       "insights": {
-                        "summary": "Candidate demonstrated strong technical skills..."
+                        "summary": "Meeting covered key project milestones and action items..."
                       }
                     }
                   }
