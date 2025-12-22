@@ -22,6 +22,7 @@ if str(project_root) not in sys.path:
 
 from dotenv import load_dotenv  # noqa: E402
 from fastapi import (  # noqa: E402
+    APIRouter,
     BackgroundTasks,
     FastAPI,
     HTTPException,
@@ -32,6 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse, Response  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 from shared.auth import UnkeyAuthMiddleware  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 
 # Setup logging first so we can use logger
@@ -55,7 +57,7 @@ else:
 app = FastAPI(
     title="PailFlow API",
     description="Bot API for joining bots to Daily.co rooms",
-    version="0.1.0",
+    version="1.0.0",
 )
 
 app.add_middleware(
@@ -67,6 +69,31 @@ app.add_middleware(
 )
 
 app.add_middleware(UnkeyAuthMiddleware)
+
+
+class VersionHeaderMiddleware(BaseHTTPMiddleware):
+    """Add API version header to responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Add version header for versioned endpoints
+        if request.url.path.startswith("/v1/"):
+            response.headers["X-API-Version"] = "v1"
+        elif request.url.path.startswith("/v2/"):
+            response.headers["X-API-Version"] = "v2"
+        else:
+            # Unversioned endpoints (except health, webhooks, meet, favicon)
+            if not request.url.path.startswith(
+                ("/health", "/webhooks", "/meet", "/favicon")
+            ):
+                response.headers["X-API-Version"] = "unversioned"
+                response.headers["X-API-Deprecated"] = "true"
+
+        return response
+
+
+app.add_middleware(VersionHeaderMiddleware)
 
 
 # Shared Business Logic
@@ -180,6 +207,15 @@ async def health_check() -> dict[str, str]:
 # ============================================================================
 # Simple API for joining bots to existing Daily rooms, transcribing, and processing results
 
+# ============================================================================
+# v1 API Router
+# ============================================================================
+v1_router = APIRouter(
+    prefix="/v1",
+    tags=["v1"],
+    responses={404: {"description": "Not found"}},
+)
+
 import uuid  # noqa: E402
 from datetime import datetime  # noqa: E402
 
@@ -193,24 +229,25 @@ class BotConfig(BaseModel):
 
     bot_prompt: str
     name: str = "PailBot"
-    video_mode: str = "animated"  # "static" or "animated"
-    static_image: str = "robot01.png"
+    video_mode: str | None = (
+        "animated"  # "static" or "animated" (optional, defaults to "animated")
+    )
+    static_image: str | None = None  # Only used when video_mode="static"
 
 
 class BotJoinRequest(BaseModel):
     """Request to start a bot in an existing room."""
 
+    provider: str = (
+        "daily"  # Provider (default: "daily" for future multi-provider support)
+    )
     room_url: str  # Full Daily.co room URL
     token: str | None = None  # Optional meeting token
     bot_config: BotConfig
     process_insights: bool = True  # Whether to extract insights after bot finishes
 
-    # Optional: Candidate/interview configuration
-    candidate_name: str | None = None  # Candidate/participant name
-    candidate_email: str | None = None  # Email to send results to
-    interview_type: str | None = None  # Type of interview (e.g., "Technical Interview")
-    position: str | None = None  # Job position being interviewed for
-    interviewer_context: str | None = None  # Context about the interviewer/interview
+    # Optional: Email and processing configuration
+    email: str | None = None  # Email to send results to (renamed from candidate_email)
     analysis_prompt: str | None = None  # Custom prompt for AI analysis
     summary_format_prompt: str | None = None  # Custom prompt for summary formatting
     webhook_callback_url: str | None = None  # Webhook URL to send results to
@@ -238,10 +275,12 @@ class BotStatusResponse(BaseModel):
     error: str | None = None
 
 
-@app.post("/api/bot/join", response_model=BotJoinResponse)
-async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinResponse:
+@v1_router.post("/api/bot/join", response_model=BotJoinResponse)
+async def join_bot_v1(
+    request: BotJoinRequest, http_request: Request
+) -> BotJoinResponse:
     """
-    Start a bot in an existing Daily room using the BotCallWorkflow.
+    Start a bot in an existing Daily room using the BotCallWorkflow (v1 API).
 
     **Simple Explanation:**
     This endpoint starts an AI bot that will join an existing Daily.co video room.
@@ -281,7 +320,9 @@ async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinRes
     }
     ```
 
-    The bot runs in the background. Use GET /api/bot/{bot_id}/status to check progress.
+    The bot runs in the background. Use GET /v1/api/bot/{bot_id}/status to check progress.
+
+    Use: POST /v1/api/bot/join
     """
     try:
         # Check credits before processing
@@ -362,13 +403,12 @@ async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinRes
                 "bot_id": bot_id,  # bot_id is defined above (line 310)
                 # API key ID for user attribution
                 "unkey_key_id": unkey_key_id,
-                # Candidate/interview configuration
-                "candidate_name": request.candidate_name,
-                "candidate_email": request.candidate_email,
-                "email_results_to": request.candidate_email,  # Use candidate_email as email_results_to
-                "interview_type": request.interview_type,
-                "position": request.position,
-                "interviewer_context": request.interviewer_context,
+                # Provider support (default: "daily")
+                "provider": request.provider,
+                # Email configuration (renamed from candidate_email)
+                "email": request.email,
+                "email_results_to": request.email,  # Use email as email_results_to
+                # Processing configuration
                 "analysis_prompt": request.analysis_prompt,
                 "summary_format_prompt": request.summary_format_prompt,
                 "webhook_callback_url": request.webhook_callback_url,
@@ -394,12 +434,25 @@ async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinRes
             )
 
         # Convert bot_config to dictionary format expected by bot_service
+        # Default video_mode to "animated" if not provided
+        video_mode = request.bot_config.video_mode or "animated"
+
+        # Validate static_image is provided when video_mode="static"
+        if video_mode == "static" and not request.bot_config.static_image:
+            raise HTTPException(
+                status_code=400,
+                detail="static_image is required when video_mode='static'",
+            )
+
         bot_config_dict = {
             "bot_prompt": request.bot_config.bot_prompt,
             "name": request.bot_config.name,
-            "video_mode": request.bot_config.video_mode,
-            "static_image": request.bot_config.static_image,
+            "video_mode": video_mode,
         }
+
+        # Only include static_image when video_mode="static"
+        if video_mode == "static" and request.bot_config.static_image:
+            bot_config_dict["static_image"] = request.bot_config.static_image
 
         # Create bot session record in Supabase database
         bot_session_data = {
@@ -481,13 +534,13 @@ async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinRes
         raise HTTPException(status_code=500, detail=f"Error starting bot: {str(e)}")
 
 
-@app.get("/api/bot/{bot_id}/status", response_model=BotStatusResponse)
-async def get_bot_status_by_id(bot_id: str) -> BotStatusResponse:
+@v1_router.get("/api/bot/{bot_id}/status", response_model=BotStatusResponse)
+async def get_bot_status_by_id_v1(bot_id: str) -> BotStatusResponse:
     """
-    Get the status and results of a bot session.
+    Get the status and results of a bot session (v1 API).
 
     **Simple Explanation:**
-    This endpoint lets you check on a bot that was started via POST /api/bot/join.
+    This endpoint lets you check on a bot that was started via POST /v1/api/bot/join.
     It retrieves the bot session from the Supabase database and returns:
     - Current status (running, completed, or failed)
     - When it started and finished
@@ -516,6 +569,8 @@ async def get_bot_status_by_id(bot_id: str) -> BotStatusResponse:
       "insights": {...}
     }
     ```
+
+    Use: GET /v1/api/bot/{bot_id}/status
     """
     # Get bot session from Supabase database
     session = get_bot_session(bot_id)
@@ -577,12 +632,14 @@ async def get_bot_status_by_id(bot_id: str) -> BotStatusResponse:
     )
 
 
-@app.get("/bots/status")
-async def get_bot_status() -> dict[str, Any]:
+@v1_router.get("/bots/status")
+async def get_bot_status_v1() -> dict[str, Any]:
     """
-    Get status of all active bots.
+    Get status of all active bots (v1 API).
 
     Useful for monitoring and detecting long-running bots.
+
+    Use: GET /v1/bots/status
     """
     from flow.steps.agent_call import bot_service
 
@@ -613,13 +670,15 @@ async def get_bot_status() -> dict[str, Any]:
     }
 
 
-@app.post("/bots/cleanup")
-async def cleanup_bots(max_hours: float = 2.0) -> dict[str, Any]:
+@v1_router.post("/bots/cleanup")
+async def cleanup_bots_v1(max_hours: float = 2.0) -> dict[str, Any]:
     """
-    Manually trigger cleanup of long-running bots.
+    Manually trigger cleanup of long-running bots (v1 API).
 
     Args:
         max_hours: Stop bots running longer than this (default: 2 hours)
+
+    Use: POST /v1/bots/cleanup
     """
     from flow.steps.agent_call import bot_service
 
@@ -628,12 +687,14 @@ async def cleanup_bots(max_hours: float = 2.0) -> dict[str, Any]:
     return {"status": "success", "bots_stopped": stopped_count, "max_hours": max_hours}
 
 
-@app.post("/bots/stop/{room_name}")
-async def stop_bot_for_room(room_name: str) -> dict[str, Any]:
+@v1_router.post("/bots/stop/{room_name}")
+async def stop_bot_for_room_v1(room_name: str) -> dict[str, Any]:
     """
-    Stop all bots for a specific room.
+    Stop all bots for a specific room (v1 API).
 
     Useful for cleaning up duplicate bots or stopping bots manually.
+
+    Use: POST /v1/bots/stop/{room_name}
     """
     from flow.steps.agent_call import bot_service
 
@@ -648,6 +709,68 @@ async def stop_bot_for_room(room_name: str) -> dict[str, Any]:
             else f"No bot found for room {room_name}"
         ),
     }
+
+
+# Include v1 router
+app.include_router(v1_router)
+
+
+# ============================================================================
+# Unversioned Endpoints (Backward Compatibility - Deprecated)
+# ============================================================================
+# These keep old URLs working during transition period
+
+
+@app.post("/api/bot/join", response_model=BotJoinResponse)
+async def join_bot(request: BotJoinRequest, http_request: Request) -> BotJoinResponse:
+    """
+    Start a bot (unversioned - deprecated).
+
+    ⚠️ DEPRECATED: Use POST /v1/api/bot/join instead.
+    This endpoint will be removed on 2025-07-01.
+    """
+    # Simply call the v1 handler
+    return await join_bot_v1(request, http_request)
+
+
+@app.get("/api/bot/{bot_id}/status", response_model=BotStatusResponse)
+async def get_bot_status_by_id(bot_id: str) -> BotStatusResponse:
+    """
+    Get bot status (unversioned - deprecated).
+
+    ⚠️ DEPRECATED: Use GET /v1/api/bot/{bot_id}/status instead.
+    """
+    return await get_bot_status_by_id_v1(bot_id)
+
+
+@app.get("/bots/status")
+async def get_bot_status() -> dict[str, Any]:
+    """
+    Get all bots status (unversioned - deprecated).
+
+    ⚠️ DEPRECATED: Use GET /v1/bots/status instead.
+    """
+    return await get_bot_status_v1()
+
+
+@app.post("/bots/cleanup")
+async def cleanup_bots(max_hours: float = 2.0) -> dict[str, Any]:
+    """
+    Cleanup bots (unversioned - deprecated).
+
+    ⚠️ DEPRECATED: Use POST /v1/bots/cleanup instead.
+    """
+    return await cleanup_bots_v1(max_hours)
+
+
+@app.post("/bots/stop/{room_name}")
+async def stop_bot_for_room(room_name: str) -> dict[str, Any]:
+    """
+    Stop bot (unversioned - deprecated).
+
+    ⚠️ DEPRECATED: Use POST /v1/bots/stop/{room_name} instead.
+    """
+    return await stop_bot_for_room_v1(room_name)
 
 
 @app.get("/favicon.ico")

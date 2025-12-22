@@ -9,7 +9,7 @@ This guide will help you get started with the PailFlow API to add AI bots to you
 PailFlow is an API that allows you to add AI-powered bots to your Daily.co video rooms. These bots can:
 
 - Join video meetings and interact with participants
-- Conduct interviews, take notes, or provide assistance
+- Take notes, provide assistance, or facilitate conversations
 - Automatically transcribe conversations
 - Extract insights, Q&A pairs, and summaries from meetings
 - Send results via email or webhook callbacks
@@ -38,7 +38,7 @@ Before making API calls, you'll need to add credits to your account. Each bot ca
 Once you have your API key and credits, you can start making API calls. Here's a simple example:
 
 ```bash
-curl -X POST https://api.pailflow.com/api/bot/join \
+curl -X POST https://api.pailflow.com/v1/api/bot/join \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -59,12 +59,12 @@ Here's what you can do with the PailFlow API:
 
 <CardGroup cols={2}>
   <Card
-    title="AI Interview Bots"
+    title="AI Meeting Bots"
     icon="user-check"
     href="/pailflow/api-reference/introduction"
   >
-    Create AI-powered interview bots that can conduct technical interviews, ask
-    questions, and provide feedback.
+    Create AI-powered bots that can join meetings, facilitate discussions, ask
+    questions, and provide real-time assistance.
   </Card>
   <Card
     title="Meeting Assistants"
@@ -79,5 +79,5 @@ Here's what you can do with the PailFlow API:
 ## Next Steps
 
 - Explore the [API Reference](/pailflow/api-reference/introduction) to see all available endpoints
-- Start a bot using the [POST /api/bot/join](/pailflow/api-reference/introduction) endpoint
-- Check bot status and retrieve results with [GET /api/bot/{bot_id}/status](/pailflow/api-reference/introduction)
+- Start a bot using the [POST /v1/api/bot/join](/pailflow/api-reference/introduction) endpoint
+- Check bot status and retrieve results with [GET /v1/api/bot/{bot_id}/status](/pailflow/api-reference/introduction)

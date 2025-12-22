@@ -23,7 +23,7 @@
     "build:widgets": "cd widgets && npm run build",
     "test": "npm run test:api",
     "test:api": "cd api && python3.12 -m pytest tests/test_rooms.py -v",
-    "test:flow": "echo 'Flow tests skipped - experimental code'",
+    "test:flow": "cd flow && python3.12 -m pytest tests/ -v -m 'not integration'",
     "test:integration": "cd api && RUN_INTEGRATION_TESTS=true python3.12 -m pytest tests/test_rooms.py -v",
     "typecheck": "npm run typecheck:api && npm run typecheck:flow",
     "typecheck:api": "cd api && python3.12 -m mypy .",

@@ -35,6 +35,8 @@ The `usage_stats` JSONB will store:
 }
 ```
 
+
+
 ## Implementation Steps
 
 ### 1. Update `flow/utils/usage_tracking.py`
@@ -46,9 +48,7 @@ Add `cost_category` parameter to `update_workflow_usage_cost`:
 - Always update `total_cost_usd` (sum of all categories)
 - Add debug logging for category-specific costs
 
-**File**: `flow/utils/usage_tracking.py`
-
-**Function**: `update_workflow_usage_cost`
+**File**: `flow/utils/usage_tracking.py`**Function**: `update_workflow_usage_cost`
 
 ### 2. Update `flow/steps/agent_call/bot/metrics_processor.py`
 
@@ -61,9 +61,7 @@ Fix LLM cost calculation and database tracking:
 - Extract model name from `LLMUsageMetricsData` (check `model` attribute)
 - Keep PostHog tracking via `capture_llm_generation`
 
-**File**: `flow/steps/agent_call/bot/metrics_processor.py`
-
-**Method**: `_process_llm_metrics`
+**File**: `flow/steps/agent_call/bot/metrics_processor.py`**Method**: `_process_llm_metrics`
 
 ### 3. Integrate UsageMetricsProcessor into Bot Pipeline
 
@@ -74,9 +72,7 @@ Add `UsageMetricsProcessor` to the Pipecat pipeline:
 - Insert processor after `llm` service in `pipeline_components` list (before `tts`)
 - This ensures it captures all LLM usage metrics from the bot
 
-**File**: `flow/steps/agent_call/bot/bot_executor.py`
-
-**Method**: `run` (around line 258-270)
+**File**: `flow/steps/agent_call/bot/bot_executor.py`**Method**: `run` (around line 258-270)
 
 ### 4. Update `flow/steps/agent_call/steps/extract_insights.py`
 
@@ -85,9 +81,7 @@ Add cost category for insights tracking:
 - Update `update_workflow_usage_cost` call to include `cost_category="insights"`
 - This ensures insights costs are tracked separately from bot costs
 
-**File**: `flow/steps/agent_call/steps/extract_insights.py`
-
-**Location**: Around line 343-345
+**File**: `flow/steps/agent_call/steps/extract_insights.py`**Location**: Around line 343-345
 
 ## Testing Considerations
 
@@ -100,5 +94,3 @@ Add cost category for insights tracking:
 ## Future Enhancements (Not in this plan)
 
 - TTS cost tracking (currently commented out in `metrics_processor.py`)
-- STT (Deepgram) cost tracking
-- Per-minute runtime tracking

@@ -28,13 +28,11 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from supabase import Client
 
-# Fields that should be encrypted (sensitive candidate data)
+# Fields that should be encrypted (sensitive data)
 ENCRYPTED_FIELDS = {
-    "candidate_email",
-    "candidate_name",
-    "webhook_callback_url",
+    "email",
     "email_results_to",
-    "interviewer_context",
+    "webhook_callback_url",
     "transcript_text",
     "candidate_summary",
 }
@@ -490,9 +488,6 @@ def save_session_data(room_name: str, session_data: Dict[str, Any]) -> bool:
             "meeting_status": encrypted_data.get("meeting_status", "in_progress"),
             "meeting_start_time": encrypted_data.get("meeting_start_time"),
             "meeting_end_time": encrypted_data.get("meeting_end_time"),
-            "interview_type": encrypted_data.get("interview_type"),
-            "difficulty_level": encrypted_data.get("difficulty_level"),
-            "position": encrypted_data.get("position"),
             "bot_enabled": encrypted_data.get("bot_enabled", False),
             "waiting_for_meeting_ended": encrypted_data.get(
                 "waiting_for_meeting_ended", False
@@ -507,9 +502,7 @@ def save_session_data(room_name: str, session_data: Dict[str, Any]) -> bool:
             # Encrypted fields
             "webhook_callback_url": encrypted_data.get("webhook_callback_url"),
             "email_results_to": encrypted_data.get("email_results_to"),
-            "candidate_name": encrypted_data.get("candidate_name"),
-            "candidate_email": encrypted_data.get("candidate_email"),
-            "interviewer_context": encrypted_data.get("interviewer_context"),
+            "email": encrypted_data.get("email"),
             "analysis_prompt": encrypted_data.get("analysis_prompt"),
             "summary_format_prompt": encrypted_data.get("summary_format_prompt"),
             "transcript_text": encrypted_data.get("transcript_text"),
@@ -572,9 +565,6 @@ def get_session_data(room_name: str) -> Dict[str, Any] | None:
             "meeting_status": row.get("meeting_status"),
             "meeting_start_time": row.get("meeting_start_time"),
             "meeting_end_time": row.get("meeting_end_time"),
-            "interview_type": row.get("interview_type"),
-            "difficulty_level": row.get("difficulty_level"),
-            "position": row.get("position"),
             "bot_enabled": row.get("bot_enabled"),
             "waiting_for_meeting_ended": row.get("waiting_for_meeting_ended"),
             "waiting_for_transcript_webhook": row.get("waiting_for_transcript_webhook"),
@@ -585,9 +575,7 @@ def get_session_data(room_name: str) -> Dict[str, Any] | None:
             # Encrypted fields (will be decrypted below)
             "webhook_callback_url": row.get("webhook_callback_url"),
             "email_results_to": row.get("email_results_to"),
-            "candidate_name": row.get("candidate_name"),
-            "candidate_email": row.get("candidate_email"),
-            "interviewer_context": row.get("interviewer_context"),
+            "email": row.get("email"),
             "analysis_prompt": row.get("analysis_prompt"),
             "summary_format_prompt": row.get("summary_format_prompt"),
             "transcript_text": row.get("transcript_text"),
@@ -907,7 +895,7 @@ def save_workflow_thread_data(
         thread_data: Dictionary containing workflow thread information:
             - room_name: Room name this workflow is using
             - room_url: Full Daily.co room URL
-            - candidate_name, candidate_email: User/candidate info (encrypted)
+            - email: Email to send results to (encrypted)
             - transcript_text: Transcript (encrypted)
             - transcript_processed, email_sent, webhook_sent: Processing state
             - candidate_summary: Summary (encrypted)
@@ -934,12 +922,8 @@ def save_workflow_thread_data(
             "room_url": encrypted_data.get("room_url"),
             "room_id": encrypted_data.get("room_id"),
             "session_id": encrypted_data.get("session_id"),
-            "candidate_name": encrypted_data.get("candidate_name"),
-            "candidate_email": encrypted_data.get("candidate_email"),
-            "interview_type": encrypted_data.get("interview_type"),
-            "position": encrypted_data.get("position"),
-            "difficulty_level": encrypted_data.get("difficulty_level"),
-            "interviewer_context": encrypted_data.get("interviewer_context"),
+            "email": encrypted_data.get("email"),
+            "provider": encrypted_data.get("provider"),
             "analysis_prompt": encrypted_data.get("analysis_prompt"),
             "summary_format_prompt": encrypted_data.get("summary_format_prompt"),
             "bot_enabled": encrypted_data.get("bot_enabled", False),
@@ -1046,12 +1030,8 @@ def get_workflow_thread_data(workflow_thread_id: str) -> Dict[str, Any] | None:
             "room_url": row.get("room_url"),
             "room_id": row.get("room_id"),
             "session_id": row.get("session_id"),
-            "candidate_name": row.get("candidate_name"),
-            "candidate_email": row.get("candidate_email"),
-            "interview_type": row.get("interview_type"),
-            "position": row.get("position"),
-            "difficulty_level": row.get("difficulty_level"),
-            "interviewer_context": row.get("interviewer_context"),
+            "email": row.get("email"),
+            "provider": row.get("provider"),
             "analysis_prompt": row.get("analysis_prompt"),
             "summary_format_prompt": row.get("summary_format_prompt"),
             "bot_enabled": row.get("bot_enabled"),
@@ -1153,12 +1133,8 @@ def get_workflow_threads_by_room_name(room_name: str) -> list[Dict[str, Any]]:
                 "room_url": row.get("room_url"),
                 "room_id": row.get("room_id"),
                 "session_id": row.get("session_id"),
-                "candidate_name": row.get("candidate_name"),
-                "candidate_email": row.get("candidate_email"),
-                "interview_type": row.get("interview_type"),
-                "position": row.get("position"),
-                "difficulty_level": row.get("difficulty_level"),
-                "interviewer_context": row.get("interviewer_context"),
+                "email": row.get("email"),
+                "provider": row.get("provider"),
                 "analysis_prompt": row.get("analysis_prompt"),
                 "summary_format_prompt": row.get("summary_format_prompt"),
                 "bot_enabled": row.get("bot_enabled"),
@@ -1405,3 +1381,203 @@ def check_user_credits(
         )
 
     return (has_credits, balance)
+
+
+def create_bot_usage_transaction(
+    workflow_thread_id: str, bot_duration: int
+) -> tuple[str, str] | None:
+    """
+    Create a usage transaction record when a bot finishes.
+
+    **Simple Explanation:**
+    This function creates a transaction record in the usage_transactions table
+    when a bot finishes. It calculates the amount charged to the user based on
+    duration and BOT_CALL_RATE_PER_MINUTE, and records the actual LPL cost
+    from usage_stats for margin analysis.
+
+    Args:
+        workflow_thread_id: Unique workflow thread identifier
+        bot_duration: Bot duration in seconds
+
+    Returns:
+        Tuple of (transaction_id, user_id) if successful, None on failure
+    """
+    if not workflow_thread_id or bot_duration <= 0:
+        logger.warning(
+            f"⚠️ Cannot create transaction: workflow_thread_id={workflow_thread_id}, bot_duration={bot_duration}"
+        )
+        return None
+
+    try:
+        # Get workflow thread data to access unkey_key_id and usage_stats
+        thread_data = get_workflow_thread_data(workflow_thread_id)
+        if not thread_data:
+            logger.warning(
+                f"⚠️ Workflow thread not found: {workflow_thread_id} - cannot create transaction"
+            )
+            return None
+
+        # Get unkey_key_id to look up user
+        unkey_key_id = thread_data.get("unkey_key_id")
+        if not unkey_key_id:
+            logger.warning(
+                f"⚠️ No unkey_key_id found for workflow_thread_id {workflow_thread_id} - cannot create transaction"
+            )
+            return None
+
+        # Look up user by unkey_id
+        user = get_user_by_unkey_id(unkey_key_id)
+        if not user:
+            logger.warning(
+                f"⚠️ User not found for unkeyId: {unkey_key_id} - cannot create transaction"
+            )
+            return None
+
+        user_id = user.get("id")
+        if not user_id:
+            logger.warning(
+                f"⚠️ User found but missing id for unkeyId: {unkey_key_id} - cannot create transaction"
+            )
+            return None
+
+        # Calculate amount charged to user (negative for usage_burn since it's a deduction)
+        from flow.utils.pricing import BOT_CALL_RATE_PER_MINUTE
+
+        duration_minutes = bot_duration / 60.0
+        amount = round(duration_minutes * BOT_CALL_RATE_PER_MINUTE, 2)
+        # Store as negative for usage_burn transactions (deductions)
+        amount = -abs(amount)
+
+        # Get lpl_cost from usage_stats
+        usage_stats = thread_data.get("usage_stats") or {}
+        lpl_cost = usage_stats.get("total_cost_usd", 0.0)
+        if lpl_cost == 0.0:
+            lpl_cost = None  # Store None if 0 to match schema (optional field)
+
+        # Prepare metadata
+        metadata = {
+            "workflow_thread_id": workflow_thread_id,
+            "bot_id": thread_data.get("bot_id"),
+            "room_name": thread_data.get("room_name"),
+        }
+
+        # Create transaction record
+        client = get_supabase_client()
+        if not client:
+            logger.error("❌ Cannot create transaction: Supabase client not available")
+            return None
+
+        transaction_data = {
+            "user_id": user_id,
+            "amount": amount,
+            "type": "usage_burn",  # Must match CHECK constraint
+            "duration": bot_duration,
+            "lpl_cost": lpl_cost,
+            "metadata": metadata,
+        }
+
+        response = client.table("usage_transactions").insert(transaction_data).execute()
+
+        if response.data and len(response.data) > 0:
+            transaction_id = response.data[0].get("id")
+            lpl_cost_display = lpl_cost if lpl_cost is not None else 0.0
+            logger.info(
+                f"✅ Created usage transaction: id={transaction_id}, "
+                f"user_id={user_id}, amount=${amount:.2f} (usage_burn), duration={bot_duration}s, "
+                f"lpl_cost=${lpl_cost_display:.6f}"
+            )
+            return (transaction_id, user_id)
+        else:
+            logger.warning(
+                f"⚠️ Transaction insert returned no data for workflow_thread_id: {workflow_thread_id}"
+            )
+            return None
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error creating usage transaction for {workflow_thread_id}: {e}",
+            exc_info=True,
+        )
+        return None
+
+
+def deduct_user_credits(user_id: str, amount: float) -> bool:
+    """
+    Deduct credits from a user's account.
+
+    **Simple Explanation:**
+    This function updates the user's credit_balance by subtracting the transaction
+    amount. It retrieves the current balance, subtracts the amount, and saves it
+    back to the database.
+
+    Args:
+        user_id: User UUID (string)
+        amount: Amount to deduct (float)
+
+    Returns:
+        True if successful, False on failure
+    """
+    if not user_id or amount <= 0:
+        logger.warning(f"⚠️ Cannot deduct credits: user_id={user_id}, amount={amount}")
+        return False
+
+    try:
+        client = get_supabase_client()
+        if not client:
+            logger.error("❌ Cannot deduct credits: Supabase client not available")
+            return False
+
+        # Get current user record to check balance
+        response = (
+            client.table("users").select("credit_balance").eq("id", user_id).execute()
+        )
+
+        if not response.data or len(response.data) == 0:
+            logger.warning(f"⚠️ User not found: {user_id} - cannot deduct credits")
+            return False
+
+        current_balance = response.data[0].get("credit_balance", 0.0)
+        try:
+            current_balance = float(current_balance)
+        except (ValueError, TypeError):
+            logger.warning(
+                f"⚠️ Invalid credit_balance for user {user_id}: {current_balance}"
+            )
+            return False
+
+        # Calculate new balance
+        new_balance = current_balance - amount
+        if new_balance < 0:
+            logger.warning(
+                f"⚠️ Credit deduction would result in negative balance for user {user_id}: "
+                f"current={current_balance:.2f}, amount={amount:.2f}, new={new_balance:.2f}"
+            )
+            # Still proceed with the deduction (allow negative balances for now)
+
+        # Update credit balance
+        update_response = (
+            client.table("users")
+            .update({"credit_balance": new_balance})
+            .eq("id", user_id)
+            .execute()
+        )
+
+        if update_response.data:
+            logger.info(
+                f"✅ Deducted credits: user_id={user_id}, "
+                f"old_balance=${current_balance:.2f}, amount=${amount:.2f}, "
+                f"new_balance=${new_balance:.2f}"
+            )
+            return True
+        else:
+            logger.warning(
+                f"⚠️ Credit deduction update returned no data for user: {user_id}"
+            )
+            return False
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error deducting credits for user {user_id}: {e}",
+            exc_info=True,
+        )
+        return False
