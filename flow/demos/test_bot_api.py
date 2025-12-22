@@ -7,9 +7,9 @@ Test the new simplified bot API.
 
 This script demonstrates how to use the new simplified bot API:
 1. Uses an existing Daily room (via TEST_ROOM_URL)
-2. Starts a bot via POST /api/bot/join
+2. Starts a bot via POST /v1/api/bot/join
 3. Generates a hosted meeting link automatically
-4. Polls GET /api/bot/{bot_id}/status to check progress
+4. Polls GET /v1/api/bot/{bot_id}/status to check progress
 5. Shows results when complete
 
 **Simple Explanation:**
@@ -99,7 +99,7 @@ async def start_bot(
     """
     Start a bot via the new simplified API.
 
-    Simple Explanation: This calls the POST /api/bot/join endpoint to start a bot
+    Simple Explanation: This calls the POST /v1/api/bot/join endpoint to start a bot
     in the specified room. It returns a bot_id that we can use to check status.
     """
     # Use provided bot_prompt or default
@@ -149,7 +149,7 @@ Guidelines:
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(
-            f"{api_base_url}/api/bot/join",
+            f"{api_base_url}/v1/api/bot/join",
             json=payload,
             headers={"Authorization": f"Bearer {api_key}"},
         )
@@ -163,7 +163,7 @@ async def get_bot_status(api_base_url: str, bot_id: str) -> dict:
     """
     Get bot status via the status endpoint.
 
-    Simple Explanation: This calls GET /api/bot/{bot_id}/status to check
+    Simple Explanation: This calls GET /v1/api/bot/{bot_id}/status to check
     the current status and results of the bot session.
     """
     # Get API key from environment (Unkey PailKit API key)
@@ -171,7 +171,7 @@ async def get_bot_status(api_base_url: str, bot_id: str) -> dict:
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(
-            f"{api_base_url}/api/bot/{bot_id}/status",
+            f"{api_base_url}/v1/api/bot/{bot_id}/status",
             headers={"Authorization": f"Bearer {api_key}"},
         )
         response.raise_for_status()
@@ -344,7 +344,7 @@ Guidelines:
 
     print("💡 Optional: Status Endpoint (for debugging only)")
     print(
-        f"   If you need to check status manually: GET {api_base_url}/api/bot/{bot_id}/status"
+        f"   If you need to check status manually: GET {api_base_url}/v1/api/bot/{bot_id}/status"
     )
     print("   But you don't need to - webhooks/email will notify you automatically!\n")
 
