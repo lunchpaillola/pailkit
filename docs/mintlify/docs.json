@@ -607,5 +607,10 @@
       "github": "https://github.com/lunchpaillola",
       "linkedin": "https://www.linkedin.com/company/lunchpaillabs"
     }
+  },
+  "api": {
+    "playground": {
+      "display": "none"
+    }
   }
 }

@@ -1,12 +1,12 @@
 ---
-description: "Get started with the PailFlow API for adding AI bots to your Daily.co video meetings."
+description: "Get started with the PailFlow API for adding AI bots to your video meetings."
 ---
 
-This guide will help you get started with the PailFlow API to add AI bots to your Daily.co video meetings.
+This guide will help you get started with the PailFlow API to add AI bots to your video meetings.
 
 ## What is PailFlow?
 
-PailFlow is an API that allows you to add AI-powered bots to your Daily.co video rooms. These bots can:
+PailFlow is an API that allows you to add AI-powered bots to your video meetings. These bots can:
 
 - Join video meetings and interact with participants
 - Take notes, provide assistance, or facilitate conversations
@@ -52,32 +52,3 @@ curl -X POST https://api.pailflow.com/v1/api/bot/join \
     "process_insights": true
   }'
 ```
-
-## What Can You Build?
-
-Here's what you can do with the PailFlow API:
-
-<CardGroup cols={2}>
-  <Card
-    title="AI Meeting Bots"
-    icon="user-check"
-    href="/pailflow/api-reference/introduction"
-  >
-    Create AI-powered bots that can join meetings, facilitate discussions, ask
-    questions, and provide real-time assistance.
-  </Card>
-  <Card
-    title="Meeting Assistants"
-    icon="headphones"
-    href="/pailflow/api-reference/introduction"
-  >
-    Add AI assistants to meetings that can take notes, answer questions, and
-    provide real-time support.
-  </Card>
-</CardGroup>
-
-## Next Steps
-
-- Explore the [API Reference](/pailflow/api-reference/introduction) to see all available endpoints
-- Start a bot using the [POST /v1/api/bot/join](/pailflow/api-reference/introduction) endpoint
-- Check bot status and retrieve results with [GET /v1/api/bot/{bot_id}/status](/pailflow/api-reference/introduction)

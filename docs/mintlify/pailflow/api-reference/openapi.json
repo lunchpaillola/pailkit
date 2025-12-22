@@ -2,7 +2,7 @@
   "openapi": "3.0.1",
   "info": {
     "title": "PailFlow API",
-    "description": "API for adding AI bots to Daily.co video meetings",
+    "description": "API for adding AI bots to video meetings",
     "version": "0.1.0"
   },
   "security": [
@@ -45,8 +45,8 @@
   "paths": {
     "/api/bot/join": {
       "post": {
-        "summary": "Start a bot in a Daily.co room",
-        "description": "Start an AI bot that will join an existing Daily.co video room. The bot will transcribe the conversation and can process insights when the meeting ends.",
+        "summary": "Start a bot",
+        "description": "Start an AI bot that will join an existing video meeting room. The bot will transcribe the conversation and can process insights when the meeting ends.",
         "operationId": "joinBot",
         "requestBody": {
           "required": true,
@@ -58,7 +58,7 @@
                 "properties": {
                   "room_url": {
                     "type": "string",
-                    "description": "Full Daily.co room URL (e.g., https://your-domain.daily.co/room-name)",
+                    "description": "Full video meeting room URL (e.g., https://your-domain.daily.co/room-name)",
                     "example": "https://your-domain.daily.co/your-room"
                   },
                   "token": {
