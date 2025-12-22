@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 from typing import Any, Dict, Optional
 
 import httpx
@@ -41,6 +42,65 @@ class FlyMachineSpawner:
         self.fly_app_name = fly_app_name
         self.fly_api_key = fly_api_key
 
+        # Retry configuration (configurable via environment variables)
+        self.max_retries = int(os.getenv("FLY_MACHINE_SPAWN_MAX_RETRIES", "3"))
+        self.initial_retry_delay = float(
+            os.getenv("FLY_MACHINE_SPAWN_INITIAL_DELAY", "2.0")
+        )
+        self.max_retry_delay = float(os.getenv("FLY_MACHINE_SPAWN_MAX_DELAY", "30.0"))
+
+    def _should_retry_error(self, error: Exception) -> bool:
+        """
+        Determine if an error is retryable.
+
+        Transient errors (retryable):
+        - Network timeouts (httpx.TimeoutException)
+        - Connection errors (httpx.RequestError)
+        - Server errors (5xx status codes)
+        - Rate limiting (429 status code)
+
+        Permanent errors (not retryable):
+        - Client errors (400, 401, 403, 404)
+        - Configuration errors (RuntimeError)
+        - Invalid requests
+
+        Args:
+            error: The exception to check
+
+        Returns:
+            True if the error is retryable, False otherwise
+        """
+        # Network/connection errors are always retryable
+        if isinstance(error, (httpx.TimeoutException, httpx.RequestError)):
+            return True
+
+        # RuntimeError (configuration issues) should not be retried
+        if isinstance(error, RuntimeError):
+            return False
+
+        # Check FlyMachineError for status codes
+        if isinstance(error, FlyMachineError):
+            status_code = error.status_code
+            # Retry server errors (5xx) and rate limiting (429)
+            if status_code >= 500 or status_code == 429:
+                return True
+            # Don't retry client errors (4xx, except 429)
+            if 400 <= status_code < 500:
+                return False
+
+        # HTTPStatusError from httpx
+        if isinstance(error, httpx.HTTPStatusError):
+            status_code = error.response.status_code
+            # Retry server errors (5xx) and rate limiting (429)
+            if status_code >= 500 or status_code == 429:
+                return True
+            # Don't retry client errors (4xx, except 429)
+            if 400 <= status_code < 500:
+                return False
+
+        # For unknown errors, be conservative and don't retry
+        return False
+
     async def spawn(
         self,
         room_url: str,
@@ -57,7 +117,7 @@ class FlyMachineSpawner:
             token: Meeting token for authentication
             bot_config: Bot configuration dictionary
             workflow_thread_id: Optional workflow thread ID to associate with this bot session
-            timeout: Optional timeout in seconds for machine startup (default: 60 seconds)
+            timeout: Optional timeout in seconds for machine startup (default: 180 seconds)
 
         Returns:
             Machine ID of the spawned machine
@@ -73,9 +133,10 @@ class FlyMachineSpawner:
                 "Set FLY_API_KEY and FLY_APP_NAME environment variables."
             )
 
-        # Default timeout: 60 seconds
+        # Default timeout: 180 seconds (3 minutes) to allow for image pull and startup
+        # Can be overridden via FLY_MACHINE_STARTUP_TIMEOUT environment variable
         if timeout is None:
-            timeout = float(os.getenv("FLY_MACHINE_STARTUP_TIMEOUT", "60"))
+            timeout = float(os.getenv("FLY_MACHINE_STARTUP_TIMEOUT", "180"))
 
         headers = {
             "Authorization": f"Bearer {self.fly_api_key}",
@@ -83,12 +144,139 @@ class FlyMachineSpawner:
         }
 
         room_name = room_url.split("/")[-1]
-        logger.info(f"🚀 Starting Fly.io machine spawn for room: {room_name}")
+        logger.info(
+            f"🚀 Starting Fly.io machine spawn for room: {room_name} "
+            f"(max retries: {self.max_retries})"
+        )
 
+        last_error = None
+
+        # Retry loop with exponential backoff
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                if attempt > 1:
+                    logger.info(
+                        f"🔄 Retry attempt {attempt}/{self.max_retries} for room: {room_name}"
+                    )
+
+                # Attempt to spawn the machine
+                vm_id = await self._attempt_spawn(
+                    room_url,
+                    token,
+                    bot_config,
+                    workflow_thread_id,
+                    timeout,
+                    headers,
+                    room_name,
+                )
+
+                # Success - return immediately
+                logger.info(
+                    f"✅ Machine spawn succeeded on attempt {attempt} for room: {room_name}"
+                )
+                return vm_id
+
+            except Exception as e:
+                last_error = e
+
+                # Check if error is retryable
+                if not self._should_retry_error(e):
+                    # Non-retryable error - raise immediately
+                    logger.error(
+                        f"❌ Non-retryable error on attempt {attempt}/{self.max_retries} "
+                        f"for room: {room_name}: {e}"
+                    )
+                    raise
+
+                # Retryable error - check if we have retries left
+                if attempt < self.max_retries:
+                    # Calculate exponential backoff with jitter
+                    base_delay = min(
+                        self.initial_retry_delay * (2 ** (attempt - 1)),
+                        self.max_retry_delay,
+                    )
+                    # Add jitter (0-20% of base delay) to prevent thundering herd
+                    jitter = random.uniform(0, base_delay * 0.2)
+                    delay = base_delay + jitter
+
+                    error_type = type(e).__name__
+                    error_msg = str(e)
+                    if isinstance(e, FlyMachineError):
+                        error_msg = f"{e.operation}: {e.message}"
+                        if e.status_code:
+                            error_msg += f" (status: {e.status_code})"
+
+                    logger.warning(
+                        f"⚠️ Retryable error on attempt {attempt}/{self.max_retries} "
+                        f"for room: {room_name}: {error_type} - {error_msg}. "
+                        f"Retrying in {delay:.2f}s..."
+                    )
+
+                    await asyncio.sleep(delay)
+                else:
+                    # All retries exhausted
+                    error_type = type(e).__name__
+                    error_msg = str(e)
+                    if isinstance(e, FlyMachineError):
+                        error_msg = f"{e.operation}: {e.message}"
+                        if e.status_code:
+                            error_msg += f" (status: {e.status_code})"
+
+                    logger.error(
+                        f"❌ All {self.max_retries} retry attempts exhausted for room: {room_name}. "
+                        f"Last error: {error_type} - {error_msg}"
+                    )
+
+        # If we get here, all retries were exhausted
+        # Raise the last error
+        if last_error:
+            raise last_error
+        else:
+            # This shouldn't happen, but just in case
+            raise FlyMachineError(
+                operation="spawn",
+                status_code=0,
+                response_body="",
+                message="All retry attempts exhausted without error",
+            )
+
+    async def _attempt_spawn(
+        self,
+        room_url: str,
+        token: str,
+        bot_config: Dict[str, Any],
+        workflow_thread_id: Optional[str],
+        timeout: float,
+        headers: Dict[str, str],
+        room_name: str,
+    ) -> str:
+        """
+        Attempt to spawn a Fly.io machine (single attempt, no retries).
+
+        This is the core spawn logic extracted for use in the retry loop.
+
+        Args:
+            room_url: Full Daily.co room URL
+            token: Meeting token for authentication
+            bot_config: Bot configuration dictionary
+            workflow_thread_id: Optional workflow thread ID
+            timeout: Timeout in seconds for API requests
+            headers: HTTP headers for Fly API requests
+            room_name: Room name for logging
+
+        Returns:
+            Machine ID of the spawned machine
+
+        Raises:
+            FlyMachineError: If machine spawning fails
+            httpx exceptions: For network/HTTP errors
+        """
         async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 # Get the Docker image from the current app
-                logger.debug("Fetching machine info from Fly API...")
+                logger.info(
+                    "📡 Fetching machine info from Fly API to determine Docker image..."
+                )
                 res = await client.get(
                     f"{self.fly_api_host}/apps/{self.fly_app_name}/machines",
                     headers=headers,
@@ -116,6 +304,9 @@ class FlyMachineSpawner:
 
                 image = machines[0]["config"]["image"]
                 logger.info(f"📦 Using Docker image: {image}")
+                logger.debug(
+                    "   Image will be pulled on machine startup (this may take 1-3 minutes)"
+                )
 
                 # Prepare bot config as JSON for the command
                 bot_config_json = json.dumps(bot_config)
@@ -171,7 +362,10 @@ class FlyMachineSpawner:
                 }
 
                 # Spawn a new machine instance
-                logger.info(f"🔨 Creating Fly.io machine for bot (room: {room_name})")
+                logger.info(
+                    f"🔨 Creating Fly.io machine for bot (room: {room_name})... "
+                    f"This includes image pull and machine initialization."
+                )
                 res = await client.post(
                     f"{self.fly_api_host}/apps/{self.fly_app_name}/machines",
                     headers=headers,
@@ -191,8 +385,16 @@ class FlyMachineSpawner:
                     )
 
                 # Get the machine ID from the response
-                vm_id = res.json()["id"]
-                logger.info(f"✅ Machine created: {vm_id}")
+                machine_data = res.json()
+                vm_id = machine_data["id"]
+                machine_state = machine_data.get("state", "unknown")
+                logger.info(
+                    f"✅ Machine created: {vm_id} (initial state: {machine_state})"
+                )
+                logger.debug(
+                    f"   Machine will now pull image and start (monitored in background, "
+                    f"timeout: {timeout}s)"
+                )
 
                 # Start background task to monitor machine startup (non-blocking)
                 # This allows the API to return immediately while the machine starts in the background
@@ -266,29 +468,122 @@ class FlyMachineSpawner:
             timeout: Timeout in seconds for machine startup
             headers: HTTP headers for Fly API requests
         """
+        import time
+
+        start_time = time.time()
+
         try:
             logger.info(
-                f"⏳ [Background] Monitoring machine {vm_id} startup (room: {room_name}, timeout: {timeout}s)..."
+                f"⏳ [Background] Monitoring machine {vm_id} startup "
+                f"(room: {room_name}, timeout: {timeout}s)..."
             )
 
             # Create a new client for the background task
             async with httpx.AsyncClient(timeout=timeout) as client:
+                # Poll machine status periodically to show progress
+                poll_interval = 10.0  # Check status every 10 seconds
+                last_state = None
+                last_log_time = start_time
+
                 try:
                     # Wait for the machine to enter the started state
-                    res = await asyncio.wait_for(
-                        client.get(
-                            f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}/wait?state=started",
-                            headers=headers,
-                        ),
-                        timeout=timeout,
+                    # Use wait endpoint which blocks until state is reached
+                    logger.debug(
+                        f"[Background] Waiting for machine {vm_id} to reach 'started' state..."
                     )
+
+                    # Start polling loop to show progress
+                    while True:
+                        elapsed = time.time() - start_time
+                        if elapsed >= timeout:
+                            break
+
+                        # Check current machine state
+                        try:
+                            status_res = await client.get(
+                                f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}",
+                                headers=headers,
+                            )
+                            if status_res.status_code == 200:
+                                machine_data = status_res.json()
+                                current_state = machine_data.get("state", "unknown")
+
+                                # Log state transitions
+                                if current_state != last_state:
+                                    elapsed_str = f"{elapsed:.1f}s"
+                                    logger.info(
+                                        f"🔄 [Background] Machine {vm_id} state transition: "
+                                        f"{last_state or 'initial'} → {current_state} "
+                                        f"(elapsed: {elapsed_str}, room: {room_name})"
+                                    )
+                                    last_state = current_state
+
+                                    # Log additional context for specific states
+                                    if current_state == "starting":
+                                        logger.debug(
+                                            "   [Background] Machine is starting (pulling image, initializing)..."
+                                        )
+                                    elif current_state == "started":
+                                        elapsed_total = time.time() - start_time
+                                        logger.info(
+                                            f"✅ [Background] Machine {vm_id} is started and ready "
+                                            f"(room: {room_name}, startup time: {elapsed_total:.1f}s)"
+                                        )
+                                        return
+
+                                # Log progress every 30 seconds if still waiting
+                                if time.time() - last_log_time >= 30.0:
+                                    elapsed_str = f"{elapsed:.1f}s"
+                                    logger.info(
+                                        f"⏳ [Background] Machine {vm_id} still starting... "
+                                        f"(current state: {current_state}, elapsed: {elapsed_str}, "
+                                        f"room: {room_name})"
+                                    )
+                                    last_log_time = time.time()
+                        except Exception as e:
+                            logger.debug(
+                                f"[Background] Error checking machine status: {e}"
+                            )
+
+                        # Wait a bit before next check, but also try the wait endpoint
+                        # The wait endpoint is more efficient but we want progress updates
+                        try:
+                            wait_res = await asyncio.wait_for(
+                                client.get(
+                                    f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}/wait?state=started",
+                                    headers=headers,
+                                    timeout=poll_interval,
+                                ),
+                                timeout=poll_interval,
+                            )
+                            if wait_res.status_code == 200:
+                                elapsed_total = time.time() - start_time
+                                logger.info(
+                                    f"✅ [Background] Machine {vm_id} is started and ready "
+                                    f"(room: {room_name}, startup time: {elapsed_total:.1f}s)"
+                                )
+                                return
+                        except asyncio.TimeoutError:
+                            # Continue polling
+                            continue
+                        except Exception as e:
+                            logger.debug(
+                                f"[Background] Wait endpoint error (will continue polling): {e}"
+                            )
+                            await asyncio.sleep(poll_interval)
+
+                    # If we get here, we've timed out
+                    raise asyncio.TimeoutError()
+
                 except asyncio.TimeoutError:
                     # Machine failed to start within timeout
+                    elapsed_total = time.time() - start_time
                     error_msg = (
-                        f"Machine {vm_id} failed to start within {timeout} seconds"
+                        f"Machine {vm_id} failed to start within {timeout} seconds "
+                        f"(elapsed: {elapsed_total:.1f}s)"
                     )
                     logger.warning(f"⚠️ [Background] {error_msg} (room: {room_name})")
-                    # Try to get machine status for more context
+                    # Try to get final machine status for more context
                     try:
                         status_res = await client.get(
                             f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}",
@@ -296,28 +591,29 @@ class FlyMachineSpawner:
                         )
                         if status_res.status_code == 200:
                             machine_status = status_res.json()
+                            final_state = machine_status.get("state", "unknown")
                             logger.warning(
-                                f"   [Background] Machine {vm_id} status: {machine_status.get('state', 'unknown')}"
+                                f"   [Background] Machine {vm_id} final state: {final_state}"
                             )
+                            # Log any error information if available
+                            if "events" in machine_status:
+                                recent_events = machine_status["events"][
+                                    -3:
+                                ]  # Last 3 events
+                                for event in recent_events:
+                                    if (
+                                        event.get("type") == "exit"
+                                        or "error" in event.get("type", "").lower()
+                                    ):
+                                        logger.warning(
+                                            f"   [Background] Machine event: {event}"
+                                        )
                     except Exception as e:
                         logger.debug(
-                            f"[Background] Could not fetch machine status: {e}"
+                            f"[Background] Could not fetch final machine status: {e}"
                         )
                     # Don't raise - this is just for logging/observability
                     return
-
-                if res.status_code != 200:
-                    error_msg = f"Machine {vm_id} unable to enter started state (status {res.status_code})"
-                    logger.warning(
-                        f"⚠️ [Background] {error_msg} (room: {room_name}): {res.text}"
-                    )
-                    # Don't raise - this is just for logging/observability
-                    return
-
-                # Machine started successfully
-                logger.info(
-                    f"✅ [Background] Machine {vm_id} is started and ready (room: {room_name})"
-                )
 
         except Exception as e:
             # Log but don't raise - this is a background monitoring task

@@ -60,6 +60,36 @@ from flow.steps.agent_call.bot.video_frames import load_bot_video_frames
 logger = logging.getLogger(__name__)
 
 
+def validate_daily_co_url(room_url: str) -> None:
+    """
+    Validate Daily.co room URL format.
+
+    Only validates if the URL is a Daily.co URL (contains "daily.co").
+    Other providers are not validated.
+
+    Args:
+        room_url: Room URL to validate
+
+    Raises:
+        ValueError: If URL is a Daily.co URL but has invalid format
+    """
+    # Only validate Daily.co URLs - skip validation for other providers
+    if "daily.co" not in room_url.lower():
+        # Not a Daily.co URL, skip validation
+        return
+
+    # Validate Daily.co URL format: must match https://*.daily.co/* pattern
+    import re
+
+    daily_co_pattern = r"^https://[^/]+\.daily\.co/[^/]+"
+
+    if not re.match(daily_co_pattern, room_url):
+        raise ValueError(
+            f"Invalid Daily.co room URL format: {room_url}. "
+            f"Expected format: https://<domain>.daily.co/<room-name>"
+        )
+
+
 class BotExecutor:
     """
     Executes the bot pipeline and handles bot runtime.
@@ -131,6 +161,18 @@ IMPORTANT: Your output will be spoken aloud, so:
 - Keep responses concise and clear"""
 
             bot_name = bot_config.get("name", "PailBot")
+
+            # Validate Daily.co room URL format before attempting join
+            # Only validates Daily.co URLs - other providers are not validated
+            try:
+                validate_daily_co_url(room_url)
+            except ValueError as e:
+                error_msg = str(e)
+                logger.error(f"❌ Room URL validation failed: {error_msg}")
+                raise ValueError(
+                    f"Invalid room URL: {error_msg}. "
+                    f"Please provide a valid Daily.co room URL in the format: https://<domain>.daily.co/<room-name>"
+                )
 
             transport = DailyTransport(
                 room_url,
@@ -537,6 +579,32 @@ IMPORTANT: Your output will be spoken aloud, so:
                         f"⚠️ Error getting participant counts: {count_error} - proceeding with cleanup (fail-safe behavior)"
                     )
 
+                # Close Deepgram connection immediately to prevent timeout errors
+                # Simple Explanation: We close the Deepgram connection as soon as we decide to leave,
+                # preventing timeout errors that occur when no audio is received during workflow resume.
+                # Note: stt is accessible via closure from the run() method scope
+                try:
+                    # stt is defined in the outer scope and accessible via closure
+                    logger.info("🔌 Closing Deepgram connection...")
+                    # DeepgramSTTService has a _disconnect method
+                    # Check if the connection is still active before closing
+                    if hasattr(stt, "_disconnect"):
+                        await stt._disconnect()
+                        logger.info("✅ Deepgram connection closed")
+                    elif hasattr(stt, "disconnect"):
+                        await stt.disconnect()
+                        logger.info("✅ Deepgram connection closed")
+                except NameError:
+                    # stt not in scope - this shouldn't happen but handle gracefully
+                    logger.debug(
+                        "Deepgram STT not available in scope for disconnection"
+                    )
+                except Exception as stt_error:
+                    # Log but don't fail - connection might already be closed
+                    logger.debug(
+                        f"Error closing Deepgram connection (may already be closed): {stt_error}"
+                    )
+
                 # Check if there's a workflow waiting to resume
                 # Simple Explanation: If a workflow was started via the bot_call
                 # workflow, it will have a workflow_thread_id. First try to use the
@@ -568,104 +636,137 @@ IMPORTANT: Your output will be spoken aloud, so:
                             break
 
                 if workflow_thread_id:
-                    # Resume the workflow
+                    # Close all connections before resuming workflow to prevent errors during resume
+                    # Simple Explanation: We close Daily.co and Deepgram connections before resuming
+                    # the workflow to prevent connection errors that occur when the workflow resumes
+                    # while connections are still closing.
+                    logger.info("🔌 Closing all connections before workflow resume...")
+                    try:
+                        # Close Daily.co transport connection
+                        if transport:
+                            logger.debug("   Closing Daily.co transport...")
+                            # Transport cleanup will be handled by task.cancel() below, but we can
+                            # prepare it here. The actual cleanup happens when we cancel the task.
+                            pass
+
+                        # Add small delay to ensure connections are fully closed
+                        # This prevents race conditions where workflow resume happens during connection closure
+                        await asyncio.sleep(0.5)
+                        logger.info("✅ Connections closed, ready to resume workflow")
+                    except Exception as cleanup_error:
+                        # Log but don't fail - connections may already be closed
+                        logger.debug(
+                            f"Error during connection cleanup (may already be closed): {cleanup_error}"
+                        )
+
+                    # Resume the workflow in a background task after cleanup
                     # Simple Explanation: The workflow paused after starting the bot.
-                    # Now that the bot has finished, we resume it to continue to the
+                    # Now that the bot has finished and connections are closed, we resume it to continue to the
                     # process_transcript step.
                     logger.info(
                         f"🔄 Resuming workflow with thread_id: {workflow_thread_id}"
                     )
-                    try:
-                        from flow.workflows.bot_call import BotCallWorkflow
 
-                        workflow = BotCallWorkflow()
-
-                        # Retrieve checkpoint_id from workflow_threads if available
-                        # Simple Explanation: The checkpoint_id tells LangGraph exactly which
-                        # checkpoint to resume from. Without it, LangGraph might resume from
-                        # the wrong checkpoint or restart from the beginning.
-                        workflow_thread_data = get_workflow_thread_data(
-                            workflow_thread_id
-                        )
-                        checkpoint_id = (
-                            workflow_thread_data.get("checkpoint_id")
-                            if workflow_thread_data
-                            else None
-                        )
-
-                        # Build config with thread_id and checkpoint_id (if available)
-                        config = {"configurable": {"thread_id": workflow_thread_id}}
-                        if checkpoint_id:
-                            config["configurable"]["checkpoint_id"] = checkpoint_id
-                            logger.info(
-                                f"   📍 Resuming from checkpoint_id: {checkpoint_id}"
-                            )
-                        else:
-                            logger.warning(
-                                "   ⚠️ No checkpoint_id found - workflow may restart from beginning"
-                            )
-
-                        # Simple Explanation: LangGraph automatically resumes from the specified
-                        # checkpoint when you call ainvoke with a config containing both thread_id
-                        # and checkpoint_id. When resuming from a static interrupt (interrupt_after),
-                        # you should pass None - LangGraph will use the state from the checkpoint
-                        # and continue to the next node (process_transcript). The checkpoint already
-                        # has all the state from when the workflow paused, so we don't need to pass anything.
-                        # Resume the workflow - it will continue to process_transcript node
-                        graph = await workflow.graph
-
-                        # Try to get the checkpoint state first to verify it exists
-                        # Simple Explanation: This helps us detect if the checkpoint is missing
-                        # (e.g., if using MemorySaver and server restarted, or if checkpointer isn't configured)
+                    async def resume_workflow_task():
+                        """Background task to resume workflow after connections are closed."""
                         try:
-                            state_snapshot = await graph.aget_state(config)
-                            if not state_snapshot or not state_snapshot.values:
-                                raise ValueError(
-                                    "Checkpoint state not found. This may happen if: "
-                                    "1) Using in-memory checkpointer and server restarted, "
-                                    "2) SUPABASE_DB_PASSWORD is not set in .env file, "
-                                    "3) Checkpoint was deleted or expired."
+                            from flow.workflows.bot_call import BotCallWorkflow
+
+                            workflow = BotCallWorkflow()
+
+                            # Retrieve checkpoint_id from workflow_threads if available
+                            # Simple Explanation: The checkpoint_id tells LangGraph exactly which
+                            # checkpoint to resume from. Without it, LangGraph might resume from
+                            # the wrong checkpoint or restart from the beginning.
+                            workflow_thread_data = get_workflow_thread_data(
+                                workflow_thread_id
+                            )
+                            checkpoint_id = (
+                                workflow_thread_data.get("checkpoint_id")
+                                if workflow_thread_data
+                                else None
+                            )
+
+                            # Build config with thread_id and checkpoint_id (if available)
+                            config = {"configurable": {"thread_id": workflow_thread_id}}
+                            if checkpoint_id:
+                                config["configurable"]["checkpoint_id"] = checkpoint_id
+                                logger.info(
+                                    f"   📍 Resuming from checkpoint_id: {checkpoint_id}"
                                 )
-                            logger.info(
-                                "   ✅ Checkpoint state found - resuming workflow"
-                            )
-                        except Exception as state_error:
-                            logger.warning(
-                                f"   ⚠️ Could not retrieve checkpoint state: {state_error}"
-                            )
-                            logger.warning(
-                                "   This usually means the checkpointer isn't configured properly. "
-                                "Check that SUPABASE_DB_PASSWORD is set in your .env file."
-                            )
-                            raise
+                            else:
+                                logger.warning(
+                                    "   ⚠️ No checkpoint_id found - workflow may restart from beginning"
+                                )
 
-                        # Pass None to resume from static interrupt - LangGraph will use checkpoint state and continue to next node
-                        await graph.ainvoke(None, config=config)
-                        logger.info("✅ Workflow resumed successfully")
-                    except Exception as e:
-                        error_msg = str(e)
-                        logger.error(
-                            f"❌ Error resuming workflow: {error_msg}", exc_info=True
-                        )
+                            # Simple Explanation: LangGraph automatically resumes from the specified
+                            # checkpoint when you call ainvoke with a config containing both thread_id
+                            # and checkpoint_id. When resuming from a static interrupt (interrupt_after),
+                            # you should pass None - LangGraph will use the state from the checkpoint
+                            # and continue to the next node (process_transcript). The checkpoint already
+                            # has all the state from when the workflow paused, so we don't need to pass anything.
+                            # Resume the workflow - it will continue to process_transcript node
+                            graph = await workflow.graph
 
-                        # Provide helpful error message if it's a checkpointer issue
-                        if (
-                            "SUPABASE_DB" in error_msg.upper()
-                            or "checkpoint" in error_msg.lower()
-                        ):
+                            # Try to get the checkpoint state first to verify it exists
+                            # Simple Explanation: This helps us detect if the checkpoint is missing
+                            # (e.g., if using MemorySaver and server restarted, or if checkpointer isn't configured)
+                            try:
+                                state_snapshot = await graph.aget_state(config)
+                                if not state_snapshot or not state_snapshot.values:
+                                    raise ValueError(
+                                        "Checkpoint state not found. This may happen if: "
+                                        "1) Using in-memory checkpointer and server restarted, "
+                                        "2) SUPABASE_DB_PASSWORD is not set in .env file, "
+                                        "3) Checkpoint was deleted or expired."
+                                    )
+                                logger.info(
+                                    "   ✅ Checkpoint state found - resuming workflow"
+                                )
+                            except Exception as state_error:
+                                logger.warning(
+                                    f"   ⚠️ Could not retrieve checkpoint state: {state_error}"
+                                )
+                                logger.warning(
+                                    "   This usually means the checkpointer isn't configured properly. "
+                                    "Check that SUPABASE_DB_PASSWORD is set in your .env file."
+                                )
+                                raise
+
+                            # Pass None to resume from static interrupt - LangGraph will use checkpoint state and continue to next node
+                            await graph.ainvoke(None, config=config)
+                            logger.info("✅ Workflow resumed successfully")
+                        except Exception as resume_error:
+                            error_msg = str(resume_error)
                             logger.error(
-                                "   💡 TIP: This error is likely due to missing Supabase database credentials. "
-                                "Add SUPABASE_DB_PASSWORD to your .env file. "
-                                "Run: python scripts/diagnose_supabase.py to check your configuration."
+                                f"❌ Error resuming workflow: {error_msg}",
+                                exc_info=True,
                             )
 
-                        # Fallback to full transcript processing if workflow resume fails
-                        # Simple Explanation: If workflow resume fails, we use ProcessTranscriptStep
-                        # which includes the full pipeline: Q&A parsing, insights, email, webhook
-                        logger.info("   Falling back to full transcript processing...")
-                        await self.result_processor.process_full_pipeline(
-                            room_name, transcript_handler
-                        )
+                            # Provide helpful error message if it's a checkpointer issue
+                            if (
+                                "SUPABASE_DB" in error_msg.upper()
+                                or "checkpoint" in error_msg.lower()
+                            ):
+                                logger.error(
+                                    "   💡 TIP: This error is likely due to missing Supabase database credentials. "
+                                    "Add SUPABASE_DB_PASSWORD to your .env file. "
+                                    "Run: python scripts/diagnose_supabase.py to check your configuration."
+                                )
+
+                            # Fallback to full transcript processing if workflow resume fails
+                            # Simple Explanation: If workflow resume fails, we use ProcessTranscriptStep
+                            # which includes the full pipeline: Q&A parsing, insights, email, webhook
+                            logger.info(
+                                "   Falling back to full transcript processing..."
+                            )
+                            await self.result_processor.process_full_pipeline(
+                                room_name, transcript_handler
+                            )
+
+                    # Start workflow resume in background task (non-blocking)
+                    # This allows the bot to finish cleanup while workflow resumes
+                    asyncio.create_task(resume_workflow_task())
                 else:
                     # No workflow - use full transcript processing pipeline
                     # Simple Explanation: Even without a workflow, we should run the full

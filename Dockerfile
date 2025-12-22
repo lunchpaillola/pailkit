@@ -4,9 +4,15 @@
 # Simple Explanation:
 # This Dockerfile creates a container that runs the Flow service.
 # All API routes (bot, rooms, transcribe) are now in flow/main.py.
+#
+# Multi-stage build for optimized image size:
+# - Stage 1 (builder): Install dependencies (better caching)
+# - Stage 2 (runtime): Copy only runtime dependencies and code (smaller image)
 
-# Use Python 3.12 as the base image
-FROM python:3.12-slim
+# ============================================================================
+# Stage 1: Builder - Install dependencies
+# ============================================================================
+FROM python:3.12-slim AS builder
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -22,14 +28,35 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # If requirements don't change, Docker will reuse the cached layer
 COPY flow/requirements.txt /app/flow-requirements.txt
 
-# Install Python dependencies
+# Create a virtual environment and install dependencies
 # --no-cache-dir: Don't store pip cache (reduces image size)
 # --upgrade pip: Ensure we have the latest pip version
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/flow-requirements.txt
+# Create proper venv structure for Python to find packages
+RUN python -m venv /app/venv && \
+    /app/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /app/venv/bin/pip install --no-cache-dir -r /app/flow-requirements.txt
 
-# Copy the rest of the application code
+# ============================================================================
+# Stage 2: Runtime - Final production image
+# ============================================================================
+FROM python:3.12-slim
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Set environment variables for Python
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+# Add installed packages to Python path
+ENV PATH="/app/venv/bin:$PATH"
+ENV PYTHONPATH="/app"
+
+# Copy only the installed packages from builder stage (not the builder itself)
+COPY --from=builder /app/venv /app/venv
+
+# Copy the application code
 # Copy from project root to include flow/ module and shared/ common code
+# This is done last to maximize cache hits when only code changes
 COPY shared /app/shared
 COPY flow /app/flow
 
@@ -49,4 +76,6 @@ WORKDIR /app
 # - --host 0.0.0.0 = listen on all network interfaces (not just localhost)
 # - --port ${PORT} = read PORT from environment variable (Fly.io sets this to 8080)
 # - ${PORT:-8080} = use PORT env var, or default to 8080 if not set
-CMD ["sh", "-c", "cd flow && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# Note: Run from /app with flow.main:app to use proper Python module path
+# This works with PYTHONPATH=/app and avoids issues with cd'ing into subdirectories
+CMD ["sh", "-c", "uvicorn flow.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
