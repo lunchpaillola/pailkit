@@ -492,10 +492,21 @@ IMPORTANT: Your output will be spoken aloud, so:
                 # because TranscriptProcessor handles transcription automatically
                 # Kick off the conversation with a greeting first
                 # This tells the LLM to introduce itself before starting the interview
+                # Build greeting message from bot_config
+                greeting_prefix = "Please introduce yourself warmly to the user"
+                bot_greeting = bot_config.get("bot_greeting", "")
+
+                if bot_greeting and bot_greeting.strip():
+                    # Append bot_greeting if provided
+                    greeting_content = f"{greeting_prefix}. {bot_greeting}"
+                else:
+                    # Use only prefix if bot_greeting is empty/None
+                    greeting_content = greeting_prefix
+
                 messages.append(
                     {
                         "role": "system",
-                        "content": "Please introduce yourself warmly to the user. Greet them and let them know you're here to conduct an interview. Wait for them to respond before starting with the interview questions.",
+                        "content": greeting_content,
                     }
                 )
                 logger.info("📤 Queuing LLMRunFrame to start conversation...")
