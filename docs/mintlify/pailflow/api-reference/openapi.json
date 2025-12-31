@@ -99,6 +99,12 @@
                         "description": "Image filename for static mode (required when video_mode='static', optional otherwise)",
                         "nullable": true,
                         "example": "robot01.png"
+                      },
+                      "bot_greeting": {
+                        "type": "string",
+                        "description": "Optional custom greeting message appended to the default introduction. If not provided, only the default introduction is used.",
+                        "nullable": true,
+                        "example": "Greet them and let them know you're here to conduct an interview."
                       }
                     }
                   },
@@ -136,7 +142,8 @@
                 "bot_config": {
                   "bot_prompt": "You are a helpful AI assistant.",
                   "name": "MeetingBot",
-                  "video_mode": "animated"
+                  "video_mode": "animated",
+                  "bot_greeting": "Greet them and let them know you're here to conduct an interview."
                 },
                 "process_insights": true,
                 "email": "user@example.com"

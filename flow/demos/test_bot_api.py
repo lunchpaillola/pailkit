@@ -126,6 +126,7 @@ Guidelines:
         "bot_prompt": bot_prompt,
         "name": "InterviewBot",
         "video_mode": "animated",
+        "bot_greeting": "Greet them and let them know you're here to conduct an interview. Wait for them to respond before starting with the interview questions.",
     }
 
     payload = {

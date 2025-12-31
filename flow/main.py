@@ -233,6 +233,7 @@ class BotConfig(BaseModel):
         "animated"  # "static" or "animated" (optional, defaults to "animated")
     )
     static_image: str | None = None  # Only used when video_mode="static"
+    bot_greeting: str | None = None  # Optional custom greeting message
 
 
 class BotJoinRequest(BaseModel):
@@ -453,6 +454,10 @@ async def join_bot_v1(
         # Only include static_image when video_mode="static"
         if video_mode == "static" and request.bot_config.static_image:
             bot_config_dict["static_image"] = request.bot_config.static_image
+
+        # Include bot_greeting if provided
+        if request.bot_config.bot_greeting:
+            bot_config_dict["bot_greeting"] = request.bot_config.bot_greeting
 
         # Create bot session record in Supabase database
         bot_session_data = {
