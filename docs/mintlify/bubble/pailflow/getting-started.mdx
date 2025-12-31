@@ -1,0 +1,68 @@
+---
+title: "Getting Started"
+description: "Add PailFlow AI meeting bots to your Bubble apps with the Video, Audio & Live Streaming bundle."
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+The [PailFlow](https://pailflow.com) integration ships as part of the [Video, Audio & Live Streaming Bundle](/bubble/video-audio-live-bundle/getting-started). Use it to invite AI assistants into Daily-powered calls so they can take notes, summarize meetings, and deliver structured follow-ups directly from your Bubble workflows.
+
+![PailFlow plugin](https://res.cloudinary.com/dpfmaccxx/image/upload/v1731529214/video_plugin_taerrc.png)
+
+## Installation
+
+<Steps>
+  <Step title="Install the bundle">
+    Go to the [Bubble Plugin Marketplace](https://bubble.io/plugin/video-audio--live-bundle-1727441795463x240182085842370560)
+    and install the **Video, Audio & Live Streaming Bundle**.
+  </Step>
+  <Step title="Confirm availability">
+    Verify the bundle appears in your Bubble app under **Plugins** so that the PailFlow actions and elements are available.
+  </Step>
+  <Step title="Add your PailFlow API key">
+    In the bundle settings, locate the **PailFlow API Key** field and paste the key retrieved from your
+    [PailFlow dashboard](https://pailflow.com).
+  </Step>
+</Steps>
+
+## Prepare your PailFlow account
+
+### 1. Sign up
+
+Create an account at [pailflow.com](https://pailflow.com) if you have not already done so.
+
+### 2. Generate an API key
+
+From your account settings, create an API key. You will use this key in Bubble when configuring the bundle and for any direct API calls.
+
+### 3. Add credits
+
+Each bot run consumes credits (0.15 per call). Add funds from your account dashboard before launching bots.
+
+<Note>
+  Requests fail with a 402 error if your account does not have enough credits.
+</Note>
+
+## Launch a bot call
+
+Use the bundle's PailFlow actions to request a bot inside a call. Behind the scenes the plugin makes the same API call you can test manually:
+
+```bash
+curl -X POST https://api.pailflow.com/v1/api/bot/join \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "room_url": "https://your-domain.daily.co/room-name",
+    "bot_config": {
+      "bot_prompt": "You are a helpful AI assistant."
+    }
+  }'
+```
+
+Update the `room_url` to the Daily call you want the bot to join and customize `bot_prompt` with the assistant's behavior. When invoked from Bubble, the room URL can come from a Daily room created via other bundle actions.
+
+## Next steps
+
+Use the how-tos and reference content from the bundle to orchestrate Daily rooms, livestreams, and recordings alongside your new PailFlow automations.
+
+<videoAudioLiveStreamBundleFooter />

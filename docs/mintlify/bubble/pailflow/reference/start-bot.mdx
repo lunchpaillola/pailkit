@@ -1,0 +1,33 @@
+---
+title: "Start a bot"
+---
+
+import videoAudioLiveStreamBundleFooter from "/snippets/videoAudioLiveStreamBundleFooter.mdx";
+
+Start a PailFlow AI bot inside a Daily room using the Video, Audio & Live Streaming bundle.
+
+## Fields
+
+Use the **Bundle PailFlow - Start bot** action in your Bubble workflow and configure the fields below.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| room url | Text | Yes | The complete meeting room link you want the bot to join. |
+| bot prompt | Text | Yes | Main instruction the bot should follow when joining the room. |
+| name | Text | Optional | Friendly identifier shown wherever the bot appears. |
+| token | Text | Optional | Meeting token for private rooms that require an access token. |
+| provider | Dropdown | Yes | Video provider name. Defaults to `daily`. |
+| webhook callback url | Text | Optional | Webhook endpoint that receives the bot’s summaries and results. |
+
+## Returned values
+
+| Output | Type | Description |
+| --- | --- | --- |
+| error | Boolean | Indicates whether the API call failed. |
+| error message | Text | Details returned when an error occurs. |
+| error status | Number | HTTP status code for failed requests. |
+| status | Text | Overall request status reported by the API. |
+| bot_id | Text | Identifier for the bot that joined the room. |
+| room_url | Text | Echo of the room URL used for the request. |
+
+<videoAudioLiveStreamBundleFooter />

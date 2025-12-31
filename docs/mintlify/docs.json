@@ -175,6 +175,16 @@
                     "pages": ["bubble/player-style-video/video-element"]
                   },
                   {
+                    "group": "PailFlow",
+                    "pages": [
+                      "bubble/pailflow/getting-started",
+                      {
+                        "group": "Reference",
+                        "pages": ["bubble/pailflow/reference/start-bot"]
+                      }
+                    ]
+                  },
+                  {
                     "group": "Tavus",
                     "pages": [
                       "bubble/tavus/plugin-reference/create-conversation",
