@@ -37,6 +37,8 @@ Optional:
 - TEST_NAME: Candidate name (defaults to Alex Johnson)
 - TEST_WEBHOOK_SITE: Webhook URL for testing
 - INTERVIEW_TYPE: Interview type (defaults to "Technical Interview")
+- PROCESS_INSIGHTS: Set to "false" to disable AI insight extraction (defaults to "true").
+    When false, transcript is still sent via email/webhook, but insights are not extracted.
 
 Note: The API is now in flow/main.py, so make sure to run:
   cd flow && python main.py
@@ -95,12 +97,18 @@ async def start_bot(
     email: str = None,
     analysis_prompt: str = None,
     webhook_url: str = None,
+    process_insights: bool = True,
 ) -> dict:
     """
     Start a bot via the new simplified API.
 
     Simple Explanation: This calls the POST /v1/api/bot/join endpoint to start a bot
     in the specified room. It returns a bot_id that we can use to check status.
+
+    Args:
+        process_insights: If True, extracts insights from transcript. If False, only
+            processes transcript (Q&A pairs) but skips AI insight extraction. Transcript
+            is still sent via email/webhook even when False.
     """
     # Use provided bot_prompt or default
     if not bot_prompt:
@@ -134,7 +142,7 @@ Guidelines:
         "room_url": room_url,
         "token": token,
         "bot_config": bot_config,
-        "process_insights": True,  # Enable automatic insight extraction
+        "process_insights": process_insights,  # Enable/disable automatic insight extraction
     }
 
     # Add optional email and processing configuration to payload
@@ -194,6 +202,10 @@ async def main():
         "TEST_WEBHOOK_SITE", "https://webhook.site/38c8fcd9-00e6-48d2-a169-32856a7e76fe"
     )
 
+    # Get process_insights setting (defaults to True)
+    process_insights_str = os.getenv("PROCESS_INSIGHTS", "true").lower()
+    process_insights = process_insights_str not in ("false", "0", "no", "off")
+
     if not test_room_url:
         print("❌ Missing required: TEST_ROOM_URL")
         print(
@@ -217,6 +229,17 @@ async def main():
     # Show email info
     print("📧 Email Configuration:")
     print(f"   Email: {test_email}\n")
+
+    # Show process_insights setting
+    print("🧠 Processing Configuration:")
+    print(f"   Process Insights: {process_insights}")
+    if not process_insights:
+        print("   ⚠️  Insights extraction is DISABLED")
+        print("   ✅ Transcript will still be sent via email/webhook")
+        print("   ✅ Q&A pairs will still be extracted")
+        print("   ❌ AI insight analysis will be skipped\n")
+    else:
+        print("   ✅ Full processing enabled (transcript + Q&A + insights)\n")
 
     # Step 2: Start bot
     print(f"{'='*80}")
@@ -272,6 +295,7 @@ Guidelines:
             email=test_email,
             analysis_prompt=analysis_prompt,
             webhook_url=test_webhook_site,
+            process_insights=process_insights,
         )
         bot_id = bot_response["bot_id"]
         print("✅ Bot started successfully!")
@@ -301,7 +325,10 @@ Guidelines:
         print("   2. You have a conversation with the bot")
         print("   3. When you leave, the workflow automatically:")
         print("      - Resumes (event-driven, no polling needed)")
-        print("      - Processes transcript (Q&A parsing, insights)")
+        if process_insights:
+            print("      - Processes transcript (Q&A parsing + AI insights)")
+        else:
+            print("      - Processes transcript (Q&A parsing only, no AI insights)")
         print("      - Sends email/webhook (if configured)")
         print("   4. That's it! No status checks needed.\n")
 
@@ -340,8 +367,22 @@ Guidelines:
     print("   1. Join the meeting using the URL above")
     print("   2. Have a conversation with the bot")
     print("   3. Leave the meeting")
-    print("   4. Workflow automatically resumes and processes everything")
-    print("   5. You'll receive results via webhook/email (if configured)\n")
+    print("   4. Workflow automatically resumes and processes:")
+    if process_insights:
+        print("      - Transcript extraction")
+        print("      - Q&A pair parsing")
+        print("      - AI insight analysis")
+    else:
+        print("      - Transcript extraction")
+        print("      - Q&A pair parsing")
+        print("      - (AI insights skipped)")
+    print("   5. You'll receive results via webhook/email (if configured)")
+    if not process_insights:
+        print(
+            "      Note: Transcript will be included, but insights will be None/empty\n"
+        )
+    else:
+        print()
 
     print("💡 Optional: Status Endpoint (for debugging only)")
     print(
