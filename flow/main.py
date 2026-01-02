@@ -96,6 +96,22 @@ class VersionHeaderMiddleware(BaseHTTPMiddleware):
 app.add_middleware(VersionHeaderMiddleware)
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Log startup information including bot execution mode."""
+    use_modal = os.getenv("USE_MODAL_BOTS", "false").lower() == "true"
+    use_fly = bool(os.getenv("FLY_API_KEY") and os.getenv("FLY_APP_NAME"))
+
+    if use_modal:
+        logger.info("🤖 Bot execution mode: MODAL (fast startup, auto-scaling)")
+    elif use_fly:
+        logger.info("🤖 Bot execution mode: FLY MACHINES (containerized)")
+    else:
+        logger.info("🤖 Bot execution mode: DIRECT (in-process execution)")
+
+    logger.info("✅ PailFlow API server started")
+
+
 # Shared Business Logic
 
 
