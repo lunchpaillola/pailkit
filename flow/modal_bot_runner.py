@@ -54,7 +54,7 @@ secrets = [
     image=image,
     secrets=secrets,
     timeout=3600,  # 1 hour max bot runtime
-    container_idle_timeout=60,  # Shutdown container after 60s of inactivity
+    scaledown_window=600,  # Shutdown container after 10m of inactivity
     min_containers=1,  # Keep one warm container to reduce cold starts
 )
 async def run_bot(
