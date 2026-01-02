@@ -134,9 +134,9 @@ class BotExecutor:
         """
         # Initialize bot_join_time to None - will be set when bot actually starts
         bot_join_time = None
+        resume_task: Optional[asyncio.Task] = None
 
         try:
-
             # Get bot prompt from config - this defines what the bot should do/say
             # If not provided, use a generic default
             bot_prompt = bot_config.get(
@@ -544,6 +544,7 @@ IMPORTANT: Your output will be spoken aloud, so:
                 it to continue processing the transcript. Otherwise, we process
                 results directly (legacy behavior).
                 """
+                nonlocal resume_task
                 participant_id = participant.get("id", "unknown")
                 logger.info(f"Participant left: {participant_id}, reason: {reason}")
 
@@ -777,7 +778,7 @@ IMPORTANT: Your output will be spoken aloud, so:
 
                     # Start workflow resume in background task (non-blocking)
                     # This allows the bot to finish cleanup while workflow resumes
-                    asyncio.create_task(resume_workflow_task())
+                    resume_task = asyncio.create_task(resume_workflow_task())
                 else:
                     # No workflow - use full transcript processing pipeline
                     # Simple Explanation: Even without a workflow, we should run the full
@@ -1016,6 +1017,17 @@ IMPORTANT: Your output will be spoken aloud, so:
                 finally:
                     # Remove transport from map after cleanup
                     self.transport_map.pop(room_name, None)
+
+                if resume_task:
+                    logger.info("⏳ Waiting for workflow resume task to finish...")
+                    try:
+                        await resume_task
+                        logger.info("✅ Workflow resume task completed")
+                    except Exception as wait_error:
+                        logger.error(
+                            f"❌ Workflow resume task failed: {wait_error}",
+                            exc_info=True,
+                        )
 
         except asyncio.CancelledError:
             # Task was cancelled - this is expected when participant leaves or during shutdown

@@ -101,7 +101,6 @@ def parse_transcript_to_qa_pairs(transcript_text: str) -> list[Dict[str, Any]]:
                 continue
 
         if role and content:
-
             if role == "assistant":
                 # If we have a previous question, save it as a Q&A pair
                 if current_question and current_answer_parts:
@@ -816,7 +815,7 @@ def generate_html_email(
                                 <div style="font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 2px;">Workspace</div>
                             </div>
                             <h1 style="margin: 0; color: #1e293b; font-size: 22px; font-weight: 600; line-height: 1.3;">{escaped_interview_type} Complete</h1>
-                            {f'<p style="margin: 8px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.5;">{escaped_candidate_name}</p>' if escaped_candidate_name else ''}
+                            {f'<p style="margin: 8px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.5;">{escaped_candidate_name}</p>' if escaped_candidate_name else ""}
                         </td>
                     </tr>
 
@@ -1196,15 +1195,10 @@ class ProcessTranscriptStep(InterviewStep):
             extract_insights_step = ExtractInsightsStep()
             state = await extract_insights_step.execute(state)
 
-            if state.get("error"):
-                logger.error(f"❌ Error extracting insights: {state.get('error')}")
-                # Continue anyway with placeholder insights
-                state["insights"] = {
-                    "overall_score": 0.0,
-                    "competency_scores": {},
-                    "strengths": ["Analysis pending"],
-                    "weaknesses": ["Analysis pending"],
-                }
+            insights_error = state.get("error")
+            if insights_error:
+                logger.error(f"❌ Error extracting insights: {insights_error}")
+                state.pop("insights", None)
             else:
                 logger.info("✅ Insights extracted successfully")
 
@@ -1212,7 +1206,8 @@ class ProcessTranscriptStep(InterviewStep):
             # Simple Explanation: We create a simple summary from the insights we extracted
             # This replaces the old GenerateSummaryStep which was removed during simplification
             logger.info("\n🤖 STEP 8: Generating summary from insights")
-            insights = state.get("insights", {})
+            insights = state.get("insights") or {}
+            insights_error = state.get("error")
 
             # Build a simple summary from insights
             summary_parts = []
@@ -1251,8 +1246,15 @@ class ProcessTranscriptStep(InterviewStep):
                 "duration_seconds": duration,
                 "transcript_text": transcript_text,
                 "summary": candidate_summary,
-                "insights": state.get("insights"),
             }
+
+            if state.get("insights") is not None:
+                results_payload["insights"] = state.get("insights")
+
+            if insights_error:
+                results_payload["insights_error"] = (
+                    f"Error processing insights for this call: {insights_error}"
+                )
 
             # Send webhook (only if not already sent)
             webhook_sent = False

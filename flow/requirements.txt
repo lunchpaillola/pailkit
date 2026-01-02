@@ -14,6 +14,9 @@ langgraph==0.2.40
 # Includes: daily (Daily.co transport), openai (LLM/TTS), local-smart-turn-v3 (turn detection), deepgram (STT)
 pipecat-ai[daily,openai,local-smart-turn-v3,deepgram]>=0.0.94
 
+# Modal client (required when USE_MODAL_BOTS=true)
+modal>=0.60
+
 # OpenAI SDK for direct API access (used in ExtractInsightsStep)
 openai>=1.0.0
 

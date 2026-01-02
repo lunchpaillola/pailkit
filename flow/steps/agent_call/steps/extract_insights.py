@@ -7,8 +7,10 @@ Extract Insights Step
 This step extracts insights and assesses competencies from the interview.
 """
 
+import asyncio
 import json
 import logging
+import time
 import uuid
 from typing import Any, Dict, List, cast
 
@@ -78,8 +80,10 @@ class ExtractInsightsStep(InterviewStep):
         client, is_posthog_enabled = get_posthog_llm_client()
 
         if not client:
-            logger.warning("⚠️ Cannot create OpenAI client - using placeholder insights")
-            return self._create_placeholder_insights(state, qa_pairs, [])
+            error_msg = "insights_error: OpenAI client unavailable"
+            logger.warning(f"⚠️ {error_msg}")
+            state["error"] = error_msg
+            return state
 
         # Generate a reference ID for this workflow execution (for our own tracking)
         # Note: This is NOT PostHog's trace_id. PostHog generates its own trace_id server-side
@@ -109,11 +113,10 @@ class ExtractInsightsStep(InterviewStep):
                     posthog_distinct_id = unkey_key_id
 
         try:
-
             # Build transcript text from Q&A pairs
             qa_text = "\n\n".join(
                 [
-                    f"Q{i+1}: {qa.get('question', '')}\nA{i+1}: {qa.get('answer', '')}"
+                    f"Q{i + 1}: {qa.get('question', '')}\nA{i + 1}: {qa.get('answer', '')}"
                     for i, qa in enumerate(qa_pairs)
                 ]
             )
@@ -168,57 +171,83 @@ Guidelines:
 Return ONLY valid JSON, no additional text."""
 
             # Call OpenAI API with PostHog tracking
+            timeout_seconds = 30
             logger.info("🤖 Calling OpenAI API for analysis...")
             model_name = None  # Will be set based on which client we use
-            if is_posthog_enabled:
-                # Use PostHog-wrapped client with responses.create()
-                # Simple Explanation: PostHog's wrapper uses responses.create() instead of
-                # chat.completions.create(). We use the input parameter (same structure as messages)
-                # PostHog automatically tracks all calls made through this client.
-                # Note: response_format is not supported, so we rely on the prompt to request JSON format.
-                # PostHog tracking parameters:
-                # - posthog_distinct_id: Identifies the user/API key (required for tracking)
-                # - posthog_trace_id: Optional trace ID for correlating events
-                # - posthog_properties: Optional additional properties for the event
-                posthog_properties = {
-                    "workflow_thread_id": workflow_thread_id,
-                    "room_name": room_name,
-                    "step_name": "extract_insights",
-                }
-                logger.debug(
-                    f"📊 PostHog tracking parameters: distinct_id={posthog_distinct_id}, "
-                    f"trace_id={posthog_trace_id}, properties={posthog_properties}"
+            start_time = time.perf_counter()
+            try:
+                if is_posthog_enabled:
+                    # Use PostHog-wrapped client with responses.create()
+                    # Simple Explanation: PostHog's wrapper uses responses.create() instead of
+                    # chat.completions.create(). We use the input parameter (same structure as messages)
+                    # PostHog automatically tracks all calls made through this client.
+                    # Note: response_format is not supported, so we rely on the prompt to request JSON format.
+                    # PostHog tracking parameters:
+                    # - posthog_distinct_id: Identifies the user/API key (required for tracking)
+                    # - posthog_trace_id: Optional trace ID for correlating events
+                    # - posthog_properties: Optional additional properties for the event
+                    posthog_properties = {
+                        "workflow_thread_id": workflow_thread_id,
+                        "room_name": room_name,
+                        "step_name": "extract_insights",
+                    }
+                    logger.debug(
+                        f"📊 PostHog tracking parameters: distinct_id={posthog_distinct_id}, "
+                        f"trace_id={posthog_trace_id}, properties={posthog_properties}"
+                    )
+                    model_name = "gpt-4.1"
+                    response = await asyncio.wait_for(
+                        client.responses.create(
+                            model=model_name,
+                            input=[
+                                {
+                                    "role": "system",
+                                    "content": "You are an expert call evaluator. Always respond with valid JSON only.",
+                                },
+                                {"role": "user", "content": final_prompt},
+                            ],
+                            temperature=0.3,  # Lower temperature for more consistent analysis
+                            posthog_distinct_id=posthog_distinct_id,
+                            posthog_trace_id=posthog_trace_id,
+                            posthog_properties=posthog_properties,
+                        ),
+                        timeout=timeout_seconds,
+                    )
+                else:
+                    # Fallback to regular OpenAI API (no PostHog tracking)
+                    model_name = "gpt-4o"
+                    response = await asyncio.wait_for(
+                        client.chat.completions.create(
+                            model=model_name,
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": "You are an expert interview evaluator. Always respond with valid JSON only.",
+                                },
+                                {"role": "user", "content": final_prompt},
+                            ],
+                            temperature=0.3,  # Lower temperature for more consistent analysis
+                            response_format={"type": "json_object"},
+                        ),
+                        timeout=timeout_seconds,
+                    )
+                elapsed = time.perf_counter() - start_time
+                logger.info(f"🤖 OpenAI response received in {elapsed:.2f}s")
+            except asyncio.TimeoutError:
+                elapsed = time.perf_counter() - start_time
+                error_msg = f"insights_error: timeout after {timeout_seconds}s"
+                logger.error(f"❌ {error_msg} (waited {elapsed:.2f}s)")
+                state["error"] = error_msg
+                return state
+            except Exception as call_error:
+                elapsed = time.perf_counter() - start_time
+                error_msg = f"insights_error: {call_error}"
+                logger.error(
+                    f"❌ OpenAI analysis failed after {elapsed:.2f}s: {call_error}",
+                    exc_info=True,
                 )
-                model_name = "gpt-4.1"
-                response = await client.responses.create(
-                    model=model_name,
-                    input=[
-                        {
-                            "role": "system",
-                            "content": "You are an expert call evaluator. Always respond with valid JSON only.",
-                        },
-                        {"role": "user", "content": final_prompt},
-                    ],
-                    temperature=0.3,  # Lower temperature for more consistent analysis
-                    posthog_distinct_id=posthog_distinct_id,
-                    posthog_trace_id=posthog_trace_id,
-                    posthog_properties=posthog_properties,
-                )
-            else:
-                # Fallback to regular OpenAI API (no PostHog tracking)
-                model_name = "gpt-4o"
-                response = await client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are an expert interview evaluator. Always respond with valid JSON only.",
-                        },
-                        {"role": "user", "content": final_prompt},
-                    ],
-                    temperature=0.3,  # Lower temperature for more consistent analysis
-                    response_format={"type": "json_object"},
-                )
+                state["error"] = error_msg
+                return state
 
             # Parse response
             # Simple Explanation: PostHog-wrapped responses use output_text attribute
@@ -361,15 +390,17 @@ Return ONLY valid JSON, no additional text."""
             try:
                 insights = self._validate_insights(insights, qa_pairs)
             except Exception as validation_error:
+                error_msg = f"insights_error: {validation_error}"
                 logger.error(
                     f"❌ Error validating insights structure: {validation_error}",
                     exc_info=True,
                 )
-                logger.warning("⚠️ Using placeholder insights due to validation error")
-                return self._create_placeholder_insights(state, qa_pairs, [])
+                state["error"] = error_msg
+                return state
 
             state["insights"] = insights
             state = self.update_status(state, "insights_extracted")
+            state.pop("error", None)
 
             logger.info(f"✅ Extracted insights for {len(qa_pairs)} questions")
             logger.info(f"   Overall Score: {insights.get('overall_score', 0.0)}/10")
@@ -382,20 +413,22 @@ Return ONLY valid JSON, no additional text."""
             return state
 
         except json.JSONDecodeError as e:
+            error_msg = f"insights_error: failed to parse AI response ({e})"
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
             logger.error(
                 f"   Response: {response_text[:500] if 'response_text' in locals() else 'N/A'}"
             )
-            logger.warning("⚠️ Using placeholder insights due to JSON parsing error")
-            return self._create_placeholder_insights(state, qa_pairs, [])
+            state["error"] = error_msg
+            return state
         except Exception as e:
             error_type = type(e).__name__
+            error_msg = f"insights_error: {e}"
             logger.error(
                 f"❌ Error during AI analysis ({error_type}): {e}",
                 exc_info=True,
             )
-            logger.warning("⚠️ Using placeholder insights due to analysis error")
-            return self._create_placeholder_insights(state, qa_pairs, [])
+            state["error"] = error_msg
+            return state
 
     def _validate_insights(
         self, insights: Dict[str, Any], qa_pairs: List[Dict[str, Any]]

@@ -203,8 +203,8 @@ class FlyMachineSpawner:
                     error_msg = str(e)
                     if isinstance(e, FlyMachineError):
                         error_msg = f"{e.operation}: {e.message}"
-                        if e.status_code:
-                            error_msg += f" (status: {e.status_code})"
+                        if e.machine_id:
+                            error_msg += f" (machine_id: {e.machine_id})"
 
                     logger.warning(
                         f"⚠️ Retryable error on attempt {attempt}/{self.max_retries} "
@@ -239,6 +239,39 @@ class FlyMachineSpawner:
                 response_body="",
                 message="All retry attempts exhausted without error",
             )
+
+    def is_machine_running(self, vm_id: str) -> bool:
+        """Check Fly machine status synchronously for health/status endpoints."""
+        if not vm_id or not self.fly_api_key or not self.fly_app_name:
+            return False
+
+        headers = {
+            "Authorization": f"Bearer {self.fly_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                res = client.get(
+                    f"{self.fly_api_host}/apps/{self.fly_app_name}/machines/{vm_id}",
+                    headers=headers,
+                )
+            if res.status_code != 200:
+                logger.warning(
+                    "⚠️ Unable to fetch Fly machine status (vm_id=%s): status=%s",
+                    vm_id,
+                    res.status_code,
+                )
+                return False
+
+            state = (res.json().get("state") or "").lower()
+            # Treat started/starting/created as running
+            return state in {"started", "starting", "created"}
+        except Exception as e:
+            logger.warning(
+                "⚠️ Error checking Fly machine status (vm_id=%s): %s", vm_id, e
+            )
+            return False
 
     async def _attempt_spawn(
         self,

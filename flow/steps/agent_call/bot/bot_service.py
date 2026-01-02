@@ -41,6 +41,147 @@ __all__ = [
 # They are harmless and expected during cleanup - the bot still functions correctly.
 
 
+class ModalBotSpawner:
+    """
+    Handles spawning Modal Functions to run bots.
+
+    Simple Explanation: This class manages calling Modal Functions
+    that run bot instances. Each function runs independently and
+    auto-cleans up when the bot finishes.
+    """
+
+    def __init__(self):
+        """Initialize the Modal bot spawner."""
+        try:
+            import modal
+
+            self.modal = modal
+        except ImportError:
+            raise RuntimeError(
+                "Modal is not installed. Install with: pip install modal>=0.60"
+            )
+        self.app_name = os.getenv("MODAL_APP_NAME", "pailkit-bot")
+        self.function_name = os.getenv("MODAL_FUNCTION_NAME", "run_bot")
+        if not self.app_name or not self.function_name:
+            raise RuntimeError(
+                "Modal app/function names must be configured (MODAL_APP_NAME, MODAL_FUNCTION_NAME)."
+            )
+
+    async def spawn(
+        self,
+        room_url: str,
+        token: str,
+        bot_config: Dict[str, Any],
+        workflow_thread_id: Optional[str] = None,
+    ) -> str:
+        """
+        Spawn a Modal Function to run the bot.
+
+        Args:
+            room_url: Full Daily.co room URL
+            token: Meeting token for authentication
+            bot_config: Bot configuration dictionary
+            workflow_thread_id: Optional workflow thread ID to associate with this bot session
+
+        Returns:
+            Function call ID (string identifier)
+
+        Raises:
+            RuntimeError: If Modal is not configured
+            Exception: If function call fails
+        """
+        try:
+            logger.info(
+                "🚀 Calling Modal function for room %s (app=%s, function=%s)",
+                room_url.split("/")[-1],
+                self.app_name,
+                self.function_name,
+            )
+
+            run_bot_func = None
+            lookup_errors: list[Exception] = []
+
+            # Try modern lookup first
+            try:
+                run_bot_func = self.modal.Function.from_name(
+                    self.app_name, self.function_name
+                )
+            except Exception as e_from_name:
+                lookup_errors.append(e_from_name)
+                # Fallback to lookup API (older clients)
+                try:
+                    run_bot_func = self.modal.Function.lookup(
+                        self.function_name, app=self.app_name
+                    )
+                except Exception as e_lookup:
+                    lookup_errors.append(e_lookup)
+
+            if run_bot_func is None:
+                raise RuntimeError(
+                    f"Unable to find Modal function {self.function_name} in app {self.app_name}: "
+                    + "; ".join(str(e) for e in lookup_errors)
+                )
+
+            call_handle = run_bot_func.spawn(
+                room_url=room_url,
+                token=token or "",
+                bot_config=bot_config,
+                room_name=room_url.split("/")[-1],
+                workflow_thread_id=workflow_thread_id,
+            )
+
+            call_id = (
+                getattr(call_handle, "object_id", None)
+                or getattr(call_handle, "function_call_id", None)
+                or str(call_handle)
+            )
+
+            logger.info(
+                "✅ Modal function called successfully (call_id: %s) for room: %s",
+                call_id,
+                room_url.split("/")[-1],
+            )
+
+            return str(call_id)
+
+        except Exception as e:
+            error_msg = f"Failed to call Modal function: {str(e)}"
+            logger.error(f"❌ {error_msg}", exc_info=True)
+            raise RuntimeError(error_msg)
+
+    def is_call_running(self, call_id: str) -> bool:
+        """Check Modal function call status by ID."""
+        if not call_id:
+            return False
+
+        try:
+            func_call = self.modal.FunctionCall.from_id(call_id)
+        except Exception as e:
+            logger.warning(
+                "⚠️ Could not retrieve Modal function call %s: %s", call_id, e
+            )
+            return False
+
+        try:
+            # If get() returns without Timeout, the call is complete
+            func_call.get(timeout=0)
+            return False
+        except self.modal.exception.TimeoutError:
+            return True
+        except TimeoutError:
+            return True
+        except self.modal.exception.OutputExpiredError:
+            # Output expired -> finished/not running
+            return False
+        except self.modal.exception.FunctionCallNotFoundError:
+            return False
+        except Exception as e:
+            logger.warning(
+                "⚠️ Error checking Modal function call %s status: %s", call_id, e
+            )
+            return False
+
+
 class BotService:
     """Service to manage Pipecat bot instances with proper process management."""
 
@@ -59,12 +200,19 @@ class BotService:
         # Simple Explanation: transport_map stores DailyTransport instances for each room
         # This allows us to explicitly leave the room during cleanup
         self.transport_map: Dict[str, "DailyTransport"] = {}
+        # Track Modal function call IDs by room for status checks
+        self.modal_call_map: Dict[str, str] = {}
+        # Track Fly machine IDs by room for status checks
+        self.fly_machine_map: Dict[str, str] = {}
 
         # Fly.io configuration - read from environment variables
         fly_api_host = os.getenv("FLY_API_HOST", "https://api.machines.dev/v1")
         fly_app_name = os.getenv("FLY_APP_NAME", "")
         fly_api_key = os.getenv("FLY_API_KEY", "")
         self.use_fly_machines = bool(fly_api_key and fly_app_name)
+
+        # Modal configuration - read from environment variable
+        self.use_modal_bots = os.getenv("USE_MODAL_BOTS", "false").lower() == "true"
 
         # Initialize Fly.io machine spawner if enabled
         if self.use_fly_machines:
@@ -80,6 +228,20 @@ class BotService:
                 "ℹ️ Fly.io machine spawning disabled - using direct execution. "
                 "Set FLY_API_KEY and FLY_APP_NAME to enable."
             )
+
+        # Initialize Modal spawner if enabled
+        if self.use_modal_bots:
+            try:
+                self.modal_spawner = ModalBotSpawner()
+                logger.info("✅ Modal bot spawning enabled")
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ Failed to initialize Modal spawner: {e} - falling back to other methods"
+                )
+                self.modal_spawner = None
+                self.use_modal_bots = False
+        else:
+            self.modal_spawner = None
 
         # Initialize result processor
         self.result_processor = BotResultProcessor(
@@ -140,6 +302,35 @@ class BotService:
                     logger.warning(f"Bot already running for room: {room_name}")
                     return True, None
 
+                # Check if Modal should be used (before Fly check)
+                if self.use_modal_bots:
+                    # Spawn a Modal Function for the bot
+                    if not self.modal_spawner:
+                        logger.warning(
+                            "Modal spawner not initialized - falling back to Fly machines or direct execution"
+                        )
+                    else:
+                        try:
+                            call_id = await self.modal_spawner.spawn(
+                                room_url, token, bot_config, workflow_thread_id
+                            )
+                            logger.info(
+                                f"✅ Bot spawned on Modal (call_id: {call_id}) for room {room_name}"
+                            )
+                            # Track Modal call ID for status checks
+                            self.modal_call_map[room_name] = str(call_id)
+                            # For Modal functions, we don't track them in active_bots
+                            # because they run independently and auto-cleanup when done
+                            return True, None
+                        except Exception as e:
+                            error_message = f"Modal function call failed: {str(e)}"
+                            logger.error(f"❌ {error_message}", exc_info=True)
+                            # Fall back to Fly machines or direct execution
+                            logger.info(
+                                "Falling back to Fly machines or direct execution..."
+                            )
+                            # Continue to next execution path (don't return False yet)
+
                 if should_use_fly:
                     # Spawn a Fly.io machine for the bot
                     if not self.fly_spawner:
@@ -155,6 +346,8 @@ class BotService:
                             logger.info(
                                 f"✅ Bot spawned on Fly.io machine {vm_id} for room {room_name}"
                             )
+                            # Track Fly machine ID for status checks
+                            self.fly_machine_map[room_name] = vm_id
                             # For Fly.io machines, we don't track them in active_bots
                             # because they run independently and auto-destroy when done
                             return True, None
@@ -258,6 +451,10 @@ class BotService:
                 del self.bot_id_map[room_name]
             if room_name in self.bot_config_map:
                 del self.bot_config_map[room_name]
+            if room_name in self.modal_call_map:
+                del self.modal_call_map[room_name]
+            if room_name in self.fly_machine_map:
+                del self.fly_machine_map[room_name]
 
     async def stop_bot(self, room_name: str) -> bool:
         """Stop a bot instance for the given room."""
@@ -290,10 +487,44 @@ class BotService:
 
     def is_bot_running(self, room_name: str) -> bool:
         """Check if a bot is running for the given room."""
-        if room_name not in self.active_bots:
-            return False
+        # Check Modal function call status first
+        call_id = self.modal_call_map.get(room_name)
+        if call_id:
+            if self.modal_spawner:
+                try:
+                    if self.modal_spawner.is_call_running(call_id):
+                        return True
+                except Exception as e:
+                    logger.warning(
+                        "⚠️ Error checking Modal status for room %s (call_id=%s): %s",
+                        room_name,
+                        call_id,
+                        e,
+                    )
+            # Clean up stale entry if not running
+            self.modal_call_map.pop(room_name, None)
 
-        return self.active_bots[room_name].is_running
+        # Check in-process bot tasks
+        if room_name in self.active_bots:
+            return self.active_bots[room_name].is_running
+
+        # Check Fly machine status if tracked
+        vm_id = self.fly_machine_map.get(room_name)
+        if vm_id and self.fly_spawner:
+            try:
+                if self.fly_spawner.is_machine_running(vm_id):
+                    return True
+            except Exception as e:
+                logger.warning(
+                    "⚠️ Error checking Fly machine status for room %s (vm_id=%s): %s",
+                    room_name,
+                    vm_id,
+                    e,
+                )
+            # Clean up stale entry if not running
+            self.fly_machine_map.pop(room_name, None)
+
+        return False
 
     def get_bot_status(self, room_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed status of a bot."""
@@ -345,7 +576,7 @@ class BotService:
                 if runtime > max_seconds:
                     logger.warning(
                         f"⚠️ Stopping long-running bot: {room_name} "
-                        f"(ran for {runtime/3600:.2f} hours, max: {max_hours}h)"
+                        f"(ran for {runtime / 3600:.2f} hours, max: {max_hours}h)"
                     )
                     await self.stop_bot(room_name)
                     stopped_count += 1
